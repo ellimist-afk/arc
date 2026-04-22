@@ -267,7 +267,51 @@ class TalkBot:
                             logger.warning(f"Could not set personality to: {preset_name}")
             
             self.service_registry.register('PersonalityService', self.personality_engine)
-            
+
+            # Initialize TwitchTokenRefresher BEFORE TwitchClient for fresh tokens
+            from twitch.token_refresher import TwitchTokenRefresher
+
+            logger.info("Initializing TwitchTokenRefresher...")
+            self.token_refresher = TwitchTokenRefresher(
+                client_id=self.config.get('TWITCH_CLIENT_ID'),
+                client_secret=self.config.get('TWITCH_CLIENT_SECRET'),
+            )
+
+            bot_account = self.config.get('TWITCH_BOT_USERNAME', 'elimist_').lower()
+            channel = self.config.get('TWITCH_CHANNEL', 'cassova_').lower()
+
+            self.token_refresher.register_account(
+                account_name=bot_account,
+                env_var_name='TWITCH_ACCESS_TOKEN',
+                token_file_path=f'twitch_tokens_{bot_account}.txt'
+            )
+            self.token_refresher.register_account(
+                account_name=channel,
+                env_var_name='TWITCH_BROADCASTER_TOKEN',
+                token_file_path=f'twitch_tokens_{channel}.txt'
+            )
+
+            # Refresh immediately so we start with fresh tokens. If refresh
+            # fails, fall back to whatever's in .env (best-effort).
+            logger.info("Performing initial token refresh...")
+            refresh_results = await self.token_refresher.refresh_all()
+            for account, success in refresh_results.items():
+                if success:
+                    logger.info(f"Initial token refresh succeeded for {account}")
+                else:
+                    logger.warning(
+                        f"Initial token refresh FAILED for {account} — "
+                        f"continuing with existing tokens from .env"
+                    )
+
+            # Re-read .env into self.config so updated values flow into the
+            # rest of setup. Use os.environ refresh + dotenv reload pattern.
+            from dotenv import load_dotenv
+            load_dotenv(override=True)
+            # Update self.config dict for any keys that changed
+            self.config['TWITCH_ACCESS_TOKEN'] = os.getenv('TWITCH_ACCESS_TOKEN', self.config.get('TWITCH_ACCESS_TOKEN'))
+            self.config['TWITCH_BROADCASTER_TOKEN'] = os.getenv('TWITCH_BROADCASTER_TOKEN', self.config.get('TWITCH_BROADCASTER_TOKEN'))
+
             # Initialize Twitch client (but connect async)
             logger.info("Initializing Twitch client...")
             self.twitch_client = TwitchClient(
@@ -325,7 +369,27 @@ class TalkBot:
             
             # Start EventSub connection in background
             asyncio.create_task(self.eventsub.connect())
-            
+
+            # Register token refresh callback and start background refresher
+            def on_token_refresh(account_name, new_access_token):
+                try:
+                    if account_name == bot_account:
+                        if hasattr(self.twitch_client, 'access_token'):
+                            self.twitch_client.access_token = new_access_token
+                        if hasattr(self.eventsub, 'access_token'):
+                            self.eventsub.access_token = new_access_token
+                        logger.info(f"Live tokens updated for bot account {bot_account}")
+                    elif account_name == channel:
+                        if hasattr(self.eventsub, 'broadcaster_token'):
+                            self.eventsub.broadcaster_token = new_access_token
+                        logger.info(f"Live broadcaster token updated for {channel}")
+                except Exception as e:
+                    logger.error(f"Failed to apply refreshed token to live components: {e}")
+
+            self.token_refresher.on_refresh_callback(on_token_refresh)
+            await self.token_refresher.start()
+            self.service_registry.register('TokenRefresher', self.token_refresher)
+
             # Initialize Ad Announcer
             logger.info("Initializing Ad Announcer...")
             self.ad_announcer = AdAnnouncer(
@@ -1112,9 +1176,15 @@ class TalkBot:
         await self.task_registry.shutdown()
         
         # Shutdown components in reverse order
+        if hasattr(self, 'token_refresher'):
+            try:
+                await self.token_refresher.stop()
+            except Exception as e:
+                logger.error(f"Error stopping token refresher: {e}")
+
         if self.response_coordinator:
             await self.response_coordinator.stop_dead_air_prevention()
-            
+
         if self.voice_recognition:
             self.voice_recognition.stop_listening()
             
