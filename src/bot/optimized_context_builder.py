@@ -235,6 +235,7 @@ class OptimizedContextBuilder:
                 "timestamp": time.time(),
                 "viewer_data": data.get("viewer_data", {}),
                 "recent_context": self._summarize_messages(data.get("recent_messages", [])),
+                "recent_messages": data.get("recent_messages", []),
                 "channel_info": data.get("channel_context", {}),
                 "history_summary": self._summarize_history(data.get("interaction_history", [])),
                 "is_returning": bool(data.get("interaction_history")),

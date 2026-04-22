@@ -494,11 +494,18 @@ class PersonalityEngine:
                 
                 # Add context if available
                 if context.get('recent_messages'):
-                    for msg in context['recent_messages'][-3:]:
-                        messages.insert(1, {
-                            "role": "user",
-                            "content": f"{msg.get('username', 'User')}: {msg.get('text', '')}"
-                        })
+                    # Take last 5 messages, iterate oldest-first so insertion order
+                    # is chronological (oldest just after system prompt, newest just
+                    # before current message)
+                    recent = context['recent_messages'][-5:]
+                    for msg in reversed(recent):
+                        text = msg.get('message') or msg.get('text', '')
+                        username = msg.get('username', 'User')
+                        if text:
+                            messages.insert(1, {
+                                "role": "user",
+                                "content": f"{username}: {text}"
+                            })
                         
                 # Filter response_modifiers to only include valid OpenAI parameters
                 openai_params = {}
