@@ -55,8 +55,9 @@ class LRUCache:
 class OptimizedContextBuilder:
     """Multi-level caching context builder for sub-100ms performance."""
 
-    def __init__(self, memory_system):
+    def __init__(self, memory_system, chat_buffer=None):
         self.memory = memory_system
+        self.chat_buffer = chat_buffer
 
         # Multi-level cache system
         self.l1_cache: Dict[str, Tuple[Dict, float]] = {}  # Hot cache for active conversations
@@ -159,10 +160,6 @@ class OptimizedContextBuilder:
                 self.memory.get_viewer_context(viewer, channel),
                 "viewer_data"
             ),
-            "recent_messages": fetch_with_timeout(
-                self.memory.get_recent_messages(channel, limit=10),
-                "recent_messages"
-            ),
             "channel_context": fetch_with_timeout(
                 self.memory.get_channel_context(channel),
                 "channel_context"
@@ -178,7 +175,16 @@ class OptimizedContextBuilder:
         fetch_time = time.time() - start
         logger.debug(f"Parallel fetch completed in {fetch_time:.3f}s")
 
-        return dict(zip(tasks.keys(), results))
+        result_dict = dict(zip(tasks.keys(), results))
+
+        # Recent messages come from in-memory buffer, not DB.
+        # This is intentional — chat continuity must be instant and fresh.
+        if self.chat_buffer:
+            result_dict["recent_messages"] = self.chat_buffer.get_recent(channel, limit=10)
+        else:
+            result_dict["recent_messages"] = []
+
+        return result_dict
 
     async def build_context(
         self,
@@ -202,6 +208,9 @@ class OptimizedContextBuilder:
             # L1 cache check (fastest)
             context = self._check_l1_cache(cache_key)
             if context:
+                # Always refresh recent_messages — never serve stale chat history
+                if self.chat_buffer:
+                    context['recent_messages'] = self.chat_buffer.get_recent(channel, limit=10)
                 build_time = (time.time() - start) * 1000
                 self._track_build_time(build_time)
                 logger.debug(f"Context built from L1 in {build_time:.1f}ms")
@@ -210,6 +219,9 @@ class OptimizedContextBuilder:
             # L2 cache check (fast)
             context = self._check_l2_cache(cache_key)
             if context:
+                # Always refresh recent_messages — never serve stale chat history
+                if self.chat_buffer:
+                    context['recent_messages'] = self.chat_buffer.get_recent(channel, limit=10)
                 build_time = (time.time() - start) * 1000
                 self._track_build_time(build_time)
                 logger.debug(f"Context built from L2 in {build_time:.1f}ms")

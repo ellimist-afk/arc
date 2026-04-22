@@ -500,8 +500,18 @@ class PersonalityEngine:
                     recent = context['recent_messages'][-5:]
                     for msg in reversed(recent):
                         text = msg.get('message') or msg.get('text', '')
+                        if not text:
+                            continue
                         username = msg.get('username', 'User')
-                        if text:
+                        role = msg.get('role', 'viewer')
+                        if role == 'assistant':
+                            # Bot's own past response — tell the LLM "I said this"
+                            messages.insert(1, {
+                                "role": "assistant",
+                                "content": text
+                            })
+                        else:
+                            # Someone in chat said this
                             messages.insert(1, {
                                 "role": "user",
                                 "content": f"{username}: {text}"

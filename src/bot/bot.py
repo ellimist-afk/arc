@@ -26,6 +26,7 @@ from personality.personality_engine import PersonalityEngine
 from api.websocket_manager import WebSocketManager
 from components.voice.recognition import VoiceRecognition
 from bot.optimized_context_builder import OptimizedContextBuilder
+from bot.channel_chat_buffer import ChannelChatBuffer
 from core.bot_state import BotState
 from core.network_resilience import get_resilience
 from bot.response_coordinator import ResponseCoordinator
@@ -218,10 +219,18 @@ class TalkBot:
             )
             await self.memory_system.initialize()
             self.service_registry.register('MemoryService', self.memory_system)
-            
+
+            # Initialize ChannelChatBuffer for real-time conversational context
+            logger.info("Initializing ChannelChatBuffer...")
+            self.chat_buffer = ChannelChatBuffer(max_turns_per_channel=50)
+            self.service_registry.register('ChatBuffer', self.chat_buffer)
+
             # Initialize OptimizedContextBuilder for <100ms performance (PRD requirement)
             logger.info("Initializing OptimizedContextBuilder...")
-            self.context_builder = OptimizedContextBuilder(self.memory_system)
+            self.context_builder = OptimizedContextBuilder(
+                self.memory_system,
+                chat_buffer=self.chat_buffer
+            )
             self.service_registry.register('ContextBuilder', self.context_builder)
 
             # Initialize MetricsCollector for performance tracking (PRD requirement)
@@ -484,7 +493,14 @@ class TalkBot:
             
             # Store in memory system
             await self.memory_system.store_message(message)
-            
+
+            # Add to real-time chat buffer
+            self.chat_buffer.append_viewer(
+                channel=message.get('channel', ''),
+                username=message.get('username', 'unknown'),
+                message=message.get('text') or message.get('message', '')
+            )
+
             # Log if this is a mention
             if is_mention:
                 logger.info(f"Processing mention from {message.get('username')}: '{message.get('text', '')}'")
@@ -554,7 +570,14 @@ class TalkBot:
                             priority=priority
                         )
                         self.audio_count += 1
-                
+
+                # Add bot's response to chat buffer
+                self.chat_buffer.append_assistant(
+                    channel=self.config.get('TWITCH_CHANNEL', ''),
+                    username=self.config.get('TWITCH_BOT_USERNAME', 'bot'),
+                    message=response['text']
+                )
+
             # Track overall response time
             response_time = (time.perf_counter() - start_time) * 1000
             self.response_times.append(response_time)
@@ -724,7 +747,14 @@ class TalkBot:
             
             # Store in memory system
             await self.memory_system.store_message(message)
-            
+
+            # Add to real-time chat buffer
+            self.chat_buffer.append_viewer(
+                channel=message.get('channel', ''),
+                username=message.get('username', 'unknown'),
+                message=message.get('text') or message.get('message', '')
+            )
+
             # Build context using OptimizedContextBuilder for <100ms performance
             if self.context_builder:
                 context = await self.context_builder.build_context(
@@ -784,6 +814,13 @@ class TalkBot:
                         )
                         self.audio_count += 1
                         logger.info(f"Voice response queued: '{response['text']}'")
+
+                # Add bot's response to chat buffer
+                self.chat_buffer.append_assistant(
+                    channel=self.config.get('TWITCH_CHANNEL', ''),
+                    username=self.config.get('TWITCH_BOT_USERNAME', 'bot'),
+                    message=response['text']
+                )
             else:
                 # Fallback response if personality engine doesn't respond
                 fallback = "I heard you, but I'm not sure what to say."
