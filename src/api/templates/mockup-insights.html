@@ -1,0 +1,349 @@
+{% extends "base-clean.html" %}
+
+{% block title %}Insights - TalkBot{% endblock %}
+
+{% block charts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div x-data="insightsApp()">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1>AI Insights</h1>
+                <p>Smart recommendations and pattern analysis</p>
+            </div>
+            <div class="flex gap-2">
+                <button @click="refreshInsights()" class="btn btn-secondary">
+                    <span x-show="!loading">Refresh Analysis</span>
+                    <span x-show="loading" class="spinner" style="width: 16px; height: 16px;"></span>
+                </button>
+                <button class="btn btn-primary">Configure AI</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Insight Score Overview -->
+    <div class="card mb-8">
+        <div class="card-body">
+            <div class="grid grid-cols-4 gap-6">
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-primary mb-2">87</div>
+                    <div class="text-sm text-muted">Overall Score</div>
+                    <div class="mt-3">
+                        <div class="w-full bg-elevated rounded-full" style="height: 6px;">
+                            <div class="rounded-full" style="width: 87%; height: 6px; background: var(--color-success);"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-success mb-2">+12%</div>
+                    <div class="text-sm text-muted">Growth Rate</div>
+                    <div class="text-xs text-secondary mt-2">vs last month</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-warning mb-2">3</div>
+                    <div class="text-sm text-muted">Action Items</div>
+                    <div class="text-xs text-secondary mt-2">needs attention</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-info mb-2">24</div>
+                    <div class="text-sm text-muted">Opportunities</div>
+                    <div class="text-xs text-secondary mt-2">identified</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Key Recommendations -->
+    <div class="mb-8">
+        <h2 class="text-xl font-semibold mb-4">Recommended Actions</h2>
+        <div class="grid grid-cols-3 gap-6">
+            <div class="card border-l-4" style="border-left-color: var(--color-error);">
+                <div class="card-body">
+                    <div class="flex items-start justify-between mb-3">
+                        <span class="badge badge-error">High Priority</span>
+                        <span class="text-xs text-muted">2 hours ago</span>
+                    </div>
+                    <h4 class="font-semibold mb-2">Response Time Degradation</h4>
+                    <p class="text-sm text-secondary mb-3">
+                        Average response time has increased by 0.8s in the last 24 hours. Consider adjusting turbo mode settings.
+                    </p>
+                    <div class="flex gap-2">
+                        <button class="btn btn-sm btn-primary">Fix Now</button>
+                        <button class="btn btn-sm btn-ghost">Learn More</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-l-4" style="border-left-color: var(--color-warning);">
+                <div class="card-body">
+                    <div class="flex items-start justify-between mb-3">
+                        <span class="badge badge-warning">Medium Priority</span>
+                        <span class="text-xs text-muted">5 hours ago</span>
+                    </div>
+                    <h4 class="font-semibold mb-2">Personality Adjustment Suggested</h4>
+                    <p class="text-sm text-secondary mb-3">
+                        Users respond 23% better when humor is increased to 70%. Current setting: 50%.
+                    </p>
+                    <div class="flex gap-2">
+                        <button class="btn btn-sm btn-primary">Apply</button>
+                        <button class="btn btn-sm btn-ghost">Dismiss</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-l-4" style="border-left-color: var(--color-info);">
+                <div class="card-body">
+                    <div class="flex items-start justify-between mb-3">
+                        <span class="badge badge-info">Opportunity</span>
+                        <span class="text-xs text-muted">1 day ago</span>
+                    </div>
+                    <h4 class="font-semibold mb-2">Peak Hour Optimization</h4>
+                    <p class="text-sm text-secondary mb-3">
+                        Enable dead air filler during 7-9 PM for 40% more engagement based on historical patterns.
+                    </p>
+                    <div class="flex gap-2">
+                        <button class="btn btn-sm btn-secondary">Schedule</button>
+                        <button class="btn btn-sm btn-ghost">Review Data</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pattern Analysis -->
+    <div class="grid grid-cols-2 gap-6 mb-8">
+        <!-- User Behavior Patterns -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">User Behavior Patterns</h3>
+            </div>
+            <div class="card-body">
+                <canvas id="behaviorChart" height="200"></canvas>
+                <div class="mt-4 space-y-2">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-secondary">Most Active Time:</span>
+                        <span class="font-medium">8:00 PM - 10:00 PM</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-secondary">Peak Day:</span>
+                        <span class="font-medium">Saturday</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-secondary">Avg Session Length:</span>
+                        <span class="font-medium">47 minutes</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Performance -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Content Performance</h3>
+            </div>
+            <div class="card-body">
+                <canvas id="contentChart" height="200"></canvas>
+                <div class="mt-4 space-y-2">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-secondary">Best Performing:</span>
+                        <span class="font-medium">Humor + Energy</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-secondary">Engagement Rate:</span>
+                        <span class="font-medium text-success">↑ 15%</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-secondary">Response Quality:</span>
+                        <span class="font-medium">8.7/10</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Anomaly Detection -->
+    <div class="card mb-8">
+        <div class="card-header">
+            <h3 class="card-title">Anomaly Detection</h3>
+            <span class="badge badge-success">All Systems Normal</span>
+        </div>
+        <div class="card-body">
+            <div class="grid grid-cols-4 gap-4">
+                <div class="p-4 bg-elevated rounded-lg">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium">Chat Latency</span>
+                        <span class="text-xs text-success">Normal</span>
+                    </div>
+                    <div class="text-2xl font-bold">120ms</div>
+                    <div class="text-xs text-muted mt-1">Baseline: 100-150ms</div>
+                </div>
+                
+                <div class="p-4 bg-elevated rounded-lg">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium">Memory Usage</span>
+                        <span class="text-xs text-success">Normal</span>
+                    </div>
+                    <div class="text-2xl font-bold">52%</div>
+                    <div class="text-xs text-muted mt-1">Baseline: 40-60%</div>
+                </div>
+                
+                <div class="p-4 bg-elevated rounded-lg">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium">Error Rate</span>
+                        <span class="text-xs text-success">Low</span>
+                    </div>
+                    <div class="text-2xl font-bold">0.2%</div>
+                    <div class="text-xs text-muted mt-1">Threshold: <1%</div>
+                </div>
+                
+                <div class="p-4 bg-elevated rounded-lg">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium">API Health</span>
+                        <span class="text-xs text-success">Healthy</span>
+                    </div>
+                    <div class="text-2xl font-bold">99.9%</div>
+                    <div class="text-xs text-muted mt-1">Uptime last 30d</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Predictive Analytics -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">7-Day Forecast</h3>
+            <select class="form-select" style="width: 150px;">
+                <option>Messages</option>
+                <option>Engagement</option>
+                <option>Users</option>
+            </select>
+        </div>
+        <div class="card-body">
+            <canvas id="forecastChart" height="200"></canvas>
+            <div class="alert alert-info mt-4">
+                <strong>Prediction:</strong> Expected 15% increase in activity this weekend based on historical patterns and current trends.
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function insightsApp() {
+    return {
+        loading: false,
+        
+        init() {
+            this.initCharts();
+        },
+        
+        initCharts() {
+            // Behavior Pattern Radar Chart
+            const behaviorCtx = document.getElementById('behaviorChart').getContext('2d');
+            new Chart(behaviorCtx, {
+                type: 'radar',
+                data: {
+                    labels: ['Questions', 'Greetings', 'Commands', 'Reactions', 'Mentions', 'Long Messages'],
+                    datasets: [{
+                        label: 'Current',
+                        data: [65, 80, 45, 70, 55, 40],
+                        borderColor: '#8b5cf6',
+                        backgroundColor: 'rgba(139, 92, 246, 0.2)',
+                        pointBackgroundColor: '#8b5cf6',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: '#8b5cf6'
+                    }, {
+                        label: 'Optimal',
+                        data: [70, 75, 50, 75, 60, 50],
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        pointBackgroundColor: '#10b981',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: '#10b981'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+
+            // Content Performance Doughnut
+            const contentCtx = document.getElementById('contentChart').getContext('2d');
+            new Chart(contentCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Informative', 'Humorous', 'Supportive', 'Interactive', 'Other'],
+                    datasets: [{
+                        data: [30, 25, 20, 15, 10],
+                        backgroundColor: [
+                            '#8b5cf6',
+                            '#10b981',
+                            '#3b82f6',
+                            '#f59e0b',
+                            '#737373'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+
+            // Forecast Chart
+            const forecastCtx = document.getElementById('forecastChart').getContext('2d');
+            new Chart(forecastCtx, {
+                type: 'line',
+                data: {
+                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                    datasets: [{
+                        label: 'Predicted',
+                        data: [1200, 1300, 1250, 1400, 1600, 1850, 1750],
+                        borderColor: '#8b5cf6',
+                        backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        fill: true,
+                        tension: 0.3
+                    }, {
+                        label: 'Confidence Range',
+                        data: [1100, 1200, 1150, 1300, 1500, 1750, 1650],
+                        borderColor: 'rgba(139, 92, 246, 0.3)',
+                        backgroundColor: 'rgba(139, 92, 246, 0.05)',
+                        borderWidth: 1,
+                        fill: '+1'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        },
+        
+        refreshInsights() {
+            this.loading = true;
+            timerManager.setTimeout(() => {
+                this.loading = false;
+                Toast.show('Insights refreshed with latest data', 'success');
+            }, 2000);
+        }
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,611 @@
+/**
+ * Unified Slider System CSS
+ * A single, comprehensive CSS file for ALL slider types in TalkBot
+ * Works with Tailwind CDN without conflicts
+ */
+
+/* ===========================
+   Base Slider Container Styles
+   =========================== */
+
+/* Container for any slider type */
+.slider-container,
+.tbx-slider-container,
+.audio-slider-container,
+.viz-slider-container,
+.system-slider-container {
+    position: relative;
+    width: 100%;
+    min-height: 48px;
+    padding: 12px 0;
+    margin-bottom: 16px;
+    border-radius: 8px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Container must be positioned for absolute children */
+.slider-container:not([style*="position"]) {
+    position: relative !important;
+}
+
+/* Force interactive state for all sliders - override any blocking elements */
+.tbx-slider-container,
+.tbx-trait-slider .tbx-slider-container {
+    position: relative !important;
+    z-index: 50 !important;
+    pointer-events: auto !important;
+}
+
+/* Ensure slider inputs are always interactive */
+.tbx-slider-input,
+input[type="range"].tbx-slider-input,
+.tbx-slider-container .tbx-slider-input {
+    pointer-events: auto !important;
+    z-index: 100 !important;
+    position: relative !important;
+    cursor: pointer !important;
+    touch-action: manipulation !important;
+}
+
+/* Clear any overlays that might block slider interaction */
+.slider-container::before,
+.slider-container::after,
+.tbx-slider-container::before,
+.tbx-slider-container::after {
+    pointer-events: none !important;
+}
+
+/* ===========================
+   Range Input Reset & Base Styles
+   =========================== */
+
+/* Reset all default browser slider styles */
+input[type="range"],
+.tbx-range,
+.range-slider,
+.tbx-slider,
+.tbx-slider-input {
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    appearance: none !important;
+    width: 100%;
+    height: 8px;
+    background: transparent !important;
+    outline: none;
+    cursor: pointer !important;
+    margin: 8px 0;
+    position: relative;
+    z-index: 100 !important;
+    pointer-events: auto !important;
+    touch-action: manipulation;
+    user-select: none;
+}
+
+/* Track Styles - The groove the thumb slides in */
+input[type="range"]::-webkit-slider-runnable-track,
+.tbx-range::-webkit-slider-runnable-track,
+.range-slider::-webkit-slider-runnable-track,
+.tbx-slider::-webkit-slider-runnable-track,
+.tbx-slider-input::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 6px;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.12) 100%);
+    border-radius: 8px;
+    border: none;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+input[type="range"]::-moz-range-track,
+.tbx-range::-moz-range-track,
+.range-slider::-moz-range-track,
+.tbx-slider::-moz-range-track,
+.tbx-slider-input::-moz-range-track {
+    width: 100%;
+    height: 6px;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.12) 100%);
+    border-radius: 8px;
+    border: none;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+input[type="range"]::-ms-track {
+    width: 100%;
+    height: 6px;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.12) 100%);
+    border-radius: 8px;
+    border-color: transparent;
+    color: transparent;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* ===========================
+   Thumb Styles - The draggable handle
+   =========================== */
+
+/* Webkit browsers (Chrome, Safari, Edge) */
+input[type="range"]::-webkit-slider-thumb,
+.tbx-range::-webkit-slider-thumb,
+.range-slider::-webkit-slider-thumb,
+.tbx-slider::-webkit-slider-thumb,
+.tbx-slider-input::-webkit-slider-thumb {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #8b5cf6 0%, #a855f7 50%, #c084fc 100%);
+    cursor: pointer !important;
+    border: 3px solid rgba(255, 255, 255, 0.95);
+    box-shadow: 
+        0 4px 12px rgba(139, 92, 246, 0.35),
+        0 2px 6px rgba(0, 0, 0, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    transition: all 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    margin-top: -8px; /* Center the thumb on the track */
+    pointer-events: auto !important;
+    z-index: 101 !important;
+    position: relative;
+}
+
+/* Firefox */
+input[type="range"]::-moz-range-thumb,
+.tbx-range::-moz-range-thumb,
+.range-slider::-moz-range-thumb,
+.tbx-slider::-moz-range-thumb,
+.tbx-slider-input::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #8b5cf6 0%, #a855f7 50%, #c084fc 100%);
+    cursor: pointer !important;
+    border: 3px solid rgba(255, 255, 255, 0.95);
+    box-shadow: 
+        0 4px 12px rgba(139, 92, 246, 0.35),
+        0 2px 6px rgba(0, 0, 0, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    transition: all 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    pointer-events: auto !important;
+    z-index: 101 !important;
+    position: relative;
+}
+
+/* IE/Edge Legacy */
+input[type="range"]::-ms-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #9333ea 0%, #a855f7 100%);
+    cursor: pointer;
+    border: 2px solid #ffffff;
+    box-shadow: 0 2px 8px rgba(147, 51, 234, 0.4);
+}
+
+/* Hover states for thumb */
+input[type="range"]:hover::-webkit-slider-thumb {
+    transform: scale(1.15);
+    box-shadow: 
+        0 6px 20px rgba(139, 92, 246, 0.5),
+        0 3px 12px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    border-color: rgba(255, 255, 255, 1);
+}
+
+input[type="range"]:hover::-moz-range-thumb {
+    transform: scale(1.15);
+    box-shadow: 
+        0 6px 20px rgba(139, 92, 246, 0.5),
+        0 3px 12px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    border-color: rgba(255, 255, 255, 1);
+}
+
+/* Active/dragging states */
+input[type="range"]:active::-webkit-slider-thumb {
+    transform: scale(1.05);
+    box-shadow: 
+        0 8px 25px rgba(139, 92, 246, 0.6),
+        0 4px 15px rgba(0, 0, 0, 0.4),
+        inset 0 2px 4px rgba(0, 0, 0, 0.1);
+    background: linear-gradient(135deg, #7c3aed 0%, #9333ea 50%, #a855f7 100%);
+    border-color: rgba(255, 255, 255, 1);
+}
+
+input[type="range"]:active::-moz-range-thumb {
+    transform: scale(1.05);
+    box-shadow: 
+        0 8px 25px rgba(139, 92, 246, 0.6),
+        0 4px 15px rgba(0, 0, 0, 0.4),
+        inset 0 2px 4px rgba(0, 0, 0, 0.1);
+    background: linear-gradient(135deg, #7c3aed 0%, #9333ea 50%, #a855f7 100%);
+    border-color: rgba(255, 255, 255, 1);
+}
+
+/* ===========================
+   Progress Fill Bar
+   =========================== */
+
+.slider-progress-fill {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    height: 6px;
+    background: transparent; /* Remove purple background - will be set by inline styles */
+    border-radius: 8px;
+    pointer-events: none;
+    transform: translateY(-50%);
+    transition: width 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    z-index: 5;
+    width: 0%; /* Will be updated by JavaScript */
+    box-shadow: none; /* Remove purple glow effects */
+}
+
+/* ===========================
+   Value Bubble
+   =========================== */
+
+.slider-value-bubble,
+.tbx-slider-bubble {
+    position: absolute;
+    top: -40px;
+    transform: translateX(-50%);
+    background: linear-gradient(135deg, 
+        rgba(0, 0, 0, 0.95) 0%, 
+        rgba(20, 20, 30, 0.95) 100%);
+    color: #ffffff;
+    padding: 8px 14px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateX(-50%) translateY(-8px) scale(0.9);
+    transition: all 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    z-index: 20;
+    border: 1px solid rgba(139, 92, 246, 0.4);
+    box-shadow: 
+        0 4px 20px rgba(0, 0, 0, 0.4),
+        0 2px 8px rgba(139, 92, 246, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+}
+
+/* Arrow pointing down from bubble */
+.slider-value-bubble::after,
+.tbx-slider-bubble::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-top: 8px solid rgba(0, 0, 0, 0.95);
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+/* Show bubble on hover or when active */
+input[type="range"]:hover ~ .slider-value-bubble,
+input[type="range"]:active ~ .slider-value-bubble,
+input[type="range"]:focus ~ .slider-value-bubble,
+.slider-value-bubble.active {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+}
+
+/* ===========================
+   Slider Labels
+   =========================== */
+
+.slider-labels,
+.tbx-trait-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    padding: 0 2px;
+}
+
+.slider-label,
+.tbx-trait-label {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+    user-select: none;
+}
+
+/* ===========================
+   Specific Slider Type Styles
+   =========================== */
+
+/* Personality Trait Sliders */
+/* Trait-specific background colors removed - now using inline styles from template */
+/* This allows the Alpine.js :style binding to set colors dynamically */
+
+/* Dead Air Slider - Special time-based slider */
+.dead-air-slider .slider-progress-fill {
+    background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%);
+}
+
+.dead-air-slider input[type="range"]::-webkit-slider-thumb,
+.tbx-range::-webkit-slider-thumb,
+.range-slider::-webkit-slider-thumb,
+.tbx-slider::-webkit-slider-thumb,
+.tbx-slider-input::-webkit-slider-thumb {
+    background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+}
+
+.dead-air-slider input[type="range"]::-moz-range-thumb,
+.tbx-range::-moz-range-thumb,
+.range-slider::-moz-range-thumb,
+.tbx-slider::-moz-range-thumb,
+.tbx-slider-input::-moz-range-thumb {
+    background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+}
+
+/* Visualization Sliders */
+.viz-slider-container .slider-progress-fill {
+    background: linear-gradient(90deg, #ec4899 0%, #f472b6 100%);
+}
+
+/* System/Config Sliders */
+.system-slider-container .slider-progress-fill {
+    background: linear-gradient(90deg, #6366f1 0%, #818cf8 100%);
+}
+
+/* ===========================
+   Disabled State
+   =========================== */
+
+input[type="range"]:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+input[type="range"]:disabled::-webkit-slider-thumb {
+    cursor: not-allowed;
+    background: #6b7280;
+    border-color: #9ca3af;
+}
+
+input[type="range"]:disabled::-moz-range-thumb {
+    cursor: not-allowed;
+    background: #6b7280;
+    border-color: #9ca3af;
+}
+
+input[type="range"]:disabled ~ .slider-progress-fill {
+    background: #6b7280;
+}
+
+/* ===========================
+   Focus States for Accessibility
+   =========================== */
+
+input[type="range"]:focus {
+    outline: none;
+}
+
+input[type="range"]:focus::-webkit-slider-thumb {
+    box-shadow: 
+        0 0 0 4px rgba(139, 92, 246, 0.25),
+        0 4px 12px rgba(139, 92, 246, 0.35),
+        0 2px 6px rgba(0, 0, 0, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    outline: none;
+}
+
+input[type="range"]:focus::-moz-range-thumb {
+    box-shadow: 
+        0 0 0 4px rgba(139, 92, 246, 0.25),
+        0 4px 12px rgba(139, 92, 246, 0.35),
+        0 2px 6px rgba(0, 0, 0, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    outline: none;
+}
+
+/* ===========================
+   Responsive Adjustments
+   =========================== */
+
+@media (max-width: 640px) {
+    input[type="range"]::-webkit-slider-thumb,
+.tbx-range::-webkit-slider-thumb,
+.range-slider::-webkit-slider-thumb,
+.tbx-slider::-webkit-slider-thumb,
+.tbx-slider-input::-webkit-slider-thumb {
+        width: 28px;
+        height: 28px;
+        margin-top: -11px; /* Adjust for larger thumb */
+    }
+    
+    input[type="range"]::-moz-range-thumb,
+.tbx-range::-moz-range-thumb,
+.range-slider::-moz-range-thumb,
+.tbx-slider::-moz-range-thumb,
+.tbx-slider-input::-moz-range-thumb {
+        width: 28px;
+        height: 28px;
+    }
+    
+    .slider-value-bubble {
+        font-size: 12px;
+        padding: 6px 12px;
+        top: -45px;
+    }
+    
+    .slider-container,
+    .tbx-slider-container,
+    .audio-slider-container,
+    .viz-slider-container,
+    .system-slider-container {
+        min-height: 52px;
+        padding: 16px 0;
+    }
+}
+
+/* ===========================
+   Print Styles
+   =========================== */
+
+@media print {
+    .slider-value-bubble {
+        display: none;
+    }
+    
+    .slider-progress-fill {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+    }
+}
+
+/* ===========================
+   Hide Old Progress Fill Elements (Visual Bug Fix)
+   =========================== */
+
+/* Hide any old progress fills that might still be present from legacy CSS */
+.tbx-slider-progress-fill {
+    display: none !important;
+}
+
+.tbx-slider-track {
+    display: none !important;
+}
+
+.tbx-slider-track::before,
+.tbx-slider-track::after {
+    display: none !important;
+}
+
+/* ===========================
+   CRITICAL PURPLE ARTIFACT FIX
+   Force transparent backgrounds on all possible slider fill elements
+   =========================== */
+
+/* Override any default browser slider fill colors */
+input[type="range"]::-webkit-slider-runnable-track,
+.tbx-range::-webkit-slider-runnable-track,
+.range-slider::-webkit-slider-runnable-track,
+.tbx-slider::-webkit-slider-runnable-track,
+.tbx-slider-input::-webkit-slider-runnable-track {
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.12) 100%) !important;
+}
+
+/* Allow inline styles to override progress fill background, but default to transparent */
+.slider-progress-fill {
+    background: transparent;
+    background-color: transparent;
+    background-image: none;
+}
+
+/* Remove any pseudo-element backgrounds that might show purple */
+.slider-progress-fill::before,
+.slider-progress-fill::after {
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    content: none !important;
+    display: none !important;
+}
+
+/* Remove any inherited backgrounds from parent containers */
+.tbx-slider-container,
+.slider-container {
+    background: transparent !important;
+}
+
+.tbx-slider-container::before,
+.tbx-slider-container::after,
+.slider-container::before,
+.slider-container::after {
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    content: none !important;
+    display: none !important;
+}
+
+/* Ensure no purple comes from range input itself, but allow inline style overrides */
+input[type="range"],
+.tbx-range,
+.range-slider,
+.tbx-slider,
+.tbx-slider-input {
+    background: transparent;
+    background-color: transparent;
+    background-image: none;
+}
+
+/* Remove any box shadows that might appear purple */
+input[type="range"]::-webkit-slider-runnable-track,
+.tbx-range::-webkit-slider-runnable-track,
+.range-slider::-webkit-slider-runnable-track,
+.tbx-slider::-webkit-slider-runnable-track,
+.tbx-slider-input::-webkit-slider-runnable-track {
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Firefox specific overrides */
+input[type="range"]::-moz-range-track,
+.tbx-range::-moz-range-track,
+.range-slider::-moz-range-track,
+.tbx-slider::-moz-range-track,
+.tbx-slider-input::-moz-range-track {
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.12) 100%) !important;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* IE/Edge specific overrides */
+input[type="range"]::-ms-track {
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.12) 100%) !important;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Ensure no inherited purple from any parent component */
+.tbx-trait-slider,
+.personality-slider,
+.settings-slider {
+    background: transparent !important;
+}
+
+.tbx-trait-slider .slider-progress-fill,
+.personality-slider .slider-progress-fill,
+.settings-slider .slider-progress-fill {
+    /* Allow trait-specific colors via inline styles */
+    background-color: transparent;
+}
+
+/* Override any CSS variables that might be set to purple */
+:root {
+    --slider-fill-color: transparent;
+    --slider-track-color: rgba(255, 255, 255, 0.1);
+    --slider-progress-color: transparent;
+}
+
+/* ===========================
+   Animation Classes
+   =========================== */
+
+@keyframes pulse-glow {
+    0%, 100% {
+        box-shadow: 0 2px 8px rgba(147, 51, 234, 0.4);
+    }
+    50% {
+        box-shadow: 0 2px 16px rgba(147, 51, 234, 0.8);
+    }
+}
+
+.slider-updating input[type="range"]::-webkit-slider-thumb,
+.tbx-range::-webkit-slider-thumb,
+.range-slider::-webkit-slider-thumb,
+.tbx-slider::-webkit-slider-thumb,
+.tbx-slider-input::-webkit-slider-thumb {
+    animation: pulse-glow 0.5s ease;
+}
+
+.slider-updating input[type="range"]::-moz-range-thumb,
+.tbx-range::-moz-range-thumb,
+.range-slider::-moz-range-thumb,
+.tbx-slider::-moz-range-thumb,
+.tbx-slider-input::-moz-range-thumb {
+    animation: pulse-glow 0.5s ease;
+}

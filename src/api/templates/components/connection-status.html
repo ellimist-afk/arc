@@ -1,0 +1,27 @@
+<!-- Connection Status Component -->
+<!-- Usage: {% include 'components/connection-status.html' %} -->
+<!-- Requires Alpine.js context with wsConnected and wsConnecting variables -->
+
+<div class="connection-status-container"
+     :class="{
+         'connected': wsConnected,
+         'disconnected': !wsConnected && !wsConnecting,
+         'connecting': wsConnecting && !wsConnected
+     }"
+     role="status"
+     aria-live="polite">
+    <div class="connection-status-dot"
+         :class="{
+             'connected': wsConnected,
+             'disconnected': !wsConnected && !wsConnecting,
+             'connecting': wsConnecting && !wsConnected
+         }"
+         aria-hidden="true"></div>
+    <span class="connection-status-text" 
+          x-text="wsConnected ? 'Connected' : (wsConnecting ? 'Connecting' : 'Disconnected')">
+        Disconnected
+    </span>
+    <!-- Screen reader only status text -->
+    <span class="sr-only" x-text="'WebSocket connection status: ' + (wsConnected ? 'Connected' : (wsConnecting ? 'Connecting' : 'Disconnected'))"></span>
+</div>
+</content>

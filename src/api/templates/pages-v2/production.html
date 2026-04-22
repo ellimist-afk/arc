@@ -1,0 +1,555 @@
+{% extends "layouts-v2/dashboard-layout.html" %}
+
+{% block title %}Production Dashboard - TalkBot{% endblock %}
+
+{% block page_styles %}
+<link rel="stylesheet" href="/static/v2/css/pages/production.css">
+{% endblock %}
+
+{% block content %}
+<div class="tbx-page-header">
+    <div class="tbx-page-title">
+        <h1>Production Dashboard</h1>
+        <span class="tbx-badge tbx-badge--info">v{{ app_version | default('2.0.0') }}</span>
+    </div>
+    <div class="tbx-page-actions">
+        <button class="tbx-btn tbx-btn--secondary" id="export-btn">
+            <i class="fas fa-download"></i> Export Report
+        </button>
+        <button class="tbx-btn tbx-btn--primary" id="deploy-btn">
+            <i class="fas fa-rocket"></i> Deploy
+        </button>
+    </div>
+</div>
+
+<!-- Deployment Status Overview -->
+<div class="tbx-grid tbx-grid--4-col">
+    <div class="tbx-metric-card">
+        <div class="tbx-metric-icon tbx-metric-icon--success">
+            <i class="fas fa-check-circle"></i>
+        </div>
+        <div class="tbx-metric-content">
+            <span class="tbx-metric-value">{{ deployment_status | default('Active') }}</span>
+            <span class="tbx-metric-label">Deployment Status</span>
+        </div>
+    </div>
+    
+    <div class="tbx-metric-card">
+        <div class="tbx-metric-icon tbx-metric-icon--info">
+            <i class="fas fa-code-branch"></i>
+        </div>
+        <div class="tbx-metric-content">
+            <span class="tbx-metric-value">{{ current_branch | default('main') }}</span>
+            <span class="tbx-metric-label">Current Branch</span>
+        </div>
+    </div>
+    
+    <div class="tbx-metric-card">
+        <div class="tbx-metric-icon tbx-metric-icon--warning">
+            <i class="fas fa-clock"></i>
+        </div>
+        <div class="tbx-metric-content">
+            <span class="tbx-metric-value" id="uptime">0d 0h 0m</span>
+            <span class="tbx-metric-label">System Uptime</span>
+        </div>
+    </div>
+    
+    <div class="tbx-metric-card">
+        <div class="tbx-metric-icon">
+            <i class="fas fa-server"></i>
+        </div>
+        <div class="tbx-metric-content">
+            <span class="tbx-metric-value">{{ environment | default('Production') }}</span>
+            <span class="tbx-metric-label">Environment</span>
+        </div>
+    </div>
+</div>
+
+<!-- System Resources -->
+<div class="tbx-card">
+    <div class="tbx-card__header">
+        <h2 class="tbx-card__title">System Resources</h2>
+        <button class="tbx-btn tbx-btn--small tbx-btn--icon" id="refresh-resources">
+            <i class="fas fa-sync-alt"></i>
+        </button>
+    </div>
+    <div class="tbx-card__body">
+        <div class="tbx-resource-grid">
+            <!-- CPU Usage -->
+            <div class="tbx-resource-item">
+                <div class="tbx-resource-header">
+                    <span class="tbx-resource-label">CPU Usage</span>
+                    <span class="tbx-resource-value" id="cpu-usage">0%</span>
+                </div>
+                <div class="tbx-progress-bar">
+                    <div class="tbx-progress-bar__fill" id="cpu-bar" style="width: 0%"></div>
+                </div>
+                <div class="tbx-resource-details">
+                    <span>Cores: <strong id="cpu-cores">0</strong></span>
+                    <span>Load: <strong id="cpu-load">0.00</strong></span>
+                </div>
+            </div>
+            
+            <!-- Memory Usage -->
+            <div class="tbx-resource-item">
+                <div class="tbx-resource-header">
+                    <span class="tbx-resource-label">Memory Usage</span>
+                    <span class="tbx-resource-value" id="memory-usage">0%</span>
+                </div>
+                <div class="tbx-progress-bar">
+                    <div class="tbx-progress-bar__fill" id="memory-bar" style="width: 0%"></div>
+                </div>
+                <div class="tbx-resource-details">
+                    <span>Used: <strong id="memory-used">0 MB</strong></span>
+                    <span>Total: <strong id="memory-total">0 MB</strong></span>
+                </div>
+            </div>
+            
+            <!-- Disk Usage -->
+            <div class="tbx-resource-item">
+                <div class="tbx-resource-header">
+                    <span class="tbx-resource-label">Disk Usage</span>
+                    <span class="tbx-resource-value" id="disk-usage">0%</span>
+                </div>
+                <div class="tbx-progress-bar">
+                    <div class="tbx-progress-bar__fill" id="disk-bar" style="width: 0%"></div>
+                </div>
+                <div class="tbx-resource-details">
+                    <span>Used: <strong id="disk-used">0 GB</strong></span>
+                    <span>Free: <strong id="disk-free">0 GB</strong></span>
+                </div>
+            </div>
+            
+            <!-- Network I/O -->
+            <div class="tbx-resource-item">
+                <div class="tbx-resource-header">
+                    <span class="tbx-resource-label">Network I/O</span>
+                    <span class="tbx-resource-value" id="network-rate">0 KB/s</span>
+                </div>
+                <div class="tbx-network-stats">
+                    <div class="tbx-network-stat">
+                        <i class="fas fa-arrow-down"></i>
+                        <span id="network-rx">0 KB/s</span>
+                    </div>
+                    <div class="tbx-network-stat">
+                        <i class="fas fa-arrow-up"></i>
+                        <span id="network-tx">0 KB/s</span>
+                    </div>
+                </div>
+                <div class="tbx-resource-details">
+                    <span>Total RX: <strong id="network-total-rx">0 MB</strong></span>
+                    <span>Total TX: <strong id="network-total-tx">0 MB</strong></span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Service Health -->
+<div class="tbx-grid tbx-grid--2-col">
+    <!-- Services Status -->
+    <div class="tbx-card">
+        <div class="tbx-card__header">
+            <h3 class="tbx-card__title">Service Health</h3>
+            <span class="tbx-status-summary">
+                <span class="tbx-status-dot tbx-status-dot--success"></span>
+                All Systems Operational
+            </span>
+        </div>
+        <div class="tbx-card__body">
+            <div class="tbx-service-list">
+                <div class="tbx-service-item">
+                    <div class="tbx-service-info">
+                        <i class="fas fa-robot"></i>
+                        <span>Bot Service</span>
+                    </div>
+                    <div class="tbx-service-status">
+                        <span class="tbx-status-dot tbx-status-dot--success"></span>
+                        <span>Running</span>
+                    </div>
+                </div>
+                
+                <div class="tbx-service-item">
+                    <div class="tbx-service-info">
+                        <i class="fas fa-server"></i>
+                        <span>API Server</span>
+                    </div>
+                    <div class="tbx-service-status">
+                        <span class="tbx-status-dot tbx-status-dot--success"></span>
+                        <span>Running</span>
+                    </div>
+                </div>
+                
+                <div class="tbx-service-item">
+                    <div class="tbx-service-info">
+                        <i class="fas fa-database"></i>
+                        <span>Database</span>
+                    </div>
+                    <div class="tbx-service-status">
+                        <span class="tbx-status-dot tbx-status-dot--success"></span>
+                        <span>Connected</span>
+                    </div>
+                </div>
+                
+                <div class="tbx-service-item">
+                    <div class="tbx-service-info">
+                        <i class="fas fa-microphone"></i>
+                        <span>Voice Service</span>
+                    </div>
+                    <div class="tbx-service-status">
+                        <span class="tbx-status-dot tbx-status-dot--success"></span>
+                        <span>Active</span>
+                    </div>
+                </div>
+                
+                <div class="tbx-service-item">
+                    <div class="tbx-service-info">
+                        <i class="fas fa-memory"></i>
+                        <span>Cache Service</span>
+                    </div>
+                    <div class="tbx-service-status">
+                        <span class="tbx-status-dot tbx-status-dot--success"></span>
+                        <span>Running</span>
+                    </div>
+                </div>
+                
+                <div class="tbx-service-item">
+                    <div class="tbx-service-info">
+                        <i class="fas fa-tasks"></i>
+                        <span>Task Queue</span>
+                    </div>
+                    <div class="tbx-service-status">
+                        <span class="tbx-status-dot tbx-status-dot--warning"></span>
+                        <span>High Load</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Recent Deployments -->
+    <div class="tbx-card">
+        <div class="tbx-card__header">
+            <h3 class="tbx-card__title">Recent Deployments</h3>
+            <button class="tbx-btn tbx-btn--small tbx-btn--secondary">View All</button>
+        </div>
+        <div class="tbx-card__body">
+            <div class="tbx-deployment-list">
+                <div class="tbx-deployment-item">
+                    <div class="tbx-deployment-header">
+                        <span class="tbx-deployment-version">v2.1.0</span>
+                        <span class="tbx-deployment-status tbx-badge tbx-badge--success">Success</span>
+                    </div>
+                    <div class="tbx-deployment-details">
+                        <span class="tbx-deployment-time">2 hours ago</span>
+                        <span class="tbx-deployment-author">Auto Deploy</span>
+                    </div>
+                    <div class="tbx-deployment-commit">
+                        <code>feat: Add voice response improvements</code>
+                    </div>
+                </div>
+                
+                <div class="tbx-deployment-item">
+                    <div class="tbx-deployment-header">
+                        <span class="tbx-deployment-version">v2.0.9</span>
+                        <span class="tbx-deployment-status tbx-badge tbx-badge--success">Success</span>
+                    </div>
+                    <div class="tbx-deployment-details">
+                        <span class="tbx-deployment-time">1 day ago</span>
+                        <span class="tbx-deployment-author">CI/CD Pipeline</span>
+                    </div>
+                    <div class="tbx-deployment-commit">
+                        <code>fix: Memory leak in audio processing</code>
+                    </div>
+                </div>
+                
+                <div class="tbx-deployment-item">
+                    <div class="tbx-deployment-header">
+                        <span class="tbx-deployment-version">v2.0.8</span>
+                        <span class="tbx-deployment-status tbx-badge tbx-badge--warning">Rollback</span>
+                    </div>
+                    <div class="tbx-deployment-details">
+                        <span class="tbx-deployment-time">3 days ago</span>
+                        <span class="tbx-deployment-author">Manual</span>
+                    </div>
+                    <div class="tbx-deployment-commit">
+                        <code>revert: Rollback to stable version</code>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Alert Management -->
+<div class="tbx-card">
+    <div class="tbx-card__header">
+        <h3 class="tbx-card__title">Active Alerts</h3>
+        <div class="tbx-alert-controls">
+            <button class="tbx-btn tbx-btn--small tbx-btn--secondary">Clear All</button>
+            <button class="tbx-btn tbx-btn--small tbx-btn--primary">Configure</button>
+        </div>
+    </div>
+    <div class="tbx-card__body">
+        <div class="tbx-alert-list" id="alert-list">
+            <div class="tbx-alert-item tbx-alert--warning">
+                <div class="tbx-alert-icon">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <div class="tbx-alert-content">
+                    <div class="tbx-alert-title">High Memory Usage</div>
+                    <div class="tbx-alert-message">Memory usage has exceeded 80% threshold</div>
+                    <div class="tbx-alert-time">5 minutes ago</div>
+                </div>
+                <button class="tbx-alert-dismiss">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="tbx-alert-item tbx-alert--info">
+                <div class="tbx-alert-icon">
+                    <i class="fas fa-info-circle"></i>
+                </div>
+                <div class="tbx-alert-content">
+                    <div class="tbx-alert-title">Scheduled Maintenance</div>
+                    <div class="tbx-alert-message">System maintenance scheduled for tomorrow at 2:00 AM</div>
+                    <div class="tbx-alert-time">1 hour ago</div>
+                </div>
+                <button class="tbx-alert-dismiss">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Performance Metrics -->
+<div class="tbx-card">
+    <div class="tbx-card__header">
+        <h3 class="tbx-card__title">Performance Metrics</h3>
+        <select class="tbx-select" id="metric-timeframe">
+            <option value="1h">Last Hour</option>
+            <option value="24h" selected>Last 24 Hours</option>
+            <option value="7d">Last 7 Days</option>
+            <option value="30d">Last 30 Days</option>
+        </select>
+    </div>
+    <div class="tbx-card__body">
+        <div class="tbx-metrics-grid">
+            <div class="tbx-metric-stat">
+                <span class="tbx-metric-label">Avg Response Time</span>
+                <span class="tbx-metric-value">125ms</span>
+                <span class="tbx-metric-change tbx-metric-change--positive">
+                    <i class="fas fa-arrow-down"></i> 12%
+                </span>
+            </div>
+            
+            <div class="tbx-metric-stat">
+                <span class="tbx-metric-label">Request Rate</span>
+                <span class="tbx-metric-value">1.2K/min</span>
+                <span class="tbx-metric-change tbx-metric-change--positive">
+                    <i class="fas fa-arrow-up"></i> 8%
+                </span>
+            </div>
+            
+            <div class="tbx-metric-stat">
+                <span class="tbx-metric-label">Error Rate</span>
+                <span class="tbx-metric-value">0.02%</span>
+                <span class="tbx-metric-change tbx-metric-change--neutral">
+                    <i class="fas fa-minus"></i> 0%
+                </span>
+            </div>
+            
+            <div class="tbx-metric-stat">
+                <span class="tbx-metric-label">Uptime</span>
+                <span class="tbx-metric-value">99.98%</span>
+                <span class="tbx-metric-change tbx-metric-change--positive">
+                    <i class="fas fa-arrow-up"></i> 0.01%
+                </span>
+            </div>
+        </div>
+        
+        <!-- Chart placeholder -->
+        <div class="tbx-chart-container" id="performance-chart">
+            <canvas id="perfChart"></canvas>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block page_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="/static/v2/js/pages/production.js"></script>
+<script>
+// Production Dashboard JavaScript
+document.addEventListener('DOMContentLoaded', function() {
+    const streamerId = '{{ streamer_id }}';
+    
+    // Update system uptime
+    let uptimeSeconds = 0;
+    setInterval(() => {
+        uptimeSeconds++;
+        const days = Math.floor(uptimeSeconds / 86400);
+        const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+        const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+        document.getElementById('uptime').textContent = `${days}d ${hours}h ${minutes}m`;
+    }, 60000); // Update every minute
+    
+    // Fetch and update resource metrics
+    async function updateResourceMetrics() {
+        try {
+            const response = await fetch(`/api/v2/production/metrics/${streamerId}`);
+            const data = await response.json();
+            
+            // Update CPU
+            document.getElementById('cpu-usage').textContent = `${data.cpu.usage}%`;
+            document.getElementById('cpu-bar').style.width = `${data.cpu.usage}%`;
+            document.getElementById('cpu-cores').textContent = data.cpu.cores;
+            document.getElementById('cpu-load').textContent = data.cpu.load.toFixed(2);
+            
+            // Update Memory
+            document.getElementById('memory-usage').textContent = `${data.memory.percent}%`;
+            document.getElementById('memory-bar').style.width = `${data.memory.percent}%`;
+            document.getElementById('memory-used').textContent = `${data.memory.used} MB`;
+            document.getElementById('memory-total').textContent = `${data.memory.total} MB`;
+            
+            // Update Disk
+            document.getElementById('disk-usage').textContent = `${data.disk.percent}%`;
+            document.getElementById('disk-bar').style.width = `${data.disk.percent}%`;
+            document.getElementById('disk-used').textContent = `${data.disk.used} GB`;
+            document.getElementById('disk-free').textContent = `${data.disk.free} GB`;
+            
+            // Update Network
+            document.getElementById('network-rx').textContent = `${data.network.rx_rate} KB/s`;
+            document.getElementById('network-tx').textContent = `${data.network.tx_rate} KB/s`;
+            document.getElementById('network-total-rx').textContent = `${data.network.total_rx} MB`;
+            document.getElementById('network-total-tx').textContent = `${data.network.total_tx} MB`;
+            
+            // Update progress bar colors based on usage
+            updateProgressBarColor('cpu-bar', data.cpu.usage);
+            updateProgressBarColor('memory-bar', data.memory.percent);
+            updateProgressBarColor('disk-bar', data.disk.percent);
+            
+        } catch (error) {
+            console.error('Failed to fetch resource metrics:', error);
+        }
+    }
+    
+    function updateProgressBarColor(elementId, percentage) {
+        const bar = document.getElementById(elementId);
+        if (percentage > 80) {
+            bar.classList.add('tbx-progress-bar__fill--danger');
+        } else if (percentage > 60) {
+            bar.classList.add('tbx-progress-bar__fill--warning');
+        } else {
+            bar.classList.add('tbx-progress-bar__fill--success');
+        }
+    }
+    
+    // Initialize performance chart
+    const ctx = document.getElementById('perfChart');
+    if (ctx) {
+        const perfChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Response Time (ms)',
+                    data: [],
+                    borderColor: 'rgb(232, 107, 215)',
+                    backgroundColor: 'rgba(232, 107, 215, 0.1)',
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        },
+                        ticks: {
+                            color: 'rgba(255, 255, 255, 0.6)'
+                        }
+                    },
+                    y: {
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        },
+                        ticks: {
+                            color: 'rgba(255, 255, 255, 0.6)'
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Update chart with mock data
+        function updateChart() {
+            const now = new Date();
+            const label = now.toLocaleTimeString();
+            const value = Math.random() * 50 + 100;
+            
+            perfChart.data.labels.push(label);
+            perfChart.data.datasets[0].data.push(value);
+            
+            // Keep only last 20 points
+            if (perfChart.data.labels.length > 20) {
+                perfChart.data.labels.shift();
+                perfChart.data.datasets[0].data.shift();
+            }
+            
+            perfChart.update();
+        }
+        
+        // Update chart every 5 seconds
+        setInterval(updateChart, 5000);
+        updateChart(); // Initial update
+    }
+    
+    // Refresh resources button
+    document.getElementById('refresh-resources').addEventListener('click', () => {
+        updateResourceMetrics();
+    });
+    
+    // Deploy button
+    document.getElementById('deploy-btn').addEventListener('click', () => {
+        if (confirm('Are you sure you want to deploy to production?')) {
+            showToast('Deployment initiated', 'info');
+            // Implement deployment logic
+        }
+    });
+    
+    // Export button
+    document.getElementById('export-btn').addEventListener('click', () => {
+        showToast('Generating production report...', 'info');
+        // Implement export logic
+    });
+    
+    // Alert dismiss buttons
+    document.querySelectorAll('.tbx-alert-dismiss').forEach(btn => {
+        btn.addEventListener('click', function() {
+            this.closest('.tbx-alert-item').remove();
+        });
+    });
+    
+    // Metric timeframe selector
+    document.getElementById('metric-timeframe').addEventListener('change', function() {
+        showToast(`Loading metrics for ${this.options[this.selectedIndex].text}`, 'info');
+        // Reload metrics for selected timeframe
+    });
+    
+    // Initial load
+    updateResourceMetrics();
+    
+    // Refresh every 30 seconds
+    setInterval(updateResourceMetrics, 30000);
+});
+</script>
+{% endblock %}

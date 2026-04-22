@@ -1,0 +1,863 @@
+{% extends "base-v2.html" %}
+
+{% block title %}System Monitoring - {{ streamer_id }}{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/v2/css/pages/monitoring.css">
+<script src="/static/v2/js/components/system-health-dashboard-v2.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="tbx-page-container" x-data="monitoringPage()">
+    <!-- Page Header -->
+    <div class="tbx-page-header">
+        <div class="tbx-header-content">
+            <h1 class="tbx-page-title">System Monitoring</h1>
+            <p class="tbx-page-subtitle">Real-time system health and performance monitoring</p>
+        </div>
+        
+        <div class="tbx-header-actions">
+            <!-- Status Indicator -->
+            <div class="tbx-system-status" :class="'tbx-status-' + systemStatus">
+                <span class="tbx-status-dot"></span>
+                <span x-text="systemStatusText">Checking...</span>
+            </div>
+            
+            <!-- Auto-refresh Toggle -->
+            <label class="tbx-auto-refresh">
+                <input type="checkbox" x-model="autoRefresh" @change="toggleAutoRefresh()">
+                <span>Auto-refresh</span>
+            </label>
+            
+            <!-- Refresh Button -->
+            <button @click="refreshAll()" class="tbx-button tbx-button-primary">
+                <svg class="tbx-icon" :class="{'tbx-animate-spin': refreshing}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- System Health Dashboard Component -->
+    <div class="tbx-health-dashboard-section" x-data="tbxSystemHealthDashboard('{{ streamer_id }}')">
+        <div class="tbx-health-dashboard-header">
+            <h2 class="tbx-section-title">System Health Dashboard</h2>
+            <div class="tbx-dashboard-controls">
+                <!-- Connection Status -->
+                <div class="tbx-connection-status" :class="'tbx-connection-' + connectionStatus">
+                    <span class="tbx-connection-indicator"></span>
+                    <span x-text="connectionStatus === 'connected' ? 'Connected' : (connectionStatus === 'error' ? 'Connection Error' : 'Connecting...')">Connecting...</span>
+                </div>
+                
+                <!-- Auto Refresh Toggle -->
+                <label class="tbx-auto-refresh-toggle">
+                    <input type="checkbox" x-model="autoRefresh" @change="toggleAutoRefresh()">
+                    <span>Auto-refresh</span>
+                </label>
+                
+                <!-- View Mode Selector -->
+                <select x-model="viewMode" class="tbx-select tbx-view-selector">
+                    <option value="overview">Overview</option>
+                    <option value="details">Detailed View</option>
+                    <option value="alerts">Alerts</option>
+                </select>
+                
+                <!-- Manual Refresh -->
+                <button @click="refreshData()" 
+                        :disabled="loading.refresh" 
+                        class="tbx-button tbx-button-secondary">
+                    <svg class="tbx-icon" :class="{'tbx-animate-spin': loading.refresh}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    Refresh
+                </button>
+            </div>
+        </div>
+
+        <!-- Overall Health Summary -->
+        <div class="tbx-health-summary">
+            <div class="tbx-health-score-card">
+                <div class="tbx-health-score" :class="'tbx-health-score-' + (systemHealth.healthScore >= 90 ? 'excellent' : systemHealth.healthScore >= 70 ? 'good' : systemHealth.healthScore >= 50 ? 'fair' : 'poor')">
+                    <div class="tbx-score-circle">
+                        <svg viewBox="0 0 100 100" class="tbx-score-svg">
+                            <circle cx="50" cy="50" r="45" class="tbx-score-bg"></circle>
+                            <circle cx="50" cy="50" r="45" class="tbx-score-fill" 
+                                    :style="`stroke-dashoffset: ${283 - (283 * systemHealth.healthScore / 100)}`"></circle>
+                        </svg>
+                        <div class="tbx-score-text">
+                            <span class="tbx-score-value" x-text="systemHealth.healthScore">0</span>
+                            <span class="tbx-score-label">Health</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="tbx-health-info">
+                    <h3 class="tbx-health-status" x-text="systemHealth.status">Loading...</h3>
+                    <p class="tbx-health-uptime">
+                        Uptime: <span x-text="systemHealth.uptimeFormatted">0s</span>
+                    </p>
+                    <p class="tbx-health-updated">
+                        Last updated: <span x-text="lastUpdate ? lastUpdate.toLocaleTimeString() : 'Never'">Never</span>
+                    </p>
+                </div>
+            </div>
+
+            <!-- Key Performance Indicators -->
+            <div class="tbx-kpi-grid">
+                <div class="tbx-kpi-card">
+                    <div class="tbx-kpi-icon tbx-kpi-response">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                    </div>
+                    <div class="tbx-kpi-content">
+                        <span class="tbx-kpi-label">Response Time</span>
+                        <span class="tbx-kpi-value" x-text="performance.responseTime + 'ms'">0ms</span>
+                    </div>
+                </div>
+
+                <div class="tbx-kpi-card">
+                    <div class="tbx-kpi-icon tbx-kpi-connections">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                        </svg>
+                    </div>
+                    <div class="tbx-kpi-content">
+                        <span class="tbx-kpi-label">Active Connections</span>
+                        <span class="tbx-kpi-value" x-text="performance.activeConnections">0</span>
+                    </div>
+                </div>
+
+                <div class="tbx-kpi-card">
+                    <div class="tbx-kpi-icon tbx-kpi-error">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                    <div class="tbx-kpi-content">
+                        <span class="tbx-kpi-label">Error Rate</span>
+                        <span class="tbx-kpi-value" x-text="performance.errorRate.toFixed(2) + '%'">0%</span>
+                    </div>
+                </div>
+
+                <div class="tbx-kpi-card">
+                    <div class="tbx-kpi-icon tbx-kpi-throughput">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path>
+                        </svg>
+                    </div>
+                    <div class="tbx-kpi-content">
+                        <span class="tbx-kpi-label">Throughput</span>
+                        <span class="tbx-kpi-value" x-text="formatNumber(performance.throughput)">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Component Health Grid -->
+        <div x-show="viewMode === 'overview' || viewMode === 'details'" class="tbx-components-grid">
+            <template x-for="(component, key) in components" :key="key">
+                <div class="tbx-component-card" 
+                     :class="'tbx-component-' + component.status"
+                     @click="selectService(key)">
+                    <div class="tbx-component-header">
+                        <div class="tbx-component-status">
+                            <span x-text="getStatusIcon(component.status)" class="tbx-status-icon"></span>
+                            <span x-text="component.name" class="tbx-component-name"></span>
+                        </div>
+                        <div class="tbx-component-actions" x-show="controlsEnabled && selectedService === key">
+                            <button @click.stop="controlService(key, 'restart')" 
+                                    :disabled="loading.serviceAction"
+                                    class="tbx-component-action">
+                                <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div x-show="viewMode === 'details' && selectedService === key" class="tbx-component-details">
+                        <template x-if="component.details">
+                            <div class="tbx-details-grid">
+                                <template x-for="(value, detail) in component.details" :key="detail">
+                                    <div class="tbx-detail-row">
+                                        <span x-text="detail" class="tbx-detail-label"></span>
+                                        <span x-text="value" class="tbx-detail-value"></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <!-- Alerts View -->
+        <div x-show="viewMode === 'alerts'" class="tbx-alerts-view">
+            <div class="tbx-alerts-summary">
+                <div class="tbx-alert-counts">
+                    <div class="tbx-alert-count tbx-alert-critical">
+                        <span class="tbx-count-value" x-text="alertCounts.critical">0</span>
+                        <span class="tbx-count-label">Critical</span>
+                    </div>
+                    <div class="tbx-alert-count tbx-alert-high">
+                        <span class="tbx-count-value" x-text="alertCounts.high">0</span>
+                        <span class="tbx-count-label">High</span>
+                    </div>
+                    <div class="tbx-alert-count tbx-alert-medium">
+                        <span class="tbx-count-value" x-text="alertCounts.medium">0</span>
+                        <span class="tbx-count-label">Medium</span>
+                    </div>
+                    <div class="tbx-alert-count tbx-alert-low">
+                        <span class="tbx-count-value" x-text="alertCounts.low">0</span>
+                        <span class="tbx-count-label">Low</span>
+                    </div>
+                </div>
+
+                <div class="tbx-alerts-controls">
+                    <select x-model="filterAlerts" class="tbx-select">
+                        <option value="all">All Alerts</option>
+                        <option value="critical">Critical</option>
+                        <option value="high">High Priority</option>
+                        <option value="medium">Medium Priority</option>
+                        <option value="low">Low Priority</option>
+                    </select>
+
+                    <button @click="clearAllAlerts()" 
+                            class="tbx-button tbx-button-secondary">
+                        Clear All
+                    </button>
+                </div>
+            </div>
+
+            <!-- Alert List -->
+            <div class="tbx-alerts-list">
+                <template x-for="alert in filteredAlerts" :key="alert.id">
+                    <div class="tbx-alert-item" :class="'tbx-alert-' + alert.priority">
+                        <div class="tbx-alert-content">
+                            <div class="tbx-alert-header">
+                                <span x-text="alert.title" class="tbx-alert-title"></span>
+                                <span x-text="alert.priority.toUpperCase()" class="tbx-alert-priority"></span>
+                            </div>
+                            <p x-text="alert.message" class="tbx-alert-message"></p>
+                            <div class="tbx-alert-meta">
+                                <span x-text="new Date(alert.timestamp).toLocaleString()" class="tbx-alert-time"></span>
+                                <span x-text="alert.source" class="tbx-alert-source"></span>
+                            </div>
+                        </div>
+                        <button @click="dismissAlert(alert)" class="tbx-alert-dismiss">
+                            <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </template>
+
+                <div x-show="!filteredAlerts.length" class="tbx-no-alerts">
+                    <svg class="tbx-no-alerts-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <p>No alerts matching your criteria</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading States -->
+        <div x-show="loading.initial" class="tbx-dashboard-loading">
+            <div class="tbx-loading-content">
+                <div class="tbx-spinner-large"></div>
+                <p>Loading system health data...</p>
+            </div>
+        </div>
+
+        <!-- Error State -->
+        <div x-show="connectionStatus === 'error'" class="tbx-dashboard-error">
+            <div class="tbx-error-content">
+                <svg class="tbx-error-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <h3>Unable to connect to monitoring service</h3>
+                <p>Please check your connection and try again</p>
+                <button @click="loadInitialData()" class="tbx-button tbx-button-primary">Retry</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Performance Metrics -->
+    <div class="tbx-performance-section">
+        <h2 class="tbx-section-title">Performance Metrics</h2>
+        
+        <div class="tbx-metrics-tabs">
+            <button @click="activeMetric = 'cpu'" 
+                    :class="{'tbx-tab-active': activeMetric === 'cpu'}" 
+                    class="tbx-tab">CPU</button>
+            <button @click="activeMetric = 'memory'" 
+                    :class="{'tbx-tab-active': activeMetric === 'memory'}" 
+                    class="tbx-tab">Memory</button>
+            <button @click="activeMetric = 'network'" 
+                    :class="{'tbx-tab-active': activeMetric === 'network'}" 
+                    class="tbx-tab">Network</button>
+            <button @click="activeMetric = 'disk'" 
+                    :class="{'tbx-tab-active': activeMetric === 'disk'}" 
+                    class="tbx-tab">Disk</button>
+        </div>
+
+        <div class="tbx-metrics-content">
+            <!-- CPU Metrics -->
+            <div x-show="activeMetric === 'cpu'" class="tbx-metric-panel">
+                <div class="tbx-gauge-container">
+                    <div class="tbx-gauge" :data-value="metrics.cpu.usage">
+                        <svg viewBox="0 0 200 200" class="tbx-gauge-svg">
+                            <circle cx="100" cy="100" r="90" class="tbx-gauge-bg"></circle>
+                            <circle cx="100" cy="100" r="90" class="tbx-gauge-fill" 
+                                    :style="`stroke-dashoffset: ${565 - (565 * metrics.cpu.usage / 100)}`"></circle>
+                        </svg>
+                        <div class="tbx-gauge-text">
+                            <span class="tbx-gauge-value" x-text="metrics.cpu.usage + '%'">--%</span>
+                            <span class="tbx-gauge-label">CPU Usage</span>
+                        </div>
+                    </div>
+                    
+                    <div class="tbx-metric-details">
+                        <div class="tbx-detail-item">
+                            <span>Cores</span>
+                            <span x-text="metrics.cpu.cores">--</span>
+                        </div>
+                        <div class="tbx-detail-item">
+                            <span>Load Average</span>
+                            <span x-text="metrics.cpu.load_average">--</span>
+                        </div>
+                        <div class="tbx-detail-item">
+                            <span>Temperature</span>
+                            <span x-text="metrics.cpu.temperature + '°C'">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Memory Metrics -->
+            <div x-show="activeMetric === 'memory'" class="tbx-metric-panel">
+                <div class="tbx-gauge-container">
+                    <div class="tbx-gauge" :data-value="metrics.memory.usage">
+                        <svg viewBox="0 0 200 200" class="tbx-gauge-svg">
+                            <circle cx="100" cy="100" r="90" class="tbx-gauge-bg"></circle>
+                            <circle cx="100" cy="100" r="90" class="tbx-gauge-fill" 
+                                    :style="`stroke-dashoffset: ${565 - (565 * metrics.memory.usage / 100)}`"></circle>
+                        </svg>
+                        <div class="tbx-gauge-text">
+                            <span class="tbx-gauge-value" x-text="metrics.memory.usage + '%'">--%</span>
+                            <span class="tbx-gauge-label">Memory Usage</span>
+                        </div>
+                    </div>
+                    
+                    <div class="tbx-metric-details">
+                        <div class="tbx-detail-item">
+                            <span>Total</span>
+                            <span x-text="formatBytes(metrics.memory.total)">--</span>
+                        </div>
+                        <div class="tbx-detail-item">
+                            <span>Used</span>
+                            <span x-text="formatBytes(metrics.memory.used)">--</span>
+                        </div>
+                        <div class="tbx-detail-item">
+                            <span>Available</span>
+                            <span x-text="formatBytes(metrics.memory.available)">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Network Metrics -->
+            <div x-show="activeMetric === 'network'" class="tbx-metric-panel">
+                <div class="tbx-network-stats">
+                    <div class="tbx-network-card">
+                        <div class="tbx-network-icon tbx-icon-upload">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                            </svg>
+                        </div>
+                        <div class="tbx-network-info">
+                            <span class="tbx-network-label">Upload</span>
+                            <span class="tbx-network-value" x-text="formatBandwidth(metrics.network.upload_speed)">--</span>
+                        </div>
+                    </div>
+                    
+                    <div class="tbx-network-card">
+                        <div class="tbx-network-icon tbx-icon-download">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path>
+                            </svg>
+                        </div>
+                        <div class="tbx-network-info">
+                            <span class="tbx-network-label">Download</span>
+                            <span class="tbx-network-value" x-text="formatBandwidth(metrics.network.download_speed)">--</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="tbx-metric-details">
+                    <div class="tbx-detail-item">
+                        <span>Total Sent</span>
+                        <span x-text="formatBytes(metrics.network.total_sent)">--</span>
+                    </div>
+                    <div class="tbx-detail-item">
+                        <span>Total Received</span>
+                        <span x-text="formatBytes(metrics.network.total_received)">--</span>
+                    </div>
+                    <div class="tbx-detail-item">
+                        <span>Packet Loss</span>
+                        <span x-text="metrics.network.packet_loss + '%'">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Disk Metrics -->
+            <div x-show="activeMetric === 'disk'" class="tbx-metric-panel">
+                <div class="tbx-gauge-container">
+                    <div class="tbx-gauge" :data-value="metrics.disk.usage">
+                        <svg viewBox="0 0 200 200" class="tbx-gauge-svg">
+                            <circle cx="100" cy="100" r="90" class="tbx-gauge-bg"></circle>
+                            <circle cx="100" cy="100" r="90" class="tbx-gauge-fill" 
+                                    :style="`stroke-dashoffset: ${565 - (565 * metrics.disk.usage / 100)}`"></circle>
+                        </svg>
+                        <div class="tbx-gauge-text">
+                            <span class="tbx-gauge-value" x-text="metrics.disk.usage + '%'">--%</span>
+                            <span class="tbx-gauge-label">Disk Usage</span>
+                        </div>
+                    </div>
+                    
+                    <div class="tbx-metric-details">
+                        <div class="tbx-detail-item">
+                            <span>Total</span>
+                            <span x-text="formatBytes(metrics.disk.total)">--</span>
+                        </div>
+                        <div class="tbx-detail-item">
+                            <span>Used</span>
+                            <span x-text="formatBytes(metrics.disk.used)">--</span>
+                        </div>
+                        <div class="tbx-detail-item">
+                            <span>Free</span>
+                            <span x-text="formatBytes(metrics.disk.free)">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Logs -->
+    <div class="tbx-logs-section">
+        <div class="tbx-logs-header">
+            <h2 class="tbx-section-title">Error Logs</h2>
+            
+            <div class="tbx-logs-controls">
+                <select x-model="logLevel" @change="filterLogs()" class="tbx-select">
+                    <option value="all">All Levels</option>
+                    <option value="error">Errors</option>
+                    <option value="warning">Warnings</option>
+                    <option value="info">Info</option>
+                    <option value="debug">Debug</option>
+                </select>
+                
+                <input type="text" 
+                       x-model="logSearch" 
+                       @input="filterLogs()"
+                       placeholder="Search logs..." 
+                       class="tbx-input">
+                
+                <button @click="clearLogs()" class="tbx-button tbx-button-secondary">Clear</button>
+            </div>
+        </div>
+        
+        <div class="tbx-logs-container">
+            <div class="tbx-logs-list">
+                <template x-for="log in filteredLogs" :key="log.id">
+                    <div class="tbx-log-entry" :class="'tbx-log-' + log.level">
+                        <div class="tbx-log-header">
+                            <span class="tbx-log-level" x-text="log.level.toUpperCase()"></span>
+                            <span class="tbx-log-time" x-text="formatTime(log.timestamp)"></span>
+                        </div>
+                        <div class="tbx-log-message" x-text="log.message"></div>
+                        <div x-show="log.stack" class="tbx-log-stack">
+                            <pre x-text="log.stack"></pre>
+                        </div>
+                    </div>
+                </template>
+            </div>
+            
+            <div x-show="!filteredLogs.length" class="tbx-empty-logs">
+                <p>No logs matching your criteria</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alert Configurations -->
+    <div class="tbx-alerts-section">
+        <h2 class="tbx-section-title">Alert Configuration</h2>
+        
+        <div class="tbx-alerts-grid">
+            <div class="tbx-alert-config">
+                <div class="tbx-alert-header">
+                    <h3>CPU Alert</h3>
+                    <label class="tbx-toggle">
+                        <input type="checkbox" x-model="alerts.cpu.enabled" @change="saveAlertConfig('cpu')">
+                        <span class="tbx-toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="tbx-alert-threshold">
+                    <label>Threshold</label>
+                    <input type="number" x-model="alerts.cpu.threshold" @change="saveAlertConfig('cpu')" 
+                           min="0" max="100" class="tbx-input-number">
+                    <span>%</span>
+                </div>
+            </div>
+            
+            <div class="tbx-alert-config">
+                <div class="tbx-alert-header">
+                    <h3>Memory Alert</h3>
+                    <label class="tbx-toggle">
+                        <input type="checkbox" x-model="alerts.memory.enabled" @change="saveAlertConfig('memory')">
+                        <span class="tbx-toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="tbx-alert-threshold">
+                    <label>Threshold</label>
+                    <input type="number" x-model="alerts.memory.threshold" @change="saveAlertConfig('memory')" 
+                           min="0" max="100" class="tbx-input-number">
+                    <span>%</span>
+                </div>
+            </div>
+            
+            <div class="tbx-alert-config">
+                <div class="tbx-alert-header">
+                    <h3>Disk Alert</h3>
+                    <label class="tbx-toggle">
+                        <input type="checkbox" x-model="alerts.disk.enabled" @change="saveAlertConfig('disk')">
+                        <span class="tbx-toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="tbx-alert-threshold">
+                    <label>Threshold</label>
+                    <input type="number" x-model="alerts.disk.threshold" @change="saveAlertConfig('disk')" 
+                           min="0" max="100" class="tbx-input-number">
+                    <span>%</span>
+                </div>
+            </div>
+            
+            <div class="tbx-alert-config">
+                <div class="tbx-alert-header">
+                    <h3>Error Rate Alert</h3>
+                    <label class="tbx-toggle">
+                        <input type="checkbox" x-model="alerts.errors.enabled" @change="saveAlertConfig('errors')">
+                        <span class="tbx-toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="tbx-alert-threshold">
+                    <label>Threshold</label>
+                    <input type="number" x-model="alerts.errors.threshold" @change="saveAlertConfig('errors')" 
+                           min="0" max="100" class="tbx-input-number">
+                    <span>errors/min</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function monitoringPage() {
+    return {
+        // State
+        systemStatus: 'checking',
+        systemStatusText: 'Checking...',
+        autoRefresh: true,
+        refreshing: false,
+        refreshInterval: null,
+        activeMetric: 'cpu',
+        logLevel: 'all',
+        logSearch: '',
+        
+        // Data
+        services: {
+            bot: { status: 'checking', message: 'Checking...', uptime: 0, response_time: 0 },
+            api: { status: 'checking', message: 'Checking...', requests_per_minute: 0, latency: 0 },
+            memory: { status: 'checking', message: 'Checking...', storage_used: 0, queries_per_second: 0 },
+            websocket: { status: 'checking', message: 'Checking...', active_connections: 0, messages_per_second: 0 }
+        },
+        
+        metrics: {
+            cpu: { usage: 0, cores: 0, load_average: 0, temperature: 0 },
+            memory: { usage: 0, total: 0, used: 0, available: 0 },
+            network: { upload_speed: 0, download_speed: 0, total_sent: 0, total_received: 0, packet_loss: 0 },
+            disk: { usage: 0, total: 0, used: 0, free: 0 }
+        },
+        
+        logs: [],
+        filteredLogs: [],
+        
+        alerts: {
+            cpu: { enabled: true, threshold: 80 },
+            memory: { enabled: true, threshold: 85 },
+            disk: { enabled: true, threshold: 90 },
+            errors: { enabled: true, threshold: 10 }
+        },
+        
+        // Initialize
+        async init() {
+            await this.loadAll();
+            this.startAutoRefresh();
+            
+            // Setup WebSocket for real-time updates
+            this.setupWebSocket();
+        },
+        
+        // Load all data
+        async loadAll() {
+            this.refreshing = true;
+            
+            try {
+                await Promise.all([
+                    this.loadServiceStatus(),
+                    this.loadMetrics(),
+                    this.loadLogs(),
+                    this.loadAlertConfig()
+                ]);
+                
+                this.updateSystemStatus();
+            } catch (error) {
+                console.error('Failed to load monitoring data:', error);
+                this.systemStatus = 'error';
+                this.systemStatusText = 'Connection Error';
+            } finally {
+                this.refreshing = false;
+            }
+        },
+        
+        // Load service status
+        async loadServiceStatus() {
+            try {
+                const response = await fetch('/api/v2/monitoring/services');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.services = data;
+                }
+            } catch (error) {
+                console.error('Failed to load service status:', error);
+            }
+        },
+        
+        // Load metrics
+        async loadMetrics() {
+            try {
+                const response = await fetch('/api/v2/monitoring/metrics');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.metrics = data;
+                }
+            } catch (error) {
+                console.error('Failed to load metrics:', error);
+            }
+        },
+        
+        // Load logs
+        async loadLogs() {
+            try {
+                const response = await fetch('/api/v2/monitoring/logs?limit=100');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.logs = data;
+                    this.filterLogs();
+                }
+            } catch (error) {
+                console.error('Failed to load logs:', error);
+            }
+        },
+        
+        // Load alert configuration
+        async loadAlertConfig() {
+            try {
+                const response = await fetch('/api/v2/monitoring/alerts');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.alerts = { ...this.alerts, ...data };
+                }
+            } catch (error) {
+                console.error('Failed to load alert config:', error);
+            }
+        },
+        
+        // Update system status
+        updateSystemStatus() {
+            const statuses = Object.values(this.services).map(s => s.status);
+            
+            if (statuses.every(s => s === 'healthy')) {
+                this.systemStatus = 'healthy';
+                this.systemStatusText = 'All Systems Operational';
+            } else if (statuses.some(s => s === 'error')) {
+                this.systemStatus = 'error';
+                this.systemStatusText = 'System Issues Detected';
+            } else if (statuses.some(s => s === 'warning')) {
+                this.systemStatus = 'warning';
+                this.systemStatusText = 'Performance Degraded';
+            } else {
+                this.systemStatus = 'checking';
+                this.systemStatusText = 'Checking...';
+            }
+        },
+        
+        // Setup WebSocket
+        setupWebSocket() {
+            const ws = new WebSocket(`ws://${window.location.host}/ws/monitoring`);
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                if (data.type === 'service_update') {
+                    this.services[data.service] = data.status;
+                    this.updateSystemStatus();
+                } else if (data.type === 'metric_update') {
+                    this.metrics[data.metric] = data.value;
+                } else if (data.type === 'log_entry') {
+                    this.logs.unshift(data.log);
+                    this.logs = this.logs.slice(0, 100); // Keep only last 100
+                    this.filterLogs();
+                }
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+            
+            ws.onclose = () => {
+                // Attempt to reconnect after 5 seconds
+                timerManager.setTimeout(() => this.setupWebSocket(), 5000);
+            };
+        },
+        
+        // Toggle auto-refresh
+        toggleAutoRefresh() {
+            if (this.autoRefresh) {
+                this.startAutoRefresh();
+            } else {
+                this.stopAutoRefresh();
+            }
+        },
+        
+        // Start auto-refresh
+        startAutoRefresh() {
+            this.stopAutoRefresh();
+            this.refreshInterval = timerManager.setInterval(() => {
+                this.refreshAll();
+            }, 10000); // Refresh every 10 seconds
+        },
+        
+        // Stop auto-refresh
+        stopAutoRefresh() {
+            if (this.refreshInterval) {
+                timerManager.clearInterval(this.refreshInterval);
+                this.refreshInterval = null;
+            }
+        },
+        
+        // Refresh all data
+        async refreshAll() {
+            await this.loadAll();
+        },
+        
+        // Filter logs
+        filterLogs() {
+            let filtered = [...this.logs];
+            
+            // Filter by level
+            if (this.logLevel !== 'all') {
+                filtered = filtered.filter(log => log.level === this.logLevel);
+            }
+            
+            // Filter by search
+            if (this.logSearch) {
+                const search = this.logSearch.toLowerCase();
+                filtered = filtered.filter(log => 
+                    log.message.toLowerCase().includes(search) ||
+                    (log.stack && log.stack.toLowerCase().includes(search))
+                );
+            }
+            
+            this.filteredLogs = filtered;
+        },
+        
+        // Clear logs
+        async clearLogs() {
+            try {
+                const response = await fetch('/api/v2/monitoring/logs', {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    this.logs = [];
+                    this.filteredLogs = [];
+                }
+            } catch (error) {
+                console.error('Failed to clear logs:', error);
+            }
+        },
+        
+        // Save alert configuration
+        async saveAlertConfig(type) {
+            try {
+                const response = await fetch('/api/v2/monitoring/alerts', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        type: type,
+                        config: this.alerts[type]
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to save alert config');
+                }
+            } catch (error) {
+                console.error('Failed to save alert config:', error);
+            }
+        },
+        
+        // Format helpers
+        formatUptime(seconds) {
+            if (seconds < 60) return `${seconds}s`;
+            if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+            if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+            return `${Math.floor(seconds / 86400)}d`;
+        },
+        
+        formatBytes(bytes) {
+            if (!bytes) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(1024));
+            return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+        },
+        
+        formatBandwidth(bytesPerSecond) {
+            if (!bytesPerSecond) return '0 B/s';
+            const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+            const i = Math.floor(Math.log(bytesPerSecond) / Math.log(1024));
+            return `${(bytesPerSecond / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+        },
+        
+        formatTime(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString('en-US', { 
+                hour: '2-digit', 
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        },
+        
+        // Cleanup
+        destroy() {
+            this.stopAutoRefresh();
+        }
+    };
+}
+</script>
+{% endblock %}

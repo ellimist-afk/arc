@@ -1,0 +1,3310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="/static/js/timer-cleanup-manager.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TalkBot Graph Visualizer Pro - {{ streamer_id }}</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- D3.js v7 for graph visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.8.5/dist/d3.min.js"></script>
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Anime.js for smooth animations -->
+    <script src="https://cdn.jsdelivr.net/npm/animejs@3.2.1/lib/anime.min.js"></script>
+
+    <!-- Premium Visual Design System -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&display=swap');
+
+        :root {
+            /* Dark Theme Palette */
+            --bg-primary: #0A0E1B;
+            --bg-secondary: #0F1525;
+            --bg-tertiary: #1A2035;
+            --bg-elevated: #252B45;
+            
+            /* Text Colors */
+            --text-primary: #FFFFFF;
+            --text-secondary: #B8C0DC;
+            --text-muted: #6B7CA5;
+            --text-disabled: #4A5578;
+            
+            /* Accent Colors - Vibrant Gradients */
+            --accent-blue: #00D4FF;
+            --accent-purple: #9945FF;
+            --accent-pink: #FF0080;
+            --accent-green: #00FF88;
+            --accent-yellow: #FFD700;
+            --accent-orange: #FF6B35;
+            
+            /* Semantic Colors */
+            --success: #10B981;
+            --warning: #F59E0B;
+            --error: #EF4444;
+            --info: #3B82F6;
+            
+            /* Effects */
+            --glow-blue: 0 0 40px rgba(0, 212, 255, 0.5);
+            --glow-purple: 0 0 40px rgba(153, 69, 255, 0.5);
+            --glow-pink: 0 0 40px rgba(255, 0, 128, 0.5);
+            --glass-bg: rgba(15, 21, 37, 0.8);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            
+            /* Animations */
+            --transition-speed: 300ms;
+            --animation-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            --animation-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            position: relative;
+        }
+
+        /* Animated Background */
+        .animated-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(0, 212, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(153, 69, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, rgba(255, 0, 128, 0.05) 0%, transparent 50%),
+                linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            animation: bgShift 20s ease infinite;
+        }
+
+        @keyframes bgShift {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.95; transform: scale(1.02); }
+        }
+
+        /* Particle System Canvas */
+        #particleCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+            opacity: 0.4;
+        }
+
+        /* Main Layout */
+        .main-container {
+            display: flex;
+            height: 100vh;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Glass Morphism Components */
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            box-shadow: 
+                0 8px 32px 0 rgba(0, 0, 0, 0.37),
+                inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+        }
+
+        /* Top Navigation Bar */
+        .top-bar {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            height: 70px;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            padding: 0 30px;
+            gap: 20px;
+            animation: slideDown 0.6s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                transform: translateY(-100px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .logo-title {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-right: auto;
+        }
+
+        .logo {
+            width: 45px;
+            height: 45px;
+            background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            font-size: 24px;
+            animation: logoPulse 3s ease infinite;
+        }
+
+        @keyframes logoPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .app-title {
+            font-size: 24px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 50%, var(--accent-pink) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.5px;
+        }
+
+        /* Control Buttons */
+        .control-btn {
+            padding: 10px 20px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            color: var(--text-secondary);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition-speed) var(--animation-smooth);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .control-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transition: left 0.5s;
+        }
+
+        .control-btn:hover {
+            background: var(--bg-elevated);
+            border-color: var(--accent-blue);
+            color: var(--text-primary);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 212, 255, 0.3);
+        }
+
+        .control-btn:hover::before {
+            left: 100%;
+        }
+
+        .control-btn.active {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            border-color: transparent;
+            color: white;
+            box-shadow: var(--glow-blue);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 380px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(30px);
+            border-left: 1px solid var(--glass-border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: transform 0.5s var(--animation-smooth);
+            position: relative;
+            z-index: 50;
+        }
+
+        .sidebar.collapsed {
+            transform: translateX(380px);
+        }
+
+        .sidebar-header {
+            padding: 25px;
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.1), rgba(153, 69, 255, 0.1));
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 20px;
+        }
+
+        /* Scrollbar Styling */
+        .sidebar-content::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .sidebar-content::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }
+
+        .sidebar-content::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, var(--accent-blue), var(--accent-purple));
+            border-radius: 4px;
+        }
+
+        /* Section Cards */
+        .section-card {
+            background: var(--bg-elevated);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid var(--glass-border);
+            transition: all var(--transition-speed);
+        }
+
+        .section-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .section-title i {
+            color: var(--accent-blue);
+        }
+
+        /* Search Box */
+        .search-container {
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 45px 12px 15px;
+            background: var(--bg-tertiary);
+            border: 2px solid transparent;
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 14px;
+            transition: all var(--transition-speed);
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            background: var(--bg-elevated);
+            box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
+        }
+
+        .search-icon {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            transition: color var(--transition-speed);
+        }
+
+        .search-input:focus ~ .search-icon {
+            color: var(--accent-blue);
+        }
+
+        /* Node Type Filters */
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .filter-btn {
+            padding: 10px;
+            background: var(--bg-tertiary);
+            border: 2px solid transparent;
+            border-radius: 10px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition-speed);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .filter-btn:hover {
+            background: var(--bg-elevated);
+            transform: translateY(-1px);
+        }
+
+        .filter-btn.active {
+            background: var(--bg-elevated);
+            border-color: var(--accent-blue);
+            color: var(--text-primary);
+        }
+
+        .filter-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            box-shadow: 0 0 10px currentColor;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, var(--bg-tertiary), var(--bg-elevated));
+            border-radius: 10px;
+            padding: 15px;
+            border: 1px solid var(--glass-border);
+            transition: all var(--transition-speed);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+            transform: scaleX(0);
+            transition: transform var(--transition-speed);
+        }
+
+        .stat-card:hover::before {
+            transform: scaleX(1);
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 5px;
+        }
+
+        /* Advanced Sliders */
+        .slider-container {
+            margin-bottom: 20px;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .slider-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .slider-value {
+            font-size: 13px;
+            color: var(--accent-blue);
+            font-weight: 600;
+            min-width: 50px;
+            text-align: right;
+        }
+
+        .slider-track {
+            position: relative;
+            height: 6px;
+            background: var(--bg-tertiary);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .slider-fill {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+            border-radius: 3px;
+            transition: width var(--transition-speed);
+        }
+
+        .slider-input {
+            width: 100%;
+            height: 6px;
+            position: absolute;
+            top: 0;
+            left: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .slider-input::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            box-shadow: 0 0 20px var(--accent-blue);
+            cursor: pointer;
+        }
+
+        /* Graph Container */
+        .graph-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #graph {
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+        }
+
+        #graph.grabbing {
+            cursor: grabbing;
+        }
+
+        /* Minimap */
+        .minimap-container {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            width: 200px;
+            height: 200px;
+            border-radius: 12px;
+            overflow: hidden;
+            transition: all var(--transition-speed);
+            z-index: 40;
+        }
+
+        .minimap-container:hover {
+            transform: scale(1.05);
+            box-shadow: var(--glow-purple);
+        }
+
+        #minimapCanvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Floating Action Buttons */
+        .fab-container {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            z-index: 40;
+        }
+
+        .fab {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            transition: all var(--transition-speed) var(--animation-bounce);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .fab:hover {
+            transform: scale(1.1) rotate(15deg);
+            box-shadow: var(--glow-blue);
+        }
+
+        .fab:active {
+            transform: scale(0.95);
+        }
+
+        /* Tooltip System */
+        .tooltip {
+            position: fixed;
+            padding: 12px 16px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            pointer-events: none;
+            font-size: 13px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            max-width: 300px;
+            opacity: 0;
+            transition: opacity 200ms;
+        }
+
+        .tooltip.show {
+            opacity: 1;
+        }
+
+        .tooltip-title {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        .tooltip-content {
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .tooltip-stat {
+            display: flex;
+            justify-content: space-between;
+            padding: 3px 0;
+        }
+
+        /* Loading Overlay */
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 300ms;
+        }
+
+        .loading-overlay.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .loading-content {
+            text-align: center;
+        }
+
+        .loading-spinner {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            position: relative;
+        }
+
+        .spinner-ring {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border: 4px solid transparent;
+            border-top-color: var(--accent-blue);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .spinner-ring:nth-child(2) {
+            width: 70%;
+            height: 70%;
+            top: 15%;
+            left: 15%;
+            border-top-color: var(--accent-purple);
+            animation-duration: 0.8s;
+            animation-direction: reverse;
+        }
+
+        .spinner-ring:nth-child(3) {
+            width: 40%;
+            height: 40%;
+            top: 30%;
+            left: 30%;
+            border-top-color: var(--accent-pink);
+            animation-duration: 0.6s;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: var(--text-secondary);
+            font-size: 16px;
+            font-weight: 500;
+            animation: pulse 1.5s ease infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+
+        /* Notification Toast */
+        .toast-container {
+            position: fixed;
+            top: 100px;
+            right: 30px;
+            z-index: 3000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .toast {
+            padding: 15px 20px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border-radius: 10px;
+            border-left: 4px solid var(--accent-blue);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            min-width: 300px;
+            animation: slideInRight 0.3s ease;
+        }
+
+        .toast.success { border-left-color: var(--success); }
+        .toast.warning { border-left-color: var(--warning); }
+        .toast.error { border-left-color: var(--error); }
+        .toast.info { border-left-color: var(--info); }
+
+        @keyframes slideInRight {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .toast-icon {
+            font-size: 20px;
+        }
+
+        .toast-content {
+            flex: 1;
+        }
+
+        .toast-title {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 2px;
+        }
+
+        .toast-message {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* Context Menu */
+        .context-menu {
+            position: fixed;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            padding: 8px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            min-width: 200px;
+            display: none;
+        }
+
+        .context-menu.show {
+            display: block;
+        }
+
+        .context-item {
+            padding: 10px 15px;
+            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 200ms;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+        }
+
+        .context-item:hover {
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+        }
+
+        .context-item i {
+            width: 20px;
+            text-align: center;
+        }
+
+        /* Keyboard Shortcuts Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 4000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 300ms;
+        }
+
+        .modal-overlay.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal {
+            background: var(--glass-bg);
+            backdrop-filter: blur(30px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            animation: modalSlideIn 0.3s ease;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                transform: scale(0.9) translateY(20px);
+                opacity: 0;
+            }
+            to {
+                transform: scale(1) translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+
+        .modal-title {
+            font-size: 24px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .modal-close {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--bg-elevated);
+            border: 1px solid var(--glass-border);
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 200ms;
+        }
+
+        .modal-close:hover {
+            background: var(--error);
+            color: white;
+            transform: rotate(90deg);
+        }
+
+        .shortcuts-grid {
+            display: grid;
+            gap: 15px;
+        }
+
+        .shortcut-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: var(--bg-elevated);
+            border-radius: 10px;
+            border: 1px solid var(--glass-border);
+        }
+
+        .shortcut-keys {
+            display: flex;
+            gap: 5px;
+        }
+
+        .key {
+            padding: 5px 10px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--glass-border);
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            color: var(--accent-blue);
+        }
+
+        .shortcut-desc {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        /* Layout Selector */
+        .layout-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        .layout-option {
+            aspect-ratio: 1;
+            background: var(--bg-tertiary);
+            border: 2px solid transparent;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 200ms;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .layout-option:hover {
+            border-color: var(--accent-blue);
+            transform: scale(1.05);
+        }
+
+        .layout-option.active {
+            border-color: var(--accent-purple);
+            background: var(--bg-elevated);
+        }
+
+        .layout-icon {
+            font-size: 24px;
+            color: var(--text-secondary);
+        }
+
+        .layout-option.active .layout-icon {
+            color: var(--accent-purple);
+        }
+
+        /* Export Options */
+        .export-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .export-btn {
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 200ms;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .export-btn:hover {
+            background: var(--bg-elevated);
+            border-color: var(--accent-blue);
+            color: var(--text-primary);
+            transform: translateY(-2px);
+        }
+
+        /* Node Styles */
+        .node {
+            cursor: pointer;
+            transition: all 200ms;
+            filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.3));
+        }
+
+        .node:hover {
+            filter: brightness(1.3) drop-shadow(0 0 20px currentColor);
+        }
+
+        .node.selected {
+            stroke: white;
+            stroke-width: 3px;
+            filter: drop-shadow(0 0 30px currentColor);
+        }
+
+        .node.highlighted {
+            animation: nodePulse 1s ease infinite;
+        }
+
+        @keyframes nodePulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
+
+        .node.dimmed {
+            opacity: 0.15;
+            filter: none;
+        }
+
+        /* Link Styles */
+        .link {
+            stroke: #666666;
+            stroke-opacity: 0.4;
+            transition: all 200ms;
+            stroke-linecap: round;
+            pointer-events: stroke;
+        }
+
+        .link.highlighted {
+            stroke-opacity: 0.9 !important;
+            stroke-width: 3px !important;
+            filter: drop-shadow(0 0 10px currentColor);
+        }
+
+        .link.dimmed {
+            stroke-opacity: 0.1;
+        }
+        
+        /* Ensure links are always visible */
+        svg .links line {
+            stroke-opacity: 0.4 !important;
+            min-stroke-width: 1px;
+        }
+
+        /* Node Labels */
+        .node-label {
+            pointer-events: none;
+            user-select: none;
+            font-size: 11px;
+            fill: var(--text-secondary);
+            text-anchor: middle;
+            font-weight: 500;
+            text-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+        }
+
+        .node-label.large {
+            font-size: 14px;
+            font-weight: 700;
+            fill: var(--text-primary);
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                position: fixed;
+                right: 0;
+                z-index: 200;
+            }
+
+            .top-bar {
+                flex-direction: column;
+                height: auto;
+                padding: 20px;
+                gap: 10px;
+            }
+
+            .fab-container {
+                bottom: 20px;
+                right: 20px;
+            }
+
+            .minimap-container {
+                width: 120px;
+                height: 120px;
+            }
+        }
+
+        /* Performance Optimizations */
+        .use-gpu {
+            transform: translateZ(0);
+            will-change: transform;
+        }
+
+        /* Custom Animations */
+        @keyframes floatUp {
+            to {
+                transform: translateY(-20px);
+                opacity: 0;
+            }
+        }
+
+        @keyframes ripple {
+            to {
+                transform: scale(4);
+                opacity: 0;
+            }
+        }
+
+        /* Touch Support */
+        @media (hover: none) {
+            .control-btn:active {
+                transform: scale(0.98);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Animated Background -->
+    <div class="animated-bg"></div>
+    
+    <!-- Particle System Canvas -->
+    <canvas id="particleCanvas"></canvas>
+
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Top Navigation Bar -->
+        <div class="top-bar glass-panel">
+            <div class="logo-title">
+                <div class="logo">T</div>
+                <h1 class="app-title">TalkBot Graph Visualizer Pro</h1>
+            </div>
+            
+            <!-- Controls -->
+            <select id="streamerSelect" class="control-btn">
+                <option value="{{ streamer_id }}">{{ streamer_id }}</option>
+            </select>
+            
+            <select id="timeRange" class="control-btn">
+                <option value="1">Last 24 hours</option>
+                <option value="7" selected>Last 7 days</option>
+                <option value="14">Last 14 days</option>
+                <option value="30">Last 30 days</option>
+            </select>
+            
+            <select id="layoutSelect" class="control-btn">
+                <option value="force">Force Layout</option>
+                <option value="hierarchical">Hierarchical</option>
+                <option value="circular">Circular</option>
+                <option value="radial">Radial</option>
+                <option value="grid">Grid</option>
+            </select>
+            
+            <button id="loadData" class="control-btn">
+                <i class="fas fa-cloud-download-alt"></i>
+                <span>Load Real Data</span>
+            </button>
+            
+            <button id="loadDemo" class="control-btn">
+                <i class="fas fa-play"></i>
+                <span>Demo Mode</span>
+            </button>
+            
+            <button id="toggleSidebar" class="control-btn">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+
+        <!-- Graph Container -->
+        <div class="graph-container">
+            <svg id="graph" class="use-gpu"></svg>
+            
+            <!-- Minimap -->
+            <div class="minimap-container glass-panel">
+                <canvas id="minimapCanvas"></canvas>
+            </div>
+            
+            <!-- Floating Action Buttons -->
+            <div class="fab-container">
+                <button class="fab" id="centerView" title="Center View">
+                    <i class="fas fa-crosshairs"></i>
+                </button>
+                <button class="fab" id="fitToScreen" title="Fit to Screen">
+                    <i class="fas fa-expand"></i>
+                </button>
+                <button class="fab" id="toggleFullscreen" title="Toggle Fullscreen">
+                    <i class="fas fa-desktop"></i>
+                </button>
+                <button class="fab" id="exportGraph" title="Export Graph">
+                    <i class="fas fa-download"></i>
+                </button>
+                <button class="fab" id="showShortcuts" title="Keyboard Shortcuts">
+                    <i class="fas fa-keyboard"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 5px;">Graph Controls</h2>
+                <p style="font-size: 13px; color: var(--text-muted);">
+                    <i class="fas fa-user"></i> {{ streamer_id }}
+                </p>
+            </div>
+
+            <div class="sidebar-content">
+                <!-- Search -->
+                <div class="search-container">
+                    <input type="text" id="searchInput" class="search-input" placeholder="Search nodes...">
+                    <i class="fas fa-search search-icon"></i>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="section-card">
+                    <div class="section-title">
+                        <i class="fas fa-bolt"></i>
+                        Quick Actions
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                        <button class="control-btn" id="pauseBtn">
+                            <i class="fas fa-pause"></i>
+                        </button>
+                        <button class="control-btn" id="playBtn">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button class="control-btn" id="shuffleBtn">
+                            <i class="fas fa-random"></i>
+                        </button>
+                        <button class="control-btn" id="clusterBtn">
+                            <i class="fas fa-project-diagram"></i>
+                        </button>
+                        <button class="control-btn" id="pathBtn">
+                            <i class="fas fa-route"></i>
+                        </button>
+                        <button class="control-btn" id="resetBtn">
+                            <i class="fas fa-undo"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Node Filters -->
+                <div class="section-card">
+                    <div class="section-title">
+                        <i class="fas fa-filter"></i>
+                        Node Types
+                    </div>
+                    <div class="filter-grid" id="nodeFilters">
+                        <!-- Filters will be added dynamically -->
+                    </div>
+                </div>
+
+                <!-- Physics Controls -->
+                <div class="section-card">
+                    <div class="section-title">
+                        <i class="fas fa-atom"></i>
+                        Physics Engine
+                    </div>
+                    
+                    <div class="slider-container">
+                        <div class="slider-header">
+                            <span class="slider-label">Link Distance</span>
+                            <span class="slider-value" id="linkDistanceValue">100</span>
+                        </div>
+                        <div class="slider-track">
+                            <div class="slider-fill" id="linkDistanceFill"></div>
+                            <input type="range" class="slider-input" id="linkDistance" min="50" max="300" value="100">
+                        </div>
+                    </div>
+                    
+                    <div class="slider-container">
+                        <div class="slider-header">
+                            <span class="slider-label">Charge Strength</span>
+                            <span class="slider-value" id="chargeStrengthValue">-300</span>
+                        </div>
+                        <div class="slider-track">
+                            <div class="slider-fill" id="chargeStrengthFill"></div>
+                            <input type="range" class="slider-input" id="chargeStrength" min="-1000" max="-100" value="-300">
+                        </div>
+                    </div>
+                    
+                    <div class="slider-container">
+                        <div class="slider-header">
+                            <span class="slider-label">Center Force</span>
+                            <span class="slider-value" id="centerForceValue">0.05</span>
+                        </div>
+                        <div class="slider-track">
+                            <div class="slider-fill" id="centerForceFill"></div>
+                            <input type="range" class="slider-input" id="centerForce" min="0" max="100" value="5">
+                        </div>
+                    </div>
+                    
+                    <div class="slider-container">
+                        <div class="slider-header">
+                            <span class="slider-label">Animation Speed</span>
+                            <span class="slider-value" id="animationSpeedValue">1.0x</span>
+                        </div>
+                        <div class="slider-track">
+                            <div class="slider-fill" id="animationSpeedFill"></div>
+                            <input type="range" class="slider-input" id="animationSpeed" min="10" max="200" value="100">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Statistics -->
+                <div class="section-card">
+                    <div class="section-title">
+                        <i class="fas fa-chart-bar"></i>
+                        Statistics
+                    </div>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value" id="nodeCount">0</div>
+                            <div class="stat-label">Nodes</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="edgeCount">0</div>
+                            <div class="stat-label">Edges</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="clustersCount">0</div>
+                            <div class="stat-label">Clusters</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="densityValue">0%</div>
+                            <div class="stat-label">Density</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Selected Node Info -->
+                <div class="section-card">
+                    <div class="section-title">
+                        <i class="fas fa-info-circle"></i>
+                        Selected Node
+                    </div>
+                    <div id="nodeInfo" style="color: var(--text-muted); text-align: center; padding: 20px;">
+                        Click on a node to view details
+                    </div>
+                </div>
+
+                <!-- Export Options -->
+                <div class="section-card">
+                    <div class="section-title">
+                        <i class="fas fa-file-export"></i>
+                        Export Options
+                    </div>
+                    <div class="export-grid">
+                        <button class="export-btn" id="exportPNG">
+                            <i class="fas fa-image"></i>
+                            PNG
+                        </button>
+                        <button class="export-btn" id="exportSVG">
+                            <i class="fas fa-vector-square"></i>
+                            SVG
+                        </button>
+                        <button class="export-btn" id="exportJSON">
+                            <i class="fas fa-code"></i>
+                            JSON
+                        </button>
+                        <button class="export-btn" id="exportCSV">
+                            <i class="fas fa-table"></i>
+                            CSV
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tooltip -->
+    <div class="tooltip" id="tooltip"></div>
+
+    <!-- Context Menu -->
+    <div class="context-menu" id="contextMenu">
+        <div class="context-item" id="ctxHighlight">
+            <i class="fas fa-highlighter"></i>
+            Highlight Connected
+        </div>
+        <div class="context-item" id="ctxIsolate">
+            <i class="fas fa-eye"></i>
+            Isolate Node
+        </div>
+        <div class="context-item" id="ctxPin">
+            <i class="fas fa-thumbtack"></i>
+            Pin Position
+        </div>
+        <div class="context-item" id="ctxExpand">
+            <i class="fas fa-expand-alt"></i>
+            Expand Connections
+        </div>
+        <div class="context-item" id="ctxCopy">
+            <i class="fas fa-copy"></i>
+            Copy Node Data
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-content">
+            <div class="loading-spinner">
+                <div class="spinner-ring"></div>
+                <div class="spinner-ring"></div>
+                <div class="spinner-ring"></div>
+            </div>
+            <p class="loading-text">Loading graph data...</p>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div class="modal-overlay" id="shortcutsModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 class="modal-title">Keyboard Shortcuts</h2>
+                <button class="modal-close" id="closeShortcuts">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="shortcuts-grid">
+                <div class="shortcut-item">
+                    <div class="shortcut-keys">
+                        <span class="key">Space</span>
+                    </div>
+                    <span class="shortcut-desc">Pause/Resume simulation</span>
+                </div>
+                <div class="shortcut-item">
+                    <div class="shortcut-keys">
+                        <span class="key">F</span>
+                    </div>
+                    <span class="shortcut-desc">Fit graph to screen</span>
+                </div>
+                <div class="shortcut-item">
+                    <div class="shortcut-keys">
+                        <span class="key">C</span>
+                    </div>
+                    <span class="shortcut-desc">Center view</span>
+                </div>
+                <div class="shortcut-item">
+                    <div class="shortcut-keys">
+                        <span class="key">R</span>
+                    </div>
+                    <span class="shortcut-desc">Reset zoom</span>
+                </div>
+                <div class="shortcut-item">
+                    <div class="shortcut-keys">
+                        <span class="key">Ctrl</span>
+                        <span class="key">F</span>
+                    </div>
+                    <span class="shortcut-desc">Focus search</span>
+                </div>
+                <div class="shortcut-item">
+                    <div class="shortcut-keys">
+                        <span class="key">Esc</span>
+                    </div>
+                    <span class="shortcut-desc">Clear selection</span>
+                </div>
+                <div class="shortcut-item">
+                    <div class="shortcut-keys">
+                        <span class="key">1-5</span>
+                    </div>
+                    <span class="shortcut-desc">Switch layout</span>
+                </div>
+                <div class="shortcut-item">
+                    <div class="shortcut-keys">
+                        <span class="key">S</span>
+                    </div>
+                    <span class="shortcut-desc">Toggle sidebar</span>
+                </div>
+                <div class="shortcut-item">
+                    <div class="shortcut-keys">
+                        <span class="key">H</span>
+                    </div>
+                    <span class="shortcut-desc">Show help</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Visualization Script -->
+    <script>
+        // Enhanced Graph Visualizer Pro
+        class GraphVisualizerPro {
+            constructor() {
+                this.streamerId = '{{ streamer_id }}';
+                this.width = window.innerWidth;
+                this.height = window.innerHeight;
+                this.nodes = [];
+                this.links = [];
+                this.simulation = null;
+                this.svg = null;
+                this.g = null;
+                this.zoom = null;
+                this.selectedNode = null;
+                this.activeFilters = new Set();
+                this.isSimulationRunning = true;
+                this.currentLayout = 'force';
+                this.animationSpeed = 1.0;
+                this.particleSystem = null;
+                this.websocket = null;
+                this.clusters = new Map();
+                this.pathHighlights = new Set();
+                
+                // Color schemes for different node types
+                this.nodeColors = {
+                    streamer: '#FFD700',
+                    viewer: '#00D4FF',
+                    mod: '#FF0080',
+                    vip: '#9945FF',
+                    game: '#00FF88',
+                    moment: '#FF6B35',
+                    bot: '#10B981',
+                    topic: '#94A3B8'
+                };
+                
+                // Initialize
+                this.init();
+            }
+            
+            async init() {
+                // Setup components
+                this.setupParticleSystem();
+                this.setupSVG();
+                this.setupMinimap();
+                this.setupEventListeners();
+                this.setupKeyboardShortcuts();
+                this.setupWebSocket();
+                this.initializeFilters();
+                
+                // Load initial data
+                await this.loadDemoData();
+                
+                // Start animations
+                this.startAnimations();
+            }
+            
+            setupParticleSystem() {
+                const canvas = document.getElementById('particleCanvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                
+                const particles = [];
+                const particleCount = 50;
+                
+                for (let i = 0; i < particleCount; i++) {
+                    particles.push({
+                        x: Math.random() * canvas.width,
+                        y: Math.random() * canvas.height,
+                        vx: (Math.random() - 0.5) * 0.5,
+                        vy: (Math.random() - 0.5) * 0.5,
+                        size: Math.random() * 2 + 1,
+                        opacity: Math.random() * 0.5 + 0.2
+                    });
+                }
+                
+                const animate = () => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    
+                    particles.forEach(p => {
+                        p.x += p.vx;
+                        p.y += p.vy;
+                        
+                        if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+                        if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+                        
+                        ctx.beginPath();
+                        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                        ctx.fillStyle = `rgba(0, 212, 255, ${p.opacity})`;
+                        ctx.fill();
+                    });
+                    
+                    requestAnimationFrame(animate);
+                };
+                
+                animate();
+            }
+            
+            setupSVG() {
+                this.svg = d3.select('#graph')
+                    .attr('width', this.width)
+                    .attr('height', this.height);
+                
+                // Create patterns and gradients
+                const defs = this.svg.append('defs');
+                
+                // Create gradient definitions
+                Object.entries(this.nodeColors).forEach(([type, color]) => {
+                    const gradient = defs.append('radialGradient')
+                        .attr('id', `gradient-${type}`);
+                    
+                    gradient.append('stop')
+                        .attr('offset', '0%')
+                        .attr('stop-color', color)
+                        .attr('stop-opacity', 1);
+                    
+                    gradient.append('stop')
+                        .attr('offset', '100%')
+                        .attr('stop-color', color)
+                        .attr('stop-opacity', 0.3);
+                });
+                
+                // Setup zoom behavior
+                this.zoom = d3.zoom()
+                    .scaleExtent([0.1, 10])
+                    .on('zoom', (event) => this.handleZoom(event));
+                
+                this.svg.call(this.zoom);
+                
+                // Main group
+                this.g = this.svg.append('g').attr('class', 'main-group');
+                
+                // Layer groups for proper z-ordering
+                this.linkGroup = this.g.append('g').attr('class', 'links');
+                this.nodeGroup = this.g.append('g').attr('class', 'nodes');
+                this.labelGroup = this.g.append('g').attr('class', 'labels');
+                this.effectsGroup = this.g.append('g').attr('class', 'effects');
+            }
+            
+            setupMinimap() {
+                const canvas = document.getElementById('minimapCanvas');
+                this.minimapCtx = canvas.getContext('2d');
+                canvas.width = 200;
+                canvas.height = 200;
+                
+                // Update minimap on changes
+                this.updateMinimap = () => {
+                    const ctx = this.minimapCtx;
+                    const scale = 200 / Math.max(this.width, this.height);
+                    
+                    ctx.clearRect(0, 0, 200, 200);
+                    ctx.fillStyle = 'rgba(15, 21, 37, 0.9)';
+                    ctx.fillRect(0, 0, 200, 200);
+                    
+                    // Draw nodes
+                    this.nodes.forEach(node => {
+                        ctx.beginPath();
+                        ctx.arc(
+                            node.x * scale,
+                            node.y * scale,
+                            Math.max(1, node.size * scale / 4),
+                            0,
+                            Math.PI * 2
+                        );
+                        ctx.fillStyle = this.nodeColors[node.type] || '#94A3B8';
+                        ctx.fill();
+                    });
+                    
+                    // Draw viewport indicator
+                    if (this.zoom) {
+                        const transform = d3.zoomTransform(this.svg.node());
+                        ctx.strokeStyle = 'rgba(0, 212, 255, 0.5)';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(
+                            -transform.x / transform.k * scale,
+                            -transform.y / transform.k * scale,
+                            this.width / transform.k * scale,
+                            this.height / transform.k * scale
+                        );
+                    }
+                };
+            }
+            
+            setupEventListeners() {
+                // Data loading
+                document.getElementById('loadData').addEventListener('click', () => {
+                    const days = parseInt(document.getElementById('timeRange').value);
+                    this.loadRealData(days);
+                });
+                
+                document.getElementById('loadDemo').addEventListener('click', () => {
+                    this.loadDemoData();
+                });
+                
+                // Layout switching
+                document.getElementById('layoutSelect').addEventListener('change', (e) => {
+                    this.switchLayout(e.target.value);
+                });
+                
+                // Sidebar toggle
+                document.getElementById('toggleSidebar').addEventListener('click', () => {
+                    document.getElementById('sidebar').classList.toggle('collapsed');
+                });
+                
+                // Search functionality
+                document.getElementById('searchInput').addEventListener('input', (e) => {
+                    this.searchNodes(e.target.value);
+                });
+                
+                // Quick actions
+                document.getElementById('pauseBtn').addEventListener('click', () => this.pauseSimulation());
+                document.getElementById('playBtn').addEventListener('click', () => this.resumeSimulation());
+                document.getElementById('shuffleBtn').addEventListener('click', () => this.shuffleLayout());
+                document.getElementById('clusterBtn').addEventListener('click', () => this.detectCommunities());
+                document.getElementById('pathBtn').addEventListener('click', () => this.togglePathHighlight());
+                document.getElementById('resetBtn').addEventListener('click', () => this.resetGraph());
+                
+                // FAB buttons
+                document.getElementById('centerView').addEventListener('click', () => this.centerView());
+                document.getElementById('fitToScreen').addEventListener('click', () => this.fitToScreen());
+                document.getElementById('toggleFullscreen').addEventListener('click', () => this.toggleFullscreen());
+                document.getElementById('exportGraph').addEventListener('click', () => this.showExportOptions());
+                document.getElementById('showShortcuts').addEventListener('click', () => this.showShortcutsModal());
+                
+                // Physics sliders
+                this.setupSlider('linkDistance', 50, 300, (value) => {
+                    if (this.simulation) {
+                        this.simulation.force('link').distance(value);
+                        this.simulation.alpha(0.3).restart();
+                    }
+                });
+                
+                this.setupSlider('chargeStrength', -1000, -100, (value) => {
+                    if (this.simulation) {
+                        this.simulation.force('charge').strength(value);
+                        this.simulation.alpha(0.3).restart();
+                    }
+                });
+                
+                this.setupSlider('centerForce', 0, 100, (value) => {
+                    const force = value / 100;
+                    if (this.simulation) {
+                        this.simulation.force('center').strength(force);
+                        this.simulation.alpha(0.3).restart();
+                    }
+                });
+                
+                this.setupSlider('animationSpeed', 10, 200, (value) => {
+                    this.animationSpeed = value / 100;
+                });
+                
+                // Export buttons
+                document.getElementById('exportPNG').addEventListener('click', () => this.exportPNG());
+                document.getElementById('exportSVG').addEventListener('click', () => this.exportSVG());
+                document.getElementById('exportJSON').addEventListener('click', () => this.exportJSON());
+                document.getElementById('exportCSV').addEventListener('click', () => this.exportCSV());
+                
+                // Modal controls
+                document.getElementById('closeShortcuts').addEventListener('click', () => {
+                    document.getElementById('shortcutsModal').classList.remove('show');
+                });
+                
+                // Window resize
+                window.addEventListener('resize', () => this.handleResize());
+                
+                // Context menu
+                document.addEventListener('contextmenu', (e) => e.preventDefault());
+            }
+            
+            setupSlider(id, min, max, callback) {
+                const slider = document.getElementById(id);
+                const valueDisplay = document.getElementById(id + 'Value');
+                const fillBar = document.getElementById(id + 'Fill');
+                
+                slider.addEventListener('input', (e) => {
+                    const value = parseFloat(e.target.value);
+                    const percent = ((value - min) / (max - min)) * 100;
+                    
+                    fillBar.style.width = percent + '%';
+                    
+                    if (id === 'centerForce') {
+                        valueDisplay.textContent = (value / 100).toFixed(2);
+                    } else if (id === 'animationSpeed') {
+                        valueDisplay.textContent = (value / 100).toFixed(1) + 'x';
+                    } else {
+                        valueDisplay.textContent = value;
+                    }
+                    
+                    callback(value);
+                });
+                
+                // Initialize
+                slider.dispatchEvent(new Event('input'));
+            }
+            
+            setupKeyboardShortcuts() {
+                document.addEventListener('keydown', (e) => {
+                    // Prevent shortcuts when typing in input
+                    if (e.target.tagName === 'INPUT') return;
+                    
+                    switch(e.key.toLowerCase()) {
+                        case ' ':
+                            e.preventDefault();
+                            this.isSimulationRunning ? this.pauseSimulation() : this.resumeSimulation();
+                            break;
+                        case 'f':
+                            this.fitToScreen();
+                            break;
+                        case 'c':
+                            this.centerView();
+                            break;
+                        case 'r':
+                            this.resetZoom();
+                            break;
+                        case 's':
+                            document.getElementById('sidebar').classList.toggle('collapsed');
+                            break;
+                        case 'h':
+                            this.showShortcutsModal();
+                            break;
+                        case 'escape':
+                            this.clearSelection();
+                            break;
+                        case '1':
+                        case '2':
+                        case '3':
+                        case '4':
+                        case '5':
+                            const layouts = ['force', 'hierarchical', 'circular', 'radial', 'grid'];
+                            const index = parseInt(e.key) - 1;
+                            if (layouts[index]) {
+                                document.getElementById('layoutSelect').value = layouts[index];
+                                this.switchLayout(layouts[index]);
+                            }
+                            break;
+                    }
+                    
+                    // Ctrl shortcuts
+                    if (e.ctrlKey) {
+                        switch(e.key.toLowerCase()) {
+                            case 'f':
+                                e.preventDefault();
+                                document.getElementById('searchInput').focus();
+                                break;
+                        }
+                    }
+                });
+            }
+            
+            setupWebSocket() {
+                // Setup WebSocket for real-time updates
+                try {
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const wsUrl = `${protocol}//${window.location.host}/ws/visualizer/${this.streamerId}`;
+                    
+                    this.websocket = new WebSocket(wsUrl);
+                    
+                    this.websocket.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        this.handleRealtimeUpdate(data);
+                    };
+                    
+                    this.websocket.onerror = (error) => {
+                        console.log('WebSocket connection not available - using polling instead');
+                    };
+                } catch (error) {
+                    console.log('WebSocket not supported - using polling mode');
+                }
+            }
+            
+            initializeFilters() {
+                const filterContainer = document.getElementById('nodeFilters');
+                
+                Object.entries(this.nodeColors).forEach(([type, color]) => {
+                    const filterBtn = document.createElement('button');
+                    filterBtn.className = 'filter-btn active';
+                    filterBtn.dataset.type = type;
+                    filterBtn.innerHTML = `
+                        <div class="filter-indicator" style="background: ${color};"></div>
+                        <span>${type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                    `;
+                    
+                    filterBtn.addEventListener('click', () => {
+                        filterBtn.classList.toggle('active');
+                        if (filterBtn.classList.contains('active')) {
+                            this.activeFilters.add(type);
+                        } else {
+                            this.activeFilters.delete(type);
+                        }
+                        this.applyFilters();
+                    });
+                    
+                    filterContainer.appendChild(filterBtn);
+                    this.activeFilters.add(type);
+                });
+            }
+            
+            async loadRealData(days = 7) {
+                this.showLoading(true);
+                
+                try {
+                    const response = await fetch(`/api/v2/visualizer/graph/${this.streamerId}?days_back=${days}`);
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.processData(data);
+                        this.renderGraph();
+                        this.updateStats();
+                        this.showToast('Real data loaded successfully', 'success');
+                    } else {
+                        throw new Error(data.error || 'Failed to load data');
+                    }
+                } catch (error) {
+                    console.error('Error loading real data:', error);
+                    this.showToast('Failed to load real data. Loading demo instead.', 'error');
+                    await this.loadDemoData();
+                } finally {
+                    this.showLoading(false);
+                }
+            }
+            
+            async loadDemoData() {
+                this.showLoading(true);
+                
+                try {
+                    const response = await fetch('/api/v2/visualizer/graph/demo');
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        // Enhance demo data
+                        const enhanced = this.enhanceDemoData(data);
+                        this.processData(enhanced);
+                        this.renderGraph();
+                        this.updateStats();
+                        this.showToast('Demo data loaded', 'info');
+                    } else {
+                        throw new Error('Failed to load demo data');
+                    }
+                } catch (error) {
+                    console.error('Error loading demo data:', error);
+                    this.showToast('Failed to load visualization', 'error');
+                    // Generate fallback data
+                    this.generateFallbackData();
+                } finally {
+                    this.showLoading(false);
+                }
+            }
+            
+            enhanceDemoData(data) {
+                // Add more demo nodes for richer visualization
+                const additionalNodes = [];
+                const additionalEdges = [];
+                
+                // Generate random viewers
+                for (let i = 0; i < 20; i++) {
+                    const id = `viewer:user${i}`;
+                    additionalNodes.push({
+                        id,
+                        label: `User${i}`,
+                        type: ['viewer', 'vip', 'mod'][Math.floor(Math.random() * 3)],
+                        size: 8 + Math.random() * 12,
+                        color: this.nodeColors.viewer,
+                        metadata: {
+                            messages: Math.floor(Math.random() * 100),
+                            watchTime: Math.floor(Math.random() * 1000)
+                        }
+                    });
+                }
+                
+                // Generate connections
+                additionalNodes.forEach(node => {
+                    // Connect to streamer
+                    if (Math.random() > 0.3) {
+                        additionalEdges.push({
+                            source: 'streamer:demo_streamer',
+                            target: node.id,
+                            weight: Math.random() * 10,
+                            type: 'interaction',
+                            metadata: {}
+                        });
+                    }
+                    
+                    // Connect to other viewers
+                    for (let j = 0; j < 3; j++) {
+                        const targetIdx = Math.floor(Math.random() * additionalNodes.length);
+                        if (additionalNodes[targetIdx].id !== node.id && Math.random() > 0.7) {
+                            additionalEdges.push({
+                                source: node.id,
+                                target: additionalNodes[targetIdx].id,
+                                weight: Math.random() * 5,
+                                type: 'interaction',
+                                metadata: {}
+                            });
+                        }
+                    }
+                });
+                
+                return {
+                    ...data,
+                    nodes: [...(data.nodes || []), ...additionalNodes],
+                    edges: [...(data.edges || []), ...additionalEdges]
+                };
+            }
+            
+            generateFallbackData() {
+                // Generate rich demo data with many nodes and connections
+                const nodes = [];
+                const edges = [];
+                
+                // Central streamer node
+                nodes.push({
+                    id: 'streamer:demo_streamer',
+                    label: 'DemoStreamer',
+                    type: 'streamer',
+                    size: 35,
+                    color: this.nodeColors.streamer,
+                    metadata: {
+                        followers: 50000,
+                        streaming_since: '2020',
+                        main_game: 'Variety'
+                    }
+                });
+                
+                // Generate regular viewers (25-30)
+                const viewerCount = 25 + Math.floor(Math.random() * 6);
+                for (let i = 0; i < viewerCount; i++) {
+                    nodes.push({
+                        id: `viewer:viewer_${i}`,
+                        label: `Viewer${i + 1}`,
+                        type: 'viewer',
+                        size: 8 + Math.random() * 4,
+                        color: this.nodeColors.viewer
+                    });
+                    
+                    edges.push({
+                        source: 'streamer:demo_streamer',
+                        target: `viewer:viewer_${i}`,
+                        weight: 1 + Math.random() * 3,
+                        type: 'watches'
+                    });
+                }
+                
+                // Generate VIPs (7-10)
+                const vipCount = 7 + Math.floor(Math.random() * 4);
+                for (let i = 0; i < vipCount; i++) {
+                    nodes.push({
+                        id: `vip:vip_${i}`,
+                        label: `VIP_${i + 1}`,
+                        type: 'vip',
+                        size: 12 + Math.random() * 5,
+                        color: this.nodeColors.vip
+                    });
+                    
+                    edges.push({
+                        source: 'streamer:demo_streamer',
+                        target: `vip:vip_${i}`,
+                        weight: 4 + Math.random() * 4,
+                        type: 'vip_connection'
+                    });
+                    
+                    // VIPs interact with viewers
+                    for (let j = 0; j < 3; j++) {
+                        const randomViewer = Math.floor(Math.random() * viewerCount);
+                        edges.push({
+                            source: `vip:vip_${i}`,
+                            target: `viewer:viewer_${randomViewer}`,
+                            weight: 1 + Math.random() * 2,
+                            type: 'interaction'
+                        });
+                    }
+                }
+                
+                // Generate moderators (4-5)
+                const modCount = 4 + Math.floor(Math.random() * 2);
+                for (let i = 0; i < modCount; i++) {
+                    nodes.push({
+                        id: `mod:mod_${i}`,
+                        label: `Mod_${i + 1}`,
+                        type: 'moderator',
+                        size: 14 + Math.random() * 4,
+                        color: this.nodeColors.moderator
+                    });
+                    
+                    edges.push({
+                        source: 'streamer:demo_streamer',
+                        target: `mod:mod_${i}`,
+                        weight: 5 + Math.random() * 3,
+                        type: 'moderates'
+                    });
+                    
+                    // Mods interact with viewers
+                    for (let j = 0; j < 5; j++) {
+                        const randomViewer = Math.floor(Math.random() * viewerCount);
+                        edges.push({
+                            source: `mod:mod_${i}`,
+                            target: `viewer:viewer_${randomViewer}`,
+                            weight: 1 + Math.random() * 2,
+                            type: 'moderation'
+                        });
+                    }
+                }
+                
+                // Generate games (12-15)
+                const gameNames = ['Valorant', 'League', 'Minecraft', 'Fortnite', 'CS2', 
+                                  'Apex', 'GTA V', 'Overwatch', 'Rocket League', 'Among Us',
+                                  'Fall Guys', 'Rust', 'Terraria', 'Stardew Valley', 'Hades'];
+                const gameCount = 12 + Math.floor(Math.random() * 4);
+                for (let i = 0; i < gameCount && i < gameNames.length; i++) {
+                    nodes.push({
+                        id: `game:game_${i}`,
+                        label: gameNames[i],
+                        type: 'game',
+                        size: 10 + Math.random() * 8,
+                        color: this.nodeColors.game
+                    });
+                    
+                    edges.push({
+                        source: 'streamer:demo_streamer',
+                        target: `game:game_${i}`,
+                        weight: 2 + Math.random() * 4,
+                        type: 'plays'
+                    });
+                    
+                    // Connect viewers to games
+                    const interestedViewers = Math.floor(5 + Math.random() * 8);
+                    for (let j = 0; j < interestedViewers; j++) {
+                        const randomViewer = Math.floor(Math.random() * viewerCount);
+                        edges.push({
+                            source: `viewer:viewer_${randomViewer}`,
+                            target: `game:game_${i}`,
+                            weight: 0.5 + Math.random() * 2,
+                            type: 'interested_in'
+                        });
+                    }
+                }
+                
+                // Generate memorable moments (7-10)
+                const moments = ['Epic Win', 'Funny Fail', 'Clutch Play', 'Rage Quit', 
+                               'First Victory', 'Community Event', 'Charity Stream', 
+                               'Anniversary', 'Milestone', 'Collab Stream'];
+                const momentCount = 7 + Math.floor(Math.random() * 4);
+                for (let i = 0; i < momentCount && i < moments.length; i++) {
+                    nodes.push({
+                        id: `moment:moment_${i}`,
+                        label: moments[i],
+                        type: 'moment',
+                        size: 8 + Math.random() * 6,
+                        color: this.nodeColors.moment
+                    });
+                    
+                    edges.push({
+                        source: 'streamer:demo_streamer',
+                        target: `moment:moment_${i}`,
+                        weight: 3 + Math.random() * 3,
+                        type: 'created'
+                    });
+                    
+                    // Connect witnesses
+                    const witnesses = Math.floor(7 + Math.random() * 10);
+                    for (let j = 0; j < witnesses; j++) {
+                        const randomViewer = Math.floor(Math.random() * viewerCount);
+                        edges.push({
+                            source: `viewer:viewer_${randomViewer}`,
+                            target: `moment:moment_${i}`,
+                            weight: 0.5 + Math.random() * 1.5,
+                            type: 'witnessed'
+                        });
+                    }
+                }
+                
+                // Generate bots (4-5)
+                const botNames = ['Nightbot', 'StreamElements', 'TalkBot', 'Moobot', 'StreamLabs'];
+                const botCount = 4 + Math.floor(Math.random() * 2);
+                for (let i = 0; i < botCount && i < botNames.length; i++) {
+                    nodes.push({
+                        id: `bot:bot_${i}`,
+                        label: botNames[i],
+                        type: 'bot',
+                        size: 10 + Math.random() * 4,
+                        color: this.nodeColors.bot
+                    });
+                    
+                    edges.push({
+                        source: 'streamer:demo_streamer',
+                        target: `bot:bot_${i}`,
+                        weight: 4 + Math.random() * 2,
+                        type: 'uses'
+                    });
+                    
+                    // Bot interactions
+                    for (let j = 0; j < 8; j++) {
+                        const randomViewer = Math.floor(Math.random() * viewerCount);
+                        edges.push({
+                            source: `bot:bot_${i}`,
+                            target: `viewer:viewer_${randomViewer}`,
+                            weight: 0.3 + Math.random() * 1,
+                            type: 'serves'
+                        });
+                    }
+                }
+                
+                // Generate subscribers (15-20)
+                const subscriberCount = 15 + Math.floor(Math.random() * 6);
+                for (let i = 0; i < subscriberCount; i++) {
+                    nodes.push({
+                        id: `sub:sub_${i}`,
+                        label: `Sub${i + 1}`,
+                        type: 'subscriber',
+                        size: 10 + Math.random() * 4,
+                        color: this.nodeColors.subscriber
+                    });
+                    
+                    edges.push({
+                        source: 'streamer:demo_streamer',
+                        target: `sub:sub_${i}`,
+                        weight: 3 + Math.random() * 4,
+                        type: 'subscribes'
+                    });
+                    
+                    // Only create community connections for first 3 subscribers
+                    // This reduces clutter significantly
+                    if (i > 0 && i <= 3) {
+                        const randomSub = Math.floor(Math.random() * i);
+                        edges.push({
+                            source: `sub:sub_${i}`,
+                            target: `sub:sub_${randomSub}`,
+                            weight: 0.5 + Math.random() * 2,
+                            type: 'community'
+                        });
+                    }
+                }
+                
+                // Create LIMITED cross-connections for cleaner visualization
+                // Only connect first 2 VIPs (not all)
+                if (vipCount > 1) {
+                    edges.push({
+                        source: `vip:vip_0`,
+                        target: `vip:vip_1`,
+                        weight: 2 + Math.random() * 2,
+                        type: 'knows'
+                    });
+                }
+                
+                // Only connect first 2 Mods (not all)
+                if (modCount > 1) {
+                    edges.push({
+                        source: `mod:mod_0`,
+                        target: `mod:mod_1`,
+                        weight: 3 + Math.random() * 2,
+                        type: 'coordinates'
+                    });
+                }
+                
+                // Create only 5 viewer friendships (not viewerCount/2)
+                const maxFriendships = Math.min(5, Math.floor(viewerCount / 4));
+                for (let i = 0; i < maxFriendships; i++) {
+                    const viewer1 = Math.floor(Math.random() * viewerCount);
+                    const viewer2 = Math.floor(Math.random() * viewerCount);
+                    if (viewer1 !== viewer2) {
+                        edges.push({
+                            source: `viewer:viewer_${viewer1}`,
+                            target: `viewer:viewer_${viewer2}`,
+                            weight: 0.5 + Math.random() * 1.5,
+                            type: 'friendship'
+                        });
+                    }
+                }
+                
+                console.log(`Generated rich demo data: ${nodes.length} nodes, ${edges.length} edges`);
+                this.processData({ nodes, edges });
+                this.renderGraph();
+                this.updateStats();
+            }
+            
+            processData(data) {
+                // Process nodes
+                this.nodes = data.nodes.map(node => ({
+                    ...node,
+                    x: this.width / 2 + (Math.random() - 0.5) * 200,
+                    y: this.height / 2 + (Math.random() - 0.5) * 200,
+                    vx: 0,
+                    vy: 0
+                }));
+                
+                // Create a map for quick node lookup
+                const nodeMap = new Map();
+                this.nodes.forEach(node => {
+                    nodeMap.set(node.id, node);
+                });
+                
+                // Process links - ensure source and target are node objects or valid IDs
+                this.links = data.edges.map(edge => {
+                    // D3 force simulation needs either node objects or string IDs
+                    // We'll use string IDs and let D3 resolve them
+                    return {
+                        ...edge,
+                        source: edge.source,
+                        target: edge.target,
+                        weight: edge.weight || 1
+                    };
+                });
+                
+                // Validate links
+                this.links = this.links.filter(link => {
+                    const sourceExists = nodeMap.has(link.source);
+                    const targetExists = nodeMap.has(link.target);
+                    if (!sourceExists || !targetExists) {
+                        console.warn(`Skipping invalid link: ${link.source} -> ${link.target}`);
+                    }
+                    return sourceExists && targetExists;
+                });
+                
+                console.log(`Processed data: ${this.nodes.length} nodes, ${this.links.length} valid links`);
+            }
+            
+            renderGraph() {
+                // Clear existing elements
+                this.linkGroup.selectAll('*').remove();
+                this.nodeGroup.selectAll('*').remove();
+                this.labelGroup.selectAll('*').remove();
+                
+                // Create force simulation with optimized forces for cleaner, less cluttered visualization
+                this.simulation = d3.forceSimulation(this.nodes)
+                    .force('link', d3.forceLink(this.links)
+                        .id(d => d.id)
+                        .distance(d => {
+                            // Increased distances to reduce clutter
+                            const baseDistance = 180;  // Increased from 120
+                            if (d.type === 'watches' || d.type === 'subscribes') return baseDistance * 1.5;
+                            if (d.type === 'vip_connection' || d.type === 'moderates') return baseDistance * 1.2;
+                            if (d.type === 'friendship' || d.type === 'community') return baseDistance * 0.8;
+                            if (d.type === 'network' || d.type === 'og_crew') return baseDistance * 0.7;
+                            if (d.type === 'also_plays' || d.type === 'discusses') return baseDistance * 2.0;  // Push games/topics further out
+                            return baseDistance * 1.4;
+                        })
+                        .strength(d => Math.min(d.weight / 20, 0.4)))  // Reduced strength for looser connections
+                    .force('charge', d3.forceManyBody()
+                        .strength(d => {
+                            // Much stronger repulsion to spread nodes out
+                            if (d.type === 'streamer') return -1500;  // Very strong center repulsion
+                            if (d.type === 'moderator' || d.type === 'vip') return -800;
+                            if (d.type === 'game' || d.type === 'topic' || d.type === 'moment') return -600;
+                            if (d.type === 'subscriber') return -500;
+                            return -400;  // Default viewer repulsion
+                        })
+                        .distanceMax(1000))  // Increased max distance
+                    .force('center', d3.forceCenter(this.width / 2, this.height / 2).strength(0.03))  // Weaker center pull
+                    .force('collision', d3.forceCollide()
+                        .radius(d => d.size * 3)  // Increased collision radius to prevent overlap
+                        .strength(0.95))  // Stronger collision prevention
+                    .force('x', d3.forceX(this.width / 2).strength(0.02))
+                    .force('y', d3.forceY(this.height / 2).strength(0.02))
+                    .velocityDecay(0.3)
+                    .alphaDecay(0.02);
+                
+                // Create links with animations
+                const link = this.linkGroup
+                    .selectAll('line')
+                    .data(this.links)
+                    .enter().append('line')
+                    .attr('class', 'link')
+                    .attr('stroke-width', d => {
+                        const width = Math.sqrt(d.weight) * 1.5;
+                        return Math.max(1, Math.min(width, 5));  // Ensure minimum visibility
+                    })
+                    .style('stroke', d => {
+                        // Use bright, distinct colors for visibility
+                        const linkColors = {
+                            'watches': '#00D4FF',
+                            'vip_connection': '#FFD700',
+                            'subscribes': '#9146FF',
+                            'moderates': '#00FF00',
+                            'plays': '#FF6B6B',
+                            'interested_in': '#4ECDC4',
+                            'created': '#FFA500',
+                            'witnessed': '#FF69B4',
+                            'uses': '#00CED1',
+                            'serves': '#7B68EE',
+                            'interaction': '#87CEEB',
+                            'moderation': '#98FB98',
+                            'community': '#DDA0DD',
+                            'knows': '#F0E68C',
+                            'coordinates': '#B0C4DE',
+                            'friendship': '#FFB6C1'
+                        };
+                        return linkColors[d.type] || '#888888';
+                    })
+                    .style('stroke-opacity', 0.6)  // Increased opacity for better visibility
+                    .style('stroke-linecap', 'round')
+                    .style('pointer-events', 'stroke')
+                    .on('mouseover', (event, d) => {
+                        d3.select(event.currentTarget)
+                            .style('stroke-opacity', 0.9)
+                            .attr('stroke-width', d => Math.sqrt(d.weight) * 2);
+                        this.showLinkTooltip(event, d);
+                    })
+                    .on('mouseout', (event) => {
+                        d3.select(event.currentTarget)
+                            .style('stroke-opacity', 0.6)
+                            .attr('stroke-width', d => {
+                                const width = Math.sqrt(d.weight) * 1.5;
+                                return Math.max(1, Math.min(width, 5));
+                            });
+                        this.hideTooltip();
+                    })
+                    .on('contextmenu', (event, d) => this.showLinkContextMenu(event, d));
+                
+                // Create nodes with advanced effects
+                const node = this.nodeGroup
+                    .selectAll('g')
+                    .data(this.nodes)
+                    .enter().append('g')
+                    .attr('class', 'node-container')
+                    .call(this.createDragBehavior())
+                    .on('click', (event, d) => this.selectNode(d))
+                    .on('dblclick', (event, d) => this.expandNode(d))
+                    .on('mouseover', (event, d) => this.handleNodeHover(event, d))
+                    .on('mouseout', () => this.handleNodeLeave())
+                    .on('contextmenu', (event, d) => this.showNodeContextMenu(event, d));
+                
+                // Add circles with gradients
+                node.append('circle')
+                    .attr('class', d => `node node-${d.type}`)
+                    .attr('r', d => d.size)
+                    .attr('fill', d => `url(#gradient-${d.type})`)
+                    .style('filter', 'drop-shadow(0 0 10px rgba(0, 0, 0, 0.5))');
+                
+                // Add pulse effect for important nodes
+                node.filter(d => d.type === 'streamer' || d.size > 15)
+                    .append('circle')
+                    .attr('class', 'pulse-ring')
+                    .attr('r', d => d.size)
+                    .attr('fill', 'none')
+                    .attr('stroke', d => this.nodeColors[d.type])
+                    .attr('stroke-width', 2)
+                    .attr('opacity', 0)
+                    .each(function(d) {
+                        d3.select(this)
+                            .transition()
+                            .duration(2000)
+                            .attr('r', d.size * 2)
+                            .attr('opacity', 0)
+                            .on('end', function repeat() {
+                                d3.select(this)
+                                    .attr('r', d.size)
+                                    .attr('opacity', 0.8)
+                                    .transition()
+                                    .duration(2000)
+                                    .attr('r', d.size * 2)
+                                    .attr('opacity', 0)
+                                    .on('end', repeat);
+                            });
+                    });
+                
+                // Create labels with better positioning
+                const label = this.labelGroup
+                    .selectAll('text')
+                    .data(this.nodes)
+                    .enter().append('text')
+                    .attr('class', d => `node-label ${d.type === 'streamer' ? 'large' : ''}`)
+                    .text(d => d.label)
+                    .attr('dy', d => d.size + 15);
+                
+                // Update positions on tick
+                this.simulation.on('tick', () => {
+                    link
+                        .attr('x1', d => d.source.x)
+                        .attr('y1', d => d.source.y)
+                        .attr('x2', d => d.target.x)
+                        .attr('y2', d => d.target.y);
+                    
+                    node.attr('transform', d => `translate(${d.x},${d.y})`);
+                    
+                    label
+                        .attr('x', d => d.x)
+                        .attr('y', d => d.y);
+                    
+                    // Update minimap
+                    this.updateMinimap();
+                });
+                
+                // Store references
+                this.nodeSelection = node;
+                this.linkSelection = link;
+                this.labelSelection = label;
+            }
+            
+            createDragBehavior() {
+                return d3.drag()
+                    .on('start', (event, d) => {
+                        if (!event.active) this.simulation.alphaTarget(0.3).restart();
+                        d.fx = d.x;
+                        d.fy = d.y;
+                        this.svg.classed('grabbing', true);
+                    })
+                    .on('drag', (event, d) => {
+                        d.fx = event.x;
+                        d.fy = event.y;
+                    })
+                    .on('end', (event, d) => {
+                        if (!event.active) this.simulation.alphaTarget(0);
+                        if (!d.pinned) {
+                            d.fx = null;
+                            d.fy = null;
+                        }
+                        this.svg.classed('grabbing', false);
+                    });
+            }
+            
+            switchLayout(layoutType) {
+                this.currentLayout = layoutType;
+                
+                switch(layoutType) {
+                    case 'hierarchical':
+                        this.applyHierarchicalLayout();
+                        break;
+                    case 'circular':
+                        this.applyCircularLayout();
+                        break;
+                    case 'radial':
+                        this.applyRadialLayout();
+                        break;
+                    case 'grid':
+                        this.applyGridLayout();
+                        break;
+                    default:
+                        this.applyForceLayout();
+                }
+                
+                this.showToast(`Switched to ${layoutType} layout`, 'info');
+            }
+            
+            applyHierarchicalLayout() {
+                // Find root node (streamer)
+                const root = this.nodes.find(n => n.type === 'streamer') || this.nodes[0];
+                
+                // Build hierarchy
+                const hierarchy = d3.hierarchy(root, node => {
+                    return this.links
+                        .filter(l => l.source.id === node.id)
+                        .map(l => this.nodes.find(n => n.id === l.target.id));
+                });
+                
+                // Create tree layout
+                const treeLayout = d3.tree()
+                    .size([this.width - 100, this.height - 200]);
+                
+                treeLayout(hierarchy);
+                
+                // Apply positions with animation
+                hierarchy.descendants().forEach(d => {
+                    const node = this.nodes.find(n => n.id === d.data.id);
+                    if (node) {
+                        node.fx = d.x;
+                        node.fy = d.y + 100;
+                    }
+                });
+                
+                this.simulation.alpha(0.3).restart();
+            }
+            
+            applyCircularLayout() {
+                const radius = Math.min(this.width, this.height) / 3;
+                const angleStep = (2 * Math.PI) / this.nodes.length;
+                
+                this.nodes.forEach((node, i) => {
+                    const angle = i * angleStep;
+                    node.fx = this.width / 2 + radius * Math.cos(angle);
+                    node.fy = this.height / 2 + radius * Math.sin(angle);
+                });
+                
+                this.simulation.alpha(0.3).restart();
+            }
+            
+            applyRadialLayout() {
+                // Find center node
+                const center = this.nodes.find(n => n.type === 'streamer') || this.nodes[0];
+                
+                // Calculate distances from center
+                const distances = new Map();
+                distances.set(center.id, 0);
+                
+                const queue = [center];
+                while (queue.length > 0) {
+                    const current = queue.shift();
+                    const currentDist = distances.get(current.id);
+                    
+                    this.links.forEach(link => {
+                        let neighbor = null;
+                        if (link.source.id === current.id) neighbor = link.target;
+                        else if (link.target.id === current.id) neighbor = link.source;
+                        
+                        if (neighbor && !distances.has(neighbor.id)) {
+                            distances.set(neighbor.id, currentDist + 1);
+                            queue.push(neighbor);
+                        }
+                    });
+                }
+                
+                // Group nodes by distance
+                const rings = new Map();
+                this.nodes.forEach(node => {
+                    const dist = distances.get(node.id) || 0;
+                    if (!rings.has(dist)) rings.set(dist, []);
+                    rings.get(dist).push(node);
+                });
+                
+                // Position nodes in concentric circles
+                rings.forEach((nodes, distance) => {
+                    const radius = distance * 100;
+                    const angleStep = (2 * Math.PI) / nodes.length;
+                    
+                    nodes.forEach((node, i) => {
+                        const angle = i * angleStep;
+                        node.fx = this.width / 2 + radius * Math.cos(angle);
+                        node.fy = this.height / 2 + radius * Math.sin(angle);
+                    });
+                });
+                
+                this.simulation.alpha(0.3).restart();
+            }
+            
+            applyGridLayout() {
+                const cols = Math.ceil(Math.sqrt(this.nodes.length));
+                const rows = Math.ceil(this.nodes.length / cols);
+                const cellWidth = (this.width - 200) / cols;
+                const cellHeight = (this.height - 200) / rows;
+                
+                this.nodes.forEach((node, i) => {
+                    const col = i % cols;
+                    const row = Math.floor(i / cols);
+                    node.fx = 100 + col * cellWidth + cellWidth / 2;
+                    node.fy = 100 + row * cellHeight + cellHeight / 2;
+                });
+                
+                this.simulation.alpha(0.3).restart();
+            }
+            
+            applyForceLayout() {
+                // Reset fixed positions
+                this.nodes.forEach(node => {
+                    if (!node.pinned) {
+                        node.fx = null;
+                        node.fy = null;
+                    }
+                });
+                
+                this.simulation.alpha(1).restart();
+            }
+            
+            detectCommunities() {
+                // Simple community detection using modularity
+                const communities = new Map();
+                let communityId = 0;
+                
+                // Initialize each node in its own community
+                this.nodes.forEach(node => {
+                    communities.set(node.id, communityId++);
+                });
+                
+                // Merge communities based on connections
+                for (let iteration = 0; iteration < 10; iteration++) {
+                    this.links.forEach(link => {
+                        const sourceCommunity = communities.get(link.source.id);
+                        const targetCommunity = communities.get(link.target.id);
+                        
+                        if (sourceCommunity !== targetCommunity && Math.random() > 0.5) {
+                            // Merge communities
+                            communities.forEach((comm, nodeId) => {
+                                if (comm === targetCommunity) {
+                                    communities.set(nodeId, sourceCommunity);
+                                }
+                            });
+                        }
+                    });
+                }
+                
+                // Color nodes by community
+                const communityColors = d3.scaleOrdinal(d3.schemeCategory10);
+                
+                this.nodeSelection.selectAll('circle.node')
+                    .transition()
+                    .duration(1000)
+                    .style('fill', d => communityColors(communities.get(d.id)));
+                
+                this.showToast('Communities detected', 'success');
+            }
+            
+            selectNode(node) {
+                this.selectedNode = node;
+                
+                // Update visual selection
+                this.nodeSelection.selectAll('circle.node')
+                    .classed('selected', d => d.id === node.id)
+                    .classed('dimmed', d => {
+                        if (d.id === node.id) return false;
+                        const connected = this.links.some(l =>
+                            (l.source.id === node.id && l.target.id === d.id) ||
+                            (l.target.id === node.id && l.source.id === d.id)
+                        );
+                        return !connected;
+                    });
+                
+                this.linkSelection
+                    .classed('highlighted', d => d.source.id === node.id || d.target.id === node.id)
+                    .classed('dimmed', d => d.source.id !== node.id && d.target.id !== node.id);
+                
+                // Update info panel
+                this.updateNodeInfo(node);
+            }
+            
+            updateNodeInfo(node) {
+                const connections = this.links.filter(l =>
+                    l.source.id === node.id || l.target.id === node.id
+                ).length;
+                
+                const infoHtml = `
+                    <div style="padding: 15px;">
+                        <h3 style="margin: 0 0 10px 0; color: var(--text-primary);">${node.label}</h3>
+                        <div style="display: grid; gap: 8px;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Type:</span>
+                                <span style="color: ${this.nodeColors[node.type]}">${node.type}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Connections:</span>
+                                <span style="color: var(--text-primary)">${connections}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Weight:</span>
+                                <span style="color: var(--text-primary)">${node.size}</span>
+                            </div>
+                            ${Object.entries(node.metadata || {}).map(([key, value]) => `
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="color: var(--text-muted);">${key}:</span>
+                                    <span style="color: var(--text-primary)">${value}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('nodeInfo').innerHTML = infoHtml;
+            }
+            
+            expandNode(node) {
+                // Animate expansion of connected nodes
+                const connected = this.links
+                    .filter(l => l.source.id === node.id || l.target.id === node.id)
+                    .map(l => l.source.id === node.id ? l.target : l.source);
+                
+                connected.forEach((connectedNode, i) => {
+                    const angle = (i / connected.length) * 2 * Math.PI;
+                    const radius = 150;
+                    
+                    anime({
+                        targets: connectedNode,
+                        x: node.x + radius * Math.cos(angle),
+                        y: node.y + radius * Math.sin(angle),
+                        duration: 1000,
+                        easing: 'easeOutElastic',
+                        update: () => {
+                            this.simulation.alpha(0);
+                            this.simulation.restart();
+                        }
+                    });
+                });
+            }
+            
+            handleNodeHover(event, node) {
+                // Enhance node on hover
+                d3.select(event.currentTarget).select('circle.node')
+                    .transition()
+                    .duration(200)
+                    .attr('r', node.size * 1.2);
+                
+                this.showNodeTooltip(event, node);
+            }
+            
+            handleNodeLeave() {
+                // Reset node size
+                this.nodeSelection.selectAll('circle.node')
+                    .transition()
+                    .duration(200)
+                    .attr('r', d => d.size);
+                
+                this.hideTooltip();
+            }
+            
+            showNodeTooltip(event, node) {
+                const tooltip = document.getElementById('tooltip');
+                const connections = this.links.filter(l =>
+                    l.source.id === node.id || l.target.id === node.id
+                ).length;
+                
+                tooltip.innerHTML = `
+                    <div class="tooltip-title">${node.label}</div>
+                    <div class="tooltip-content">
+                        <div class="tooltip-stat">
+                            <span>Type:</span>
+                            <span style="color: ${this.nodeColors[node.type]}">${node.type}</span>
+                        </div>
+                        <div class="tooltip-stat">
+                            <span>Connections:</span>
+                            <span>${connections}</span>
+                        </div>
+                        <div class="tooltip-stat">
+                            <span>Weight:</span>
+                            <span>${node.size}</span>
+                        </div>
+                    </div>
+                `;
+                
+                tooltip.style.left = (event.pageX + 15) + 'px';
+                tooltip.style.top = (event.pageY + 15) + 'px';
+                tooltip.classList.add('show');
+            }
+            
+            showLinkTooltip(event, link) {
+                const tooltip = document.getElementById('tooltip');
+                
+                tooltip.innerHTML = `
+                    <div class="tooltip-title">${link.type || 'Connection'}</div>
+                    <div class="tooltip-content">
+                        <div class="tooltip-stat">
+                            <span>From:</span>
+                            <span>${link.source.label}</span>
+                        </div>
+                        <div class="tooltip-stat">
+                            <span>To:</span>
+                            <span>${link.target.label}</span>
+                        </div>
+                        <div class="tooltip-stat">
+                            <span>Weight:</span>
+                            <span>${link.weight}</span>
+                        </div>
+                    </div>
+                `;
+                
+                tooltip.style.left = (event.pageX + 15) + 'px';
+                tooltip.style.top = (event.pageY + 15) + 'px';
+                tooltip.classList.add('show');
+            }
+            
+            hideTooltip() {
+                document.getElementById('tooltip').classList.remove('show');
+            }
+            
+            showNodeContextMenu(event, node) {
+                event.preventDefault();
+                const menu = document.getElementById('contextMenu');
+                
+                menu.style.left = event.pageX + 'px';
+                menu.style.top = event.pageY + 'px';
+                menu.classList.add('show');
+                
+                // Setup context menu actions
+                document.getElementById('ctxHighlight').onclick = () => {
+                    this.highlightConnected(node);
+                    menu.classList.remove('show');
+                };
+                
+                document.getElementById('ctxIsolate').onclick = () => {
+                    this.isolateNode(node);
+                    menu.classList.remove('show');
+                };
+                
+                document.getElementById('ctxPin').onclick = () => {
+                    this.togglePinNode(node);
+                    menu.classList.remove('show');
+                };
+                
+                document.getElementById('ctxExpand').onclick = () => {
+                    this.expandNode(node);
+                    menu.classList.remove('show');
+                };
+                
+                document.getElementById('ctxCopy').onclick = () => {
+                    this.copyNodeData(node);
+                    menu.classList.remove('show');
+                };
+                
+                // Hide menu on click outside
+                document.addEventListener('click', () => {
+                    menu.classList.remove('show');
+                }, { once: true });
+            }
+            
+            showLinkContextMenu(event, link) {
+                event.preventDefault();
+                // Similar context menu for links
+            }
+            
+            highlightConnected(node) {
+                const connected = new Set([node.id]);
+                
+                this.links.forEach(link => {
+                    if (link.source.id === node.id) connected.add(link.target.id);
+                    if (link.target.id === node.id) connected.add(link.source.id);
+                });
+                
+                this.nodeSelection.selectAll('circle.node')
+                    .classed('highlighted', d => connected.has(d.id))
+                    .classed('dimmed', d => !connected.has(d.id));
+            }
+            
+            isolateNode(node) {
+                this.nodeSelection.selectAll('circle.node')
+                    .style('display', d => d.id === node.id ? null : 'none');
+                
+                this.linkSelection
+                    .style('display', d =>
+                        d.source.id === node.id || d.target.id === node.id ? null : 'none'
+                    );
+            }
+            
+            togglePinNode(node) {
+                node.pinned = !node.pinned;
+                if (node.pinned) {
+                    node.fx = node.x;
+                    node.fy = node.y;
+                    this.showToast(`Node "${node.label}" pinned`, 'info');
+                } else {
+                    node.fx = null;
+                    node.fy = null;
+                    this.showToast(`Node "${node.label}" unpinned`, 'info');
+                }
+            }
+            
+            copyNodeData(node) {
+                const data = JSON.stringify(node, null, 2);
+                navigator.clipboard.writeText(data);
+                this.showToast('Node data copied to clipboard', 'success');
+            }
+            
+            searchNodes(query) {
+                if (!query) {
+                    this.nodeSelection.selectAll('circle.node').classed('dimmed', false);
+                    this.linkSelection.classed('dimmed', false);
+                    return;
+                }
+                
+                const lowerQuery = query.toLowerCase();
+                const matchingNodes = new Set();
+                
+                this.nodeSelection.selectAll('circle.node')
+                    .classed('dimmed', d => {
+                        const matches = d.label.toLowerCase().includes(lowerQuery) ||
+                                       d.id.toLowerCase().includes(lowerQuery);
+                        if (matches) matchingNodes.add(d.id);
+                        return !matches;
+                    });
+                
+                this.linkSelection
+                    .classed('dimmed', d =>
+                        !matchingNodes.has(d.source.id) && !matchingNodes.has(d.target.id)
+                    );
+            }
+            
+            applyFilters() {
+                this.nodeSelection
+                    .style('display', d => this.activeFilters.has(d.type) ? null : 'none');
+                
+                this.linkSelection
+                    .style('display', d => {
+                        const sourceVisible = this.activeFilters.has(d.source.type);
+                        const targetVisible = this.activeFilters.has(d.target.type);
+                        return sourceVisible && targetVisible ? null : 'none';
+                    });
+                
+                this.labelSelection
+                    .style('display', d => this.activeFilters.has(d.type) ? null : 'none');
+                
+                this.updateStats();
+            }
+            
+            updateStats() {
+                const visibleNodes = this.nodes.filter(n => this.activeFilters.has(n.type));
+                const visibleLinks = this.links.filter(l =>
+                    this.activeFilters.has(l.source.type) && this.activeFilters.has(l.target.type)
+                );
+                
+                document.getElementById('nodeCount').textContent = visibleNodes.length;
+                document.getElementById('edgeCount').textContent = visibleLinks.length;
+                
+                // Calculate clusters
+                const visited = new Set();
+                let clusters = 0;
+                
+                visibleNodes.forEach(node => {
+                    if (!visited.has(node.id)) {
+                        clusters++;
+                        this.dfs(node, visited, visibleLinks);
+                    }
+                });
+                
+                document.getElementById('clustersCount').textContent = clusters;
+                
+                // Calculate density
+                const maxEdges = (visibleNodes.length * (visibleNodes.length - 1)) / 2;
+                const density = maxEdges > 0 ? ((visibleLinks.length / maxEdges) * 100).toFixed(1) : 0;
+                document.getElementById('densityValue').textContent = density + '%';
+            }
+            
+            dfs(node, visited, links) {
+                visited.add(node.id);
+                links.forEach(link => {
+                    if (link.source.id === node.id && !visited.has(link.target.id)) {
+                        this.dfs(link.target, visited, links);
+                    } else if (link.target.id === node.id && !visited.has(link.source.id)) {
+                        this.dfs(link.source, visited, links);
+                    }
+                });
+            }
+            
+            handleZoom(event) {
+                this.g.attr('transform', event.transform);
+                this.updateMinimap();
+            }
+            
+            centerView() {
+                this.svg.transition()
+                    .duration(750)
+                    .call(
+                        this.zoom.transform,
+                        d3.zoomIdentity.translate(0, 0).scale(1)
+                    );
+            }
+            
+            fitToScreen() {
+                const bounds = this.g.node().getBBox();
+                const fullWidth = this.width;
+                const fullHeight = this.height;
+                const width = bounds.width;
+                const height = bounds.height;
+                const midX = bounds.x + width / 2;
+                const midY = bounds.y + height / 2;
+                
+                const scale = 0.9 / Math.max(width / fullWidth, height / fullHeight);
+                const translate = [fullWidth / 2 - scale * midX, fullHeight / 2 - scale * midY];
+                
+                this.svg.transition()
+                    .duration(750)
+                    .call(
+                        this.zoom.transform,
+                        d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
+                    );
+            }
+            
+            resetZoom() {
+                this.svg.transition()
+                    .duration(750)
+                    .call(
+                        this.zoom.transform,
+                        d3.zoomIdentity
+                    );
+            }
+            
+            toggleFullscreen() {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen();
+                } else {
+                    document.exitFullscreen();
+                }
+            }
+            
+            pauseSimulation() {
+                if (this.simulation) {
+                    this.simulation.stop();
+                    this.isSimulationRunning = false;
+                    document.getElementById('pauseBtn').classList.add('active');
+                    document.getElementById('playBtn').classList.remove('active');
+                }
+            }
+            
+            resumeSimulation() {
+                if (this.simulation) {
+                    this.simulation.restart();
+                    this.isSimulationRunning = true;
+                    document.getElementById('playBtn').classList.add('active');
+                    document.getElementById('pauseBtn').classList.remove('active');
+                }
+            }
+            
+            shuffleLayout() {
+                this.nodes.forEach(node => {
+                    if (!node.pinned) {
+                        node.x = this.width * Math.random();
+                        node.y = this.height * Math.random();
+                    }
+                });
+                
+                this.simulation.alpha(1).restart();
+            }
+            
+            togglePathHighlight() {
+                // Implement shortest path highlighting
+                if (this.selectedNode) {
+                    this.showToast('Select another node to show path', 'info');
+                } else {
+                    this.showToast('Select a node first', 'warning');
+                }
+            }
+            
+            resetGraph() {
+                // Clear selections and filters
+                this.clearSelection();
+                this.activeFilters.clear();
+                Object.keys(this.nodeColors).forEach(type => this.activeFilters.add(type));
+                
+                // Reset filters UI
+                document.querySelectorAll('.filter-btn').forEach(btn => {
+                    btn.classList.add('active');
+                });
+                
+                // Reset layout
+                this.applyForceLayout();
+                this.applyFilters();
+                this.updateStats();
+                
+                this.showToast('Graph reset', 'info');
+            }
+            
+            clearSelection() {
+                this.selectedNode = null;
+                this.nodeSelection.selectAll('circle.node')
+                    .classed('selected', false)
+                    .classed('dimmed', false)
+                    .classed('highlighted', false);
+                
+                this.linkSelection
+                    .classed('highlighted', false)
+                    .classed('dimmed', false);
+                
+                document.getElementById('nodeInfo').innerHTML = `
+                    <div style="color: var(--text-muted); text-align: center; padding: 20px;">
+                        Click on a node to view details
+                    </div>
+                `;
+            }
+            
+            handleResize() {
+                this.width = window.innerWidth;
+                this.height = window.innerHeight;
+                
+                this.svg.attr('width', this.width).attr('height', this.height);
+                
+                if (this.simulation) {
+                    this.simulation.force('center', d3.forceCenter(this.width / 2, this.height / 2));
+                }
+                
+                // Update particle canvas
+                const canvas = document.getElementById('particleCanvas');
+                canvas.width = this.width;
+                canvas.height = this.height;
+            }
+            
+            handleRealtimeUpdate(data) {
+                // Handle WebSocket updates
+                if (data.type === 'nodeUpdate') {
+                    const node = this.nodes.find(n => n.id === data.nodeId);
+                    if (node) {
+                        Object.assign(node, data.updates);
+                        this.updateNodeInfo(node);
+                    }
+                } else if (data.type === 'newConnection') {
+                    this.links.push(data.connection);
+                    this.renderGraph();
+                }
+            }
+            
+            showExportOptions() {
+                // Already handled by export buttons
+            }
+            
+            exportPNG() {
+                // Convert SVG to PNG
+                const svgData = this.svg.node().outerHTML;
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                canvas.width = this.width;
+                canvas.height = this.height;
+                
+                const img = new Image();
+                img.onload = () => {
+                    ctx.drawImage(img, 0, 0);
+                    canvas.toBlob((blob) => {
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `graph_${this.streamerId}_${Date.now()}.png`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                    });
+                };
+                
+                img.src = 'data:image/svg+xml;base64,' + btoa(svgData);
+                this.showToast('Exporting graph as PNG...', 'info');
+            }
+            
+            exportSVG() {
+                const svgData = this.svg.node().outerHTML;
+                const blob = new Blob([svgData], { type: 'image/svg+xml' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `graph_${this.streamerId}_${Date.now()}.svg`;
+                a.click();
+                URL.revokeObjectURL(url);
+                this.showToast('Graph exported as SVG', 'success');
+            }
+            
+            exportJSON() {
+                const data = {
+                    nodes: this.nodes,
+                    links: this.links,
+                    metadata: {
+                        streamer: this.streamerId,
+                        date: new Date().toISOString(),
+                        nodeCount: this.nodes.length,
+                        edgeCount: this.links.length
+                    }
+                };
+                
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `graph_${this.streamerId}_${Date.now()}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                this.showToast('Graph data exported as JSON', 'success');
+            }
+            
+            exportCSV() {
+                // Export nodes
+                const nodeHeaders = ['id', 'label', 'type', 'size'];
+                const nodeRows = this.nodes.map(n => [n.id, n.label, n.type, n.size]);
+                const nodeCSV = [nodeHeaders, ...nodeRows].map(row => row.join(',')).join('\n');
+                
+                // Export edges
+                const edgeHeaders = ['source', 'target', 'weight', 'type'];
+                const edgeRows = this.links.map(l => [l.source.id, l.target.id, l.weight, l.type || '']);
+                const edgeCSV = [edgeHeaders, ...edgeRows].map(row => row.join(',')).join('\n');
+                
+                // Combined CSV
+                const csv = `NODES\n${nodeCSV}\n\nEDGES\n${edgeCSV}`;
+                
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `graph_${this.streamerId}_${Date.now()}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+                this.showToast('Graph exported as CSV', 'success');
+            }
+            
+            showShortcutsModal() {
+                document.getElementById('shortcutsModal').classList.add('show');
+            }
+            
+            showLoading(show) {
+                const overlay = document.getElementById('loadingOverlay');
+                if (show) {
+                    overlay.classList.add('show');
+                } else {
+                    overlay.classList.remove('show');
+                }
+            }
+            
+            showToast(message, type = 'info') {
+                const container = document.getElementById('toastContainer');
+                const toast = document.createElement('div');
+                toast.className = `toast ${type}`;
+                
+                const icons = {
+                    success: 'fa-check-circle',
+                    error: 'fa-exclamation-circle',
+                    warning: 'fa-exclamation-triangle',
+                    info: 'fa-info-circle'
+                };
+                
+                toast.innerHTML = `
+                    <i class="fas ${icons[type]} toast-icon"></i>
+                    <div class="toast-content">
+                        <div class="toast-message">${message}</div>
+                    </div>
+                `;
+                
+                container.appendChild(toast);
+                
+                // Auto remove after 3 seconds
+                timerManager.setTimeout(() => {
+                    toast.style.animation = 'slideInRight 0.3s ease reverse';
+                    timerManager.setTimeout(() => {
+                        container.removeChild(toast);
+                    }, 300);
+                }, 3000);
+            }
+            
+            startAnimations() {
+                // Add subtle animations to enhance visual appeal
+                timerManager.setInterval(() => {
+                    if (this.isSimulationRunning && Math.random() > 0.95) {
+                        // Random pulse effect on random node
+                        const randomNode = this.nodes[Math.floor(Math.random() * this.nodes.length)];
+                        if (randomNode) {
+                            const selection = this.nodeSelection.filter(d => d.id === randomNode.id);
+                            selection.select('circle.node')
+                                .transition()
+                                .duration(300)
+                                .attr('r', randomNode.size * 1.5)
+                                .transition()
+                                .duration(300)
+                                .attr('r', randomNode.size);
+                        }
+                    }
+                }, 2000);
+            }
+        }
+        
+        // Initialize visualizer when DOM is ready
+        document.addEventListener('DOMContentLoaded', () => {
+            window.graphVisualizer = new GraphVisualizerPro();
+            console.log('Graph Visualizer Pro initialized');
+        });
+    </script>
+</body>
+</html>

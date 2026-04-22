@@ -1,0 +1,379 @@
+{% extends "base-clean.html" %}
+
+{% block title %}Dashboard - TalkBot{% endblock %}
+
+{% block charts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div x-data="dashboardApp()">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <h1>Dashboard</h1>
+        <p>Monitor your bot's performance and activity</p>
+    </div>
+
+    <!-- Main Grid Layout - Balanced 12-column grid -->
+    <div style="display: grid; grid-template-columns: repeat(12, 1fr); gap: var(--space-6); margin-bottom: var(--space-8);">
+        
+        <!-- Bot Metrics Card (4 columns) -->
+        <div class="card" style="grid-column: span 4;">
+            <div class="card-header">
+                <h3 class="card-title">Bot Metrics</h3>
+                <span class="badge" :class="botActive ? 'badge-success' : 'badge-error'" x-text="botActive ? 'Active' : 'Inactive'"></span>
+            </div>
+            <div class="card-body">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <div class="metric-label">Messages Today</div>
+                        <div class="metric-value" x-text="metrics.messagestoday"></div>
+                        <div class="metric-change" :class="metrics.messagesTrend > 0 ? 'positive' : 'negative'">
+                            <span x-text="metrics.messagesTrend > 0 ? '↑' : '↓'"></span>
+                            <span x-text="Math.abs(metrics.messagesTrend) + '%'"></span>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="metric-label">Response Rate</div>
+                        <div class="metric-value" x-text="metrics.responseRate + '%'"></div>
+                        <div class="metric-change" :class="metrics.responseTrend > 0 ? 'positive' : 'negative'">
+                            <span x-text="metrics.responseTrend > 0 ? '↑' : '↓'"></span>
+                            <span x-text="Math.abs(metrics.responseTrend) + '%'"></span>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="metric-label">Avg Response Time</div>
+                        <div class="metric-value" x-text="metrics.avgResponseTime + 's'"></div>
+                        <div class="text-xs text-muted mt-1">Target: <2s</div>
+                    </div>
+                    <div>
+                        <div class="metric-label">Active Users</div>
+                        <div class="metric-value" x-text="metrics.activeUsers"></div>
+                        <div class="text-xs text-muted mt-1">Last 30 min</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Activity Overview (5 columns) -->
+        <div class="card" style="grid-column: span 5;">
+            <div class="card-header">
+                <h3 class="card-title">Activity Overview</h3>
+                <select @change="updateActivityChart()" x-model="activityRange" class="form-select" style="width: 140px;">
+                    <option value="7">Last 7 days</option>
+                    <option value="30">Last 30 days</option>
+                    <option value="90">Last 3 months</option>
+                </select>
+            </div>
+            <div class="card-body">
+                <canvas id="activityChart" height="180"></canvas>
+            </div>
+        </div>
+
+        <!-- System Health (3 columns) -->
+        <div class="card" style="grid-column: span 3;">
+            <div class="card-header">
+                <h3 class="card-title">System Health</h3>
+            </div>
+            <div class="card-body">
+                <div class="space-y-3" style="display: flex; flex-direction: column; gap: var(--space-3);">
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <span class="text-sm">CPU Usage</span>
+                            <span class="text-sm font-medium" x-text="health.cpu + '%'"></span>
+                        </div>
+                        <div class="w-full bg-elevated rounded-full" style="height: 6px; background: var(--bg-elevated);">
+                            <div class="rounded-full" 
+                                 :class="health.cpu > 80 ? 'bg-error' : health.cpu > 60 ? 'bg-warning' : 'bg-success'"
+                                 :style="`width: ${health.cpu}%; height: 6px; background: ${health.cpu > 80 ? 'var(--color-error)' : health.cpu > 60 ? 'var(--color-warning)' : 'var(--color-success)'};`"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <span class="text-sm">Memory</span>
+                            <span class="text-sm font-medium" x-text="health.memory + '%'"></span>
+                        </div>
+                        <div class="w-full bg-elevated rounded-full" style="height: 6px; background: var(--bg-elevated);">
+                            <div class="rounded-full"
+                                 :class="health.memory > 80 ? 'bg-error' : health.memory > 60 ? 'bg-warning' : 'bg-success'"
+                                 :style="`width: ${health.memory}%; height: 6px; background: ${health.memory > 80 ? 'var(--color-error)' : health.memory > 60 ? 'var(--color-warning)' : 'var(--color-success)'};`"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <span class="text-sm">API Latency</span>
+                            <span class="text-sm font-medium" x-text="health.latency + 'ms'"></span>
+                        </div>
+                        <div class="w-full bg-elevated rounded-full" style="height: 6px; background: var(--bg-elevated);">
+                            <div class="rounded-full"
+                                 :class="health.latency > 500 ? 'bg-error' : health.latency > 200 ? 'bg-warning' : 'bg-success'"
+                                 :style="`width: ${Math.min((health.latency / 1000) * 100, 100)}%; height: 6px; background: ${health.latency > 500 ? 'var(--color-error)' : health.latency > 200 ? 'var(--color-warning)' : 'var(--color-success)'};`"></div>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-3 border-t" style="border-color: var(--border-default);">
+                        <div class="text-sm text-muted">Uptime</div>
+                        <div class="text-lg font-semibold" x-text="health.uptime"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Second Row - Balanced layout -->
+    <div style="display: grid; grid-template-columns: repeat(12, 1fr); gap: var(--space-6); margin-bottom: var(--space-8);">
+        
+        <!-- Current Personality (6 columns) -->
+        <div class="card" style="grid-column: span 6;">
+            <div class="card-header">
+                <h3 class="card-title">Current Personality</h3>
+                <div class="flex gap-2">
+                    <span class="badge badge-info" x-text="personality.preset"></span>
+                    <a href="/settings/{{ streamer_id }}" class="btn btn-sm btn-secondary">Edit</a>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="grid grid-cols-2 gap-4">
+                    <template x-for="trait in personality.traits" :key="trait.name">
+                        <div class="slider-container personality-slider" :class="trait.name.toLowerCase()">
+                            <div class="slider-header">
+                                <span class="slider-label" x-text="trait.name"></span>
+                                <span class="slider-value" x-text="trait.value + '%'"></span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <div class="slider-progress" :style="`width: ${trait.value}%`"></div>
+                                <input type="range" min="0" max="100" :value="trait.value" class="tbx-range" disabled>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Activity (6 columns) -->
+        <div class="card" style="grid-column: span 6;">
+            <div class="card-header">
+                <h3 class="card-title">Recent Activity</h3>
+                <button @click="refreshActivity()" class="btn btn-sm btn-ghost">Refresh</button>
+            </div>
+            <div class="table-container" style="max-height: 320px; overflow-y: auto;">
+                <table class="table">
+                    <thead style="position: sticky; top: 0; background: var(--bg-elevated); z-index: 10;">
+                        <tr>
+                            <th>Time</th>
+                            <th>User</th>
+                            <th>Message</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="activity in recentActivity" :key="activity.id">
+                            <tr>
+                                <td class="text-muted text-xs" x-text="activity.time"></td>
+                                <td class="text-sm" x-text="activity.user"></td>
+                                <td class="text-sm" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" 
+                                    x-text="activity.message" 
+                                    :title="activity.message"></td>
+                                <td>
+                                    <span class="badge" 
+                                          :class="{
+                                              'badge-success': activity.status === 'responded',
+                                              'badge-info': activity.status === 'command',
+                                              'badge-default': activity.status === 'ignored',
+                                              'badge-error': activity.status === 'error'
+                                          }"
+                                          x-text="activity.status"></span>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Third Row - Quick Stats -->
+    <div class="grid grid-cols-4 gap-6">
+        <div class="metric-card">
+            <div class="metric-label">Memory Entries</div>
+            <div class="metric-value" x-text="stats.memoryEntries"></div>
+            <div class="text-xs text-muted mt-2">
+                <span x-text="stats.memorySize"></span> used
+            </div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Commands Processed</div>
+            <div class="metric-value" x-text="stats.commandsToday"></div>
+            <div class="text-xs text-muted mt-2">Today</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Unique Chatters</div>
+            <div class="metric-value" x-text="stats.uniqueChatters"></div>
+            <div class="text-xs text-muted mt-2">Last 24h</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">TTS Messages</div>
+            <div class="metric-value" x-text="stats.ttsMessages"></div>
+            <div class="text-xs text-muted mt-2">
+                <span x-text="stats.ttsEnabled ? 'Enabled' : 'Disabled'"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function dashboardApp() {
+    return {
+        botActive: true,
+        activityRange: '7',
+        activityChart: null,
+        
+        metrics: {
+            messagestoday: '1,247',
+            messagesTrend: 12,
+            responseRate: 68,
+            responseTrend: 5,
+            avgResponseTime: 1.2,
+            activeUsers: 42
+        },
+        
+        health: {
+            cpu: 35,
+            memory: 52,
+            latency: 120,
+            uptime: '14d 7h 23m'
+        },
+        
+        personality: {
+            preset: 'Friendly',
+            traits: [
+                { name: 'Warmth', value: 75 },
+                { name: 'Energy', value: 60 },
+                { name: 'Humor', value: 85 },
+                { name: 'Sass', value: 40 },
+                { name: 'Verbosity', value: 50 }
+            ]
+        },
+        
+        recentActivity: [
+            { id: 1, time: '2 mins ago', user: 'user123', message: "How's everyone doing today?", status: 'responded' },
+            { id: 2, time: '5 mins ago', user: 'streamer456', message: '!stats', status: 'command' },
+            { id: 3, time: '8 mins ago', user: 'viewer789', message: 'Great stream!', status: 'ignored' },
+            { id: 4, time: '12 mins ago', user: 'chatter101', message: 'What game is this?', status: 'responded' },
+            { id: 5, time: '15 mins ago', user: 'mod_user', message: '!timeout spammer123', status: 'command' },
+            { id: 6, time: '18 mins ago', user: 'regular_viewer', message: 'Love the energy today!', status: 'responded' }
+        ],
+        
+        stats: {
+            memoryEntries: '1,247',
+            memorySize: '89 MB',
+            commandsToday: 156,
+            uniqueChatters: 289,
+            ttsMessages: 432,
+            ttsEnabled: true
+        },
+        
+        init() {
+            this.initActivityChart();
+            this.startPolling();
+        },
+        
+        initActivityChart() {
+            const ctx = document.getElementById('activityChart').getContext('2d');
+            
+            const chartConfig = {
+                type: 'line',
+                data: this.getActivityData(),
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            padding: 12,
+                            cornerRadius: 8,
+                            titleFont: { size: 14, weight: '600' },
+                            bodyFont: { size: 13 }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false, borderColor: 'rgba(255, 255, 255, 0.08)' },
+                            ticks: { color: '#a3a3a3', font: { size: 11 } }
+                        },
+                        y: {
+                            grid: { color: 'rgba(255, 255, 255, 0.04)', borderColor: 'rgba(255, 255, 255, 0.08)' },
+                            ticks: { color: '#a3a3a3', font: { size: 11 } }
+                        }
+                    }
+                }
+            };
+            
+            this.activityChart = new Chart(ctx, chartConfig);
+        },
+        
+        getActivityData() {
+            const days = parseInt(this.activityRange);
+            const labels = [];
+            const data = [];
+            
+            if (days === 7) {
+                labels.push('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun');
+                data.push(850, 920, 1100, 980, 1250, 1400, 1247);
+            } else if (days === 30) {
+                for (let i = 29; i >= 0; i--) {
+                    labels.push(`-${i}d`);
+                    data.push(Math.floor(Math.random() * 1000) + 500);
+                }
+            } else {
+                for (let i = 11; i >= 0; i--) {
+                    labels.push(`-${i}w`);
+                    data.push(Math.floor(Math.random() * 8000) + 4000);
+                }
+            }
+            
+            return {
+                labels: labels,
+                datasets: [{
+                    label: 'Messages',
+                    data: data,
+                    borderColor: '#8b5cf6',
+                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: days === 7 ? 4 : 0,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: '#8b5cf6',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2
+                }]
+            };
+        },
+        
+        updateActivityChart() {
+            if (this.activityChart) {
+                this.activityChart.data = this.getActivityData();
+                this.activityChart.update();
+            }
+        },
+        
+        refreshActivity() {
+            // Simulate refresh
+            Toast.show('Activity refreshed', 'success');
+        },
+        
+        startPolling() {
+            // Poll for updates every 30 seconds
+            timerManager.setInterval(() => {
+                // Update metrics
+                this.metrics.activeUsers = Math.floor(Math.random() * 20) + 35;
+                this.health.cpu = Math.floor(Math.random() * 30) + 25;
+                this.health.memory = Math.floor(Math.random() * 30) + 45;
+                this.health.latency = Math.floor(Math.random() * 100) + 80;
+            }, 30000);
+        }
+    }
+}
+</script>
+{% endblock %}

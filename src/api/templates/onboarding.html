@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Setup Wizard - TalkBot</title>
+    <link rel="stylesheet" href="/static/css/design-system.css">
+    <link rel="stylesheet" href="/static/css/onboarding.css">
+</head>
+<body class="tbx-theme-dark">
+    <div class="tbx-onboarding">
+        <!-- Progress Header -->
+        <header class="tbx-onboarding__header">
+            <div class="tbx-onboarding__container">
+                <div class="tbx-onboarding__brand">
+                    <div class="tbx-logo">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                        </svg>
+                    </div>
+                    <h1 class="tbx-onboarding__title">TalkBot Setup</h1>
+                </div>
+                
+                <!-- Progress Bar -->
+                <div class="tbx-progress-bar" id="progress-bar">
+                    <div class="tbx-progress-bar__track">
+                        <div class="tbx-progress-bar__fill" id="progress-fill"></div>
+                    </div>
+                    <div class="tbx-progress-bar__steps" id="progress-steps">
+                        <div class="tbx-progress-step tbx-progress-step--active" data-step="1">
+                            <span class="tbx-progress-step__number">1</span>
+                            <span class="tbx-progress-step__label">Welcome</span>
+                        </div>
+                        <div class="tbx-progress-step" data-step="2">
+                            <span class="tbx-progress-step__number">2</span>
+                            <span class="tbx-progress-step__label">Twitch</span>
+                        </div>
+                        <div class="tbx-progress-step" data-step="3">
+                            <span class="tbx-progress-step__number">3</span>
+                            <span class="tbx-progress-step__label">OpenAI</span>
+                        </div>
+                        <div class="tbx-progress-step" data-step="4">
+                            <span class="tbx-progress-step__number">4</span>
+                            <span class="tbx-progress-step__label">Voice</span>
+                        </div>
+                        <div class="tbx-progress-step" data-step="5">
+                            <span class="tbx-progress-step__number">5</span>
+                            <span class="tbx-progress-step__label">Personality</span>
+                        </div>
+                        <div class="tbx-progress-step" data-step="6">
+                            <span class="tbx-progress-step__number">6</span>
+                            <span class="tbx-progress-step__label">Complete</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="tbx-onboarding__main">
+            <div class="tbx-onboarding__container">
+                <!-- Step 1: Welcome -->
+                <div class="tbx-onboarding__step" id="step-1">
+                    <div class="tbx-welcome-step">
+                        <div class="tbx-welcome-step__hero">
+                            <div class="tbx-welcome-step__icon">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                                </svg>
+                            </div>
+                            <h2 class="tbx-heading tbx-heading--2xl">Welcome to TalkBot!</h2>
+                            <p class="tbx-text tbx-text--lg tbx-text--muted">
+                                Let's get your AI-powered Twitch bot up and running in just a few minutes.
+                            </p>
+                        </div>
+                        
+                        <div class="tbx-welcome-step__features">
+                            <div class="tbx-feature-card">
+                                <div class="tbx-feature-card__icon">
+                                    <svg viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M12 14l9-5-9-5-9 5 9 5z"/>
+                                        <path d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"/>
+                                    </svg>
+                                </div>
+                                <h3 class="tbx-feature-card__title">AI Chat Response</h3>
+                                <p class="tbx-feature-card__desc">Intelligent responses to chat messages using GPT models</p>
+                            </div>
+                            
+                            <div class="tbx-feature-card">
+                                <div class="tbx-feature-card__icon">
+                                    <svg viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M15.536 12.464a1 1 0 01-1.414 0L12 10.343 9.878 12.464a1 1 0 11-1.414-1.414l2.829-2.829a1 1 0 011.414 0l2.829 2.829a1 1 0 010 1.414z"/>
+                                    </svg>
+                                </div>
+                                <h3 class="tbx-feature-card__title">Voice Synthesis</h3>
+                                <p class="tbx-feature-card__desc">Text-to-speech with multiple voice options</p>
+                            </div>
+                            
+                            <div class="tbx-feature-card">
+                                <div class="tbx-feature-card__icon">
+                                    <svg viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                                    </svg>
+                                </div>
+                                <h3 class="tbx-feature-card__title">Memory System</h3>
+                                <p class="tbx-feature-card__desc">Remembers viewers and conversation context</p>
+                            </div>
+                            
+                            <div class="tbx-feature-card">
+                                <div class="tbx-feature-card__icon">
+                                    <svg viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2h4a1 1 0 110 2h-1v11a3 3 0 01-3 3H7a3 3 0 01-3-3V6H3a1 1 0 110-2h4zM9 3v1h6V3H9zm0 5a1 1 0 012 0v6a1 1 0 01-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 01-2 0V8z"/>
+                                    </svg>
+                                </div>
+                                <h3 class="tbx-feature-card__title">Customizable Personality</h3>
+                                <p class="tbx-feature-card__desc">Multiple personality modes and custom traits</p>
+                            </div>
+                        </div>
+                        
+                        <div class="tbx-welcome-step__info">
+                            <div class="tbx-info-card">
+                                <div class="tbx-info-card__header">
+                                    <svg class="tbx-info-card__icon" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                    <h4 class="tbx-info-card__title">What you'll need</h4>
+                                </div>
+                                <ul class="tbx-info-card__list">
+                                    <li>Twitch account with bot permissions</li>
+                                    <li>OpenAI API key (for AI responses)</li>
+                                    <li>About 5 minutes to complete setup</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Twitch Connection -->
+                <div class="tbx-onboarding__step tbx-onboarding__step--hidden" id="step-2">
+                    <div class="tbx-step-content">
+                        <div class="tbx-step-header">
+                            <h2 class="tbx-heading tbx-heading--xl">Connect to Twitch</h2>
+                            <p class="tbx-text tbx-text--muted">
+                                Configure your Twitch bot connection settings
+                            </p>
+                        </div>
+                        
+                        <div class="tbx-form-section">
+                            <div class="tbx-form-group">
+                                <label class="tbx-label" for="twitch-username">Bot Username</label>
+                                <input 
+                                    type="text" 
+                                    id="twitch-username" 
+                                    class="tbx-input" 
+                                    placeholder="your_bot_username"
+                                    required
+                                >
+                                <span class="tbx-text tbx-text--sm tbx-text--muted">
+                                    The Twitch username your bot will use to connect
+                                </span>
+                            </div>
+                            
+                            <div class="tbx-form-group">
+                                <label class="tbx-label" for="twitch-token">OAuth Token</label>
+                                <div class="tbx-input-group">
+                                    <input 
+                                        type="password" 
+                                        id="twitch-token" 
+                                        class="tbx-input" 
+                                        placeholder="oauth:your_token_here"
+                                        required
+                                    >
+                                    <button type="button" class="tbx-btn tbx-btn--icon" id="toggle-token-visibility">
+                                        <svg class="tbx-icon-show" viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                            <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                        </svg>
+                                        <svg class="tbx-icon-hide" viewBox="0 0 24 24" fill="currentColor" style="display: none;">
+                                            <path d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L12 12m-2.122-2.122L7.76 7.76M12 12l2.122 2.122m-2.122-2.122L14.12 14.12M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                            <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                                <span class="tbx-text tbx-text--sm tbx-text--muted">
+                                    Generate this at 
+                                    <a href="https://twitchapps.com/tmi/" target="_blank" class="tbx-link">
+                                        twitchapps.com/tmi
+                                    </a>
+                                </span>
+                            </div>
+                            
+                            <div class="tbx-form-group">
+                                <label class="tbx-label" for="twitch-channel">Channel to Monitor</label>
+                                <input 
+                                    type="text" 
+                                    id="twitch-channel" 
+                                    class="tbx-input" 
+                                    placeholder="your_channel_name"
+                                    required
+                                >
+                                <span class="tbx-text tbx-text--sm tbx-text--muted">
+                                    The Twitch channel where the bot will respond to messages
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div class="tbx-connection-test" id="twitch-test">
+                            <button type="button" class="tbx-btn tbx-btn--secondary" id="test-twitch-connection">
+                                <svg class="tbx-icon" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                Test Connection
+                            </button>
+                            <div class="tbx-connection-status" id="twitch-status"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3: OpenAI API Key -->
+                <div class="tbx-onboarding__step tbx-onboarding__step--hidden" id="step-3">
+                    <div class="tbx-step-content">
+                        <div class="tbx-step-header">
+                            <h2 class="tbx-heading tbx-heading--xl">OpenAI Configuration</h2>
+                            <p class="tbx-text tbx-text--muted">
+                                Add your OpenAI API key to enable AI responses
+                            </p>
+                        </div>
+                        
+                        <div class="tbx-form-section">
+                            <div class="tbx-form-group">
+                                <label class="tbx-label" for="openai-key">API Key</label>
+                                <div class="tbx-input-group">
+                                    <input 
+                                        type="password" 
+                                        id="openai-key" 
+                                        class="tbx-input" 
+                                        placeholder="sk-..."
+                                        required
+                                    >
+                                    <button type="button" class="tbx-btn tbx-btn--icon" id="toggle-key-visibility">
+                                        <svg class="tbx-icon-show" viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                            <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                        </svg>
+                                        <svg class="tbx-icon-hide" viewBox="0 0 24 24" fill="currentColor" style="display: none;">
+                                            <path d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L12 12m-2.122-2.122L7.76 7.76M12 12l2.122 2.122m-2.122-2.122L14.12 14.12M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                            <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                                <span class="tbx-text tbx-text--sm tbx-text--muted">
+                                    Get your API key from 
+                                    <a href="https://platform.openai.com/api-keys" target="_blank" class="tbx-link">
+                                        OpenAI Platform
+                                    </a>
+                                </span>
+                            </div>
+                            
+                            <div class="tbx-form-group">
+                                <label class="tbx-label" for="ai-model">AI Model</label>
+                                <select id="ai-model" class="tbx-select">
+                                    <option value="gpt-4o-mini">GPT-4o Mini (Recommended)</option>
+                                    <option value="gpt-4o">GPT-4o (Premium)</option>
+                                    <option value="gpt-3.5-turbo">GPT-3.5 Turbo (Budget)</option>
+                                </select>
+                                <span class="tbx-text tbx-text--sm tbx-text--muted">
+                                    GPT-4o Mini offers the best balance of speed, quality, and cost
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div class="tbx-pricing-info">
+                            <h4 class="tbx-heading tbx-heading--sm">Estimated Costs</h4>
+                            <div class="tbx-pricing-grid">
+                                <div class="tbx-pricing-card">
+                                    <div class="tbx-pricing-card__model">GPT-4o Mini</div>
+                                    <div class="tbx-pricing-card__cost">~$1-3/month</div>
+                                    <div class="tbx-pricing-card__desc">For typical streaming usage</div>
+                                </div>
+                                <div class="tbx-pricing-card">
+                                    <div class="tbx-pricing-card__model">GPT-4o</div>
+                                    <div class="tbx-pricing-card__cost">~$10-20/month</div>
+                                    <div class="tbx-pricing-card__desc">Higher quality responses</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="tbx-connection-test" id="openai-test">
+                            <button type="button" class="tbx-btn tbx-btn--secondary" id="test-openai-connection">
+                                <svg class="tbx-icon" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                Test API Key
+                            </button>
+                            <div class="tbx-connection-status" id="openai-status"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 4: Voice Settings -->
+                <div class="tbx-onboarding__step tbx-onboarding__step--hidden" id="step-4">
+                    <div class="tbx-step-content">
+                        <div class="tbx-step-header">
+                            <h2 class="tbx-heading tbx-heading--xl">Voice Configuration</h2>
+                            <p class="tbx-text tbx-text--muted">
+                                Set up text-to-speech for your bot responses
+                            </p>
+                        </div>
+                        
+                        <div class="tbx-form-section">
+                            <div class="tbx-form-group">
+                                <label class="tbx-label">Enable Voice Responses</label>
+                                <div class="tbx-toggle-group">
+                                    <div class="tbx-toggle">
+                                        <input type="checkbox" id="enable-voice" checked>
+                                        <label for="enable-voice" class="tbx-toggle__label">
+                                            <span class="tbx-toggle__slider"></span>
+                                        </label>
+                                    </div>
+                                    <span class="tbx-text tbx-text--sm">
+                                        Bot will speak responses using text-to-speech
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            <div class="tbx-voice-settings" id="voice-settings">
+                                <div class="tbx-form-group">
+                                    <label class="tbx-label" for="voice-model">Voice</label>
+                                    <select id="voice-model" class="tbx-select">
+                                        <option value="alloy">Alloy (Neutral)</option>
+                                        <option value="echo">Echo (Male)</option>
+                                        <option value="fable">Fable (British Male)</option>
+                                        <option value="onyx">Onyx (Deep Male)</option>
+                                        <option value="nova">Nova (Female)</option>
+                                        <option value="shimmer">Shimmer (Soft Female)</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="tbx-form-group">
+                                    <label class="tbx-label" for="voice-speed">Speech Speed</label>
+                                    <div class="audio-slider-container voice-speed-slider">
+                                        <input 
+                                            type="range" 
+                                            id="voice-speed" 
+                                            class="range-slider audio-slider" 
+                                            min="0.5" 
+                                            max="2.0" 
+                                            step="0.1" 
+                                            value="1.0"
+                                            data-format="{value}x"
+                                        >
+                                        <div class="slider-progress-fill"></div>
+                                        <div class="slider-value-bubble"></div>
+                                        <div class="slider-labels">
+                                            <span class="slider-label-left">0.5x</span>
+                                            <span class="slider-label-center" id="speed-value">1.0x</span>
+                                            <span class="slider-label-right">2.0x</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="tbx-voice-test">
+                                    <button type="button" class="tbx-btn tbx-btn--secondary" id="test-voice">
+                                        <svg class="tbx-icon" viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M8 5v14l11-7z"/>
+                                        </svg>
+                                        Test Voice
+                                    </button>
+                                    <div class="tbx-voice-test__status" id="voice-test-status"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 5: Personality Setup -->
+                <div class="tbx-onboarding__step tbx-onboarding__step--hidden" id="step-5">
+                    <div class="tbx-step-content">
+                        <div class="tbx-step-header">
+                            <h2 class="tbx-heading tbx-heading--xl">Personality Setup</h2>
+                            <p class="tbx-text tbx-text--muted">
+                                Choose how your bot should respond to your community
+                            </p>
+                        </div>
+                        
+                        <div class="tbx-personality-presets">
+                            <h4 class="tbx-heading tbx-heading--sm">Choose a Starting Personality</h4>
+                            
+                            <div class="tbx-personality-grid">
+                                <label class="tbx-personality-card" for="personality-supportive">
+                                    <input type="radio" name="personality" id="personality-supportive" value="supportive" checked>
+                                    <div class="tbx-personality-card__content">
+                                        <div class="tbx-personality-card__icon">🤗</div>
+                                        <h5 class="tbx-personality-card__title">Supportive</h5>
+                                        <p class="tbx-personality-card__desc">
+                                            Encouraging and positive, great for building community
+                                        </p>
+                                    </div>
+                                </label>
+                                
+                                <label class="tbx-personality-card" for="personality-hype">
+                                    <input type="radio" name="personality" id="personality-hype" value="hype">
+                                    <div class="tbx-personality-card__content">
+                                        <div class="tbx-personality-card__icon">🔥</div>
+                                        <h5 class="tbx-personality-card__title">Hype</h5>
+                                        <p class="tbx-personality-card__desc">
+                                            High-energy and enthusiastic, perfect for gaming streams
+                                        </p>
+                                    </div>
+                                </label>
+                                
+                                <label class="tbx-personality-card" for="personality-chill">
+                                    <input type="radio" name="personality" id="personality-chill" value="chill">
+                                    <div class="tbx-personality-card__content">
+                                        <div class="tbx-personality-card__icon">😌</div>
+                                        <h5 class="tbx-personality-card__title">Chill</h5>
+                                        <p class="tbx-personality-card__desc">
+                                            Laid-back and casual, ideal for creative or chat streams
+                                        </p>
+                                    </div>
+                                </label>
+                                
+                                <label class="tbx-personality-card" for="personality-roast">
+                                    <input type="radio" name="personality" id="personality-roast" value="roast">
+                                    <div class="tbx-personality-card__content">
+                                        <div class="tbx-personality-card__icon">🔥</div>
+                                        <h5 class="tbx-personality-card__title">Roast</h5>
+                                        <p class="tbx-personality-card__desc">
+                                            Playfully sarcastic, good for established communities
+                                        </p>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="tbx-personality-preview" id="personality-preview">
+                            <h4 class="tbx-heading tbx-heading--sm">Preview</h4>
+                            <div class="tbx-preview-message">
+                                <div class="tbx-preview-message__user">viewer123: Hi bot, how are you?</div>
+                                <div class="tbx-preview-message__bot" id="preview-response">
+                                    Hey there! I'm doing great, thanks for asking! How's your day going? 😊
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="tbx-form-group">
+                            <label class="tbx-label">Additional Settings</label>
+                            <div class="tbx-checkbox-group">
+                                <label class="tbx-checkbox">
+                                    <input type="checkbox" id="enable-memory" checked>
+                                    <span class="tbx-checkbox__checkmark"></span>
+                                    <span class="tbx-checkbox__label">
+                                        Remember viewers and conversations
+                                    </span>
+                                </label>
+                                
+                                <label class="tbx-checkbox">
+                                    <input type="checkbox" id="enable-context" checked>
+                                    <span class="tbx-checkbox__checkmark"></span>
+                                    <span class="tbx-checkbox__label">
+                                        Use stream context for better responses
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 6: Complete -->
+                <div class="tbx-onboarding__step tbx-onboarding__step--hidden" id="step-6">
+                    <div class="tbx-completion-step">
+                        <div class="tbx-completion-step__hero">
+                            <div class="tbx-completion-step__icon">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                            </div>
+                            <h2 class="tbx-heading tbx-heading--2xl">Setup Complete!</h2>
+                            <p class="tbx-text tbx-text--lg tbx-text--muted">
+                                Your TalkBot is now configured and ready to engage with your community.
+                            </p>
+                        </div>
+                        
+                        <div class="tbx-completion-summary">
+                            <h3 class="tbx-heading tbx-heading--lg">Configuration Summary</h3>
+                            <div class="tbx-summary-grid">
+                                <div class="tbx-summary-item">
+                                    <div class="tbx-summary-item__label">Twitch Channel</div>
+                                    <div class="tbx-summary-item__value" id="summary-channel">-</div>
+                                </div>
+                                <div class="tbx-summary-item">
+                                    <div class="tbx-summary-item__label">AI Model</div>
+                                    <div class="tbx-summary-item__value" id="summary-model">-</div>
+                                </div>
+                                <div class="tbx-summary-item">
+                                    <div class="tbx-summary-item__label">Voice</div>
+                                    <div class="tbx-summary-item__value" id="summary-voice">-</div>
+                                </div>
+                                <div class="tbx-summary-item">
+                                    <div class="tbx-summary-item__label">Personality</div>
+                                    <div class="tbx-summary-item__value" id="summary-personality">-</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="tbx-next-steps">
+                            <h3 class="tbx-heading tbx-heading--lg">Next Steps</h3>
+                            <div class="tbx-next-steps__grid">
+                                <div class="tbx-next-step">
+                                    <div class="tbx-next-step__number">1</div>
+                                    <div class="tbx-next-step__content">
+                                        <h4>Start Your Bot</h4>
+                                        <p>Head to the dashboard to activate your bot</p>
+                                    </div>
+                                </div>
+                                <div class="tbx-next-step">
+                                    <div class="tbx-next-step__number">2</div>
+                                    <div class="tbx-next-step__content">
+                                        <h4>Test Responses</h4>
+                                        <p>Try chatting in your stream to see the bot in action</p>
+                                    </div>
+                                </div>
+                                <div class="tbx-next-step">
+                                    <div class="tbx-next-step__number">3</div>
+                                    <div class="tbx-next-step__content">
+                                        <h4>Customize Further</h4>
+                                        <p>Fine-tune personality traits and settings</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="tbx-completion-actions">
+                            <button type="button" class="tbx-btn tbx-btn--primary tbx-btn--lg" id="go-to-dashboard">
+                                Go to Dashboard
+                            </button>
+                            <button type="button" class="tbx-btn tbx-btn--secondary" id="advanced-settings">
+                                Advanced Settings
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Navigation -->
+        <div class="tbx-onboarding__navigation">
+            <div class="tbx-onboarding__container">
+                <div class="tbx-nav-buttons">
+                    <button type="button" class="tbx-btn tbx-btn--secondary" id="back-btn" disabled>
+                        <svg class="tbx-icon" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+                        </svg>
+                        Back
+                    </button>
+                    
+                    <div class="tbx-nav-info">
+                        <span class="tbx-nav-info__current" id="step-counter">1</span>
+                        <span class="tbx-nav-info__separator">of</span>
+                        <span class="tbx-nav-info__total">6</span>
+                    </div>
+                    
+                    <button type="button" class="tbx-btn tbx-btn--primary" id="next-btn">
+                        Next
+                        <svg class="tbx-icon" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="tbx-toast-container" id="toast-container"></div>
+
+    <script src="/static/js/onboarding.js"></script>
+    <!-- Unified Slider System - Consistent interactions for all sliders -->
+    <script src="/static/js/unified-sliders.js"></script>
+</body>
+</html>

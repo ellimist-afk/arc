@@ -1,0 +1,852 @@
+{% extends "base-v2.html" %}
+
+{% block title %}Settings - {{ streamer_id }}{% endblock %}
+
+{% block head %}
+<!-- SIMPLIFIED DESIGN SYSTEM -->
+<link rel="stylesheet" href="/static/v2/css/pages/settings.css">
+<link rel="stylesheet" href="/static/css/unified-slider-system.css">
+<link rel="stylesheet" href="/static/css/card-overlap-fix.css">
+<style>
+/* Hide any x-cloak elements until Alpine loads */
+[x-cloak] {
+    display: none !important;
+}
+
+/* Connection Status Styles */
+.tbx-connection-status {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.tbx-status-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    background-color: #1A1A20;
+    border: 1px solid #2A2A32;
+}
+
+.tbx-status-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.tbx-status-success .tbx-status-indicator,
+.tbx-status-indicator.tbx-status-success {
+    background-color: #10B981;
+}
+
+.tbx-status-warning .tbx-status-indicator,
+.tbx-status-indicator.tbx-status-warning {
+    background-color: #F59E0B;
+}
+
+.tbx-status-error .tbx-status-indicator,
+.tbx-status-indicator.tbx-status-error {
+    background-color: #EF4444;
+}
+
+.tbx-status-label {
+    margin-left: auto;
+    font-weight: 500;
+    font-size: 0.875rem;
+}
+
+.tbx-required {
+    color: #EF4444;
+    font-size: 0.75rem;
+    font-weight: 500;
+    margin-left: 8px;
+}
+
+.tbx-optional {
+    color: #6B7280;
+    font-size: 0.75rem;
+    font-weight: 400;
+    margin-left: 8px;
+}
+
+/* Radio Options */
+.tbx-setting-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tbx-radio-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.tbx-radio-option input[type="radio"] {
+    margin: 0;
+}
+
+/* Toggle Switch */
+.tbx-toggle-switch {
+    position: relative;
+    display: inline-block;
+}
+
+.tbx-toggle {
+    width: 44px;
+    height: 24px;
+    background: #374151;
+    border-radius: 12px;
+    appearance: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    position: relative;
+}
+
+.tbx-toggle:checked {
+    background: #9146FF;
+}
+
+.tbx-toggle::after {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    background: white;
+    border-radius: 50%;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.2s;
+}
+
+.tbx-toggle:checked::after {
+    transform: translateX(20px);
+}
+
+/* Test Results */
+.tbx-test-results {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 12px;
+    background-color: #1A1A20;
+    border-radius: 6px;
+}
+
+.tbx-test-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.875rem;
+}
+
+.tbx-test-success {
+    color: #10B981;
+}
+
+.tbx-test-error {
+    color: #EF4444;
+}
+
+/* Toast Notifications */
+.tbx-toast {
+    font-size: 0.875rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.tbx-toast-success {
+    background-color: #065F46;
+    color: #D1FAE5;
+    border: 1px solid #10B981;
+}
+
+.tbx-toast-error {
+    background-color: #7F1D1D;
+    color: #FEE2E2;
+    border: 1px solid #EF4444;
+}
+
+/* Preset Cards Hover Effects */
+.tbx-preset-card:hover {
+    border-color: #9146FF !important;
+    background: #1F1A2E !important;
+    transform: translateY(-2px);
+    transition: all 0.2s ease;
+}
+
+.tbx-preset-card:focus {
+    outline: 2px solid #9146FF;
+    outline-offset: 2px;
+}
+
+/* Loading Spinner */
+.tbx-spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #374151;
+    border-top: 2px solid #9146FF;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+</style>
+
+<!-- Simplified Personality Sliders Component -->
+<script>
+function tbxPersonalitySliders(streamerId) {
+    return {
+        streamerId: streamerId,
+        isLoading: true,
+        traits: {
+            warmth: 0.65,
+            energy: 0.65,
+            humor: 0.55,
+            sass: 0.45,
+            verbosity: 0.5
+        },
+        traitMeta: {
+            warmth: {
+                icon: '🔥',
+                label: 'Warmth',
+                color: '#ef4444',
+                description: 'How friendly and welcoming the bot is'
+            },
+            energy: {
+                icon: '⚡',
+                label: 'Energy', 
+                color: '#f59e0b',
+                description: 'How enthusiastic and animated responses are'
+            },
+            humor: {
+                icon: '😄',
+                label: 'Humor',
+                color: '#10b981', 
+                description: 'How often the bot makes jokes and funny comments'
+            },
+            sass: {
+                icon: '😏',
+                label: 'Sass',
+                color: '#8b5cf6',
+                description: 'How much attitude and snark the bot shows'
+            },
+            verbosity: {
+                icon: '💬',
+                label: 'Verbosity',
+                color: '#06b6d4',
+                description: 'How detailed and lengthy responses are'
+            }
+        },
+        hasChanges: false,
+        isSaving: false,
+        saveSuccess: false,
+        saveError: null,
+        
+        init() {
+            this.loadTraits();
+        },
+        
+        async loadTraits() {
+            this.isLoading = true;
+            try {
+                const response = await fetch(`/api/v2/personality/current/${this.streamerId}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.traits) {
+                        this.traits = { ...this.traits, ...data.traits };
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load traits:', error);
+            } finally {
+                this.isLoading = false;
+            }
+        },
+        
+        updateTrait(trait, value) {
+            const numericValue = parseFloat(value);
+            if (this.traits[trait] !== numericValue) {
+                this.traits[trait] = numericValue;
+                this.hasChanges = true;
+                this.debouncedSave();
+            }
+        },
+        
+        debouncedSave() {
+            if (this.saveTimer) {
+                clearTimeout(this.saveTimer);
+            }
+            this.saveTimer = setTimeout(() => {
+                this.saveSettings();
+            }, 1000);
+        },
+        
+        async saveSettings() {
+            if (this.isSaving) return;
+            
+            this.isSaving = true;
+            this.saveError = null;
+            
+            try {
+                const response = await fetch(`/api/v2/personality-v2/traits/${this.streamerId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(this.traits)
+                });
+                
+                if (response.ok) {
+                    this.saveSuccess = true;
+                    this.hasChanges = false;
+                    setTimeout(() => { this.saveSuccess = false; }, 2000);
+                } else {
+                    throw new Error('Save failed');
+                }
+            } catch (error) {
+                this.saveError = 'Failed to save personality settings';
+                setTimeout(() => { this.saveError = null; }, 5000);
+            } finally {
+                this.isSaving = false;
+            }
+        }
+    };
+}
+
+// Main Settings Page Component
+function settingsPage() {
+    return {
+        // State
+        activeSection: 'setup',
+        saveStatus: null,
+        saveMessage: 'All changes saved',
+        testingApi: false,
+        apiTestResults: null,
+        showApiKeys: {
+            openai: false,
+            twitch_client: false,
+        },
+        settings: {
+            api_keys: {
+                openai: '',
+                twitch_client_id: ''
+            },
+            audio: {
+                enabled: true
+            },
+            chat: {
+                response_frequency: 'medium'
+            },
+            memory: {
+                context_window_size: 20
+            }
+        },
+        
+        async init() {
+            await this.loadSettings();
+        },
+        
+        async loadSettings() {
+            try {
+                const response = await fetch(`/api/v2/settings/consolidated/{{ streamer_id }}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    this.settings = { ...this.settings, ...data };
+                }
+            } catch (error) {
+                console.error('Failed to load settings:', error);
+            }
+        },
+        
+        async updateApiKey(keyType, value) {
+            if (!this.settings.api_keys) {
+                this.settings.api_keys = {};
+            }
+            this.settings.api_keys[keyType] = value;
+            await this.saveSettings('api');
+        },
+        
+        async testApiConnection() {
+            this.testingApi = true;
+            this.apiTestResults = null;
+            
+            try {
+                const response = await fetch(`/api/v2/settings/test-api-keys?streamer_id={{ streamer_id }}`);
+                if (response.ok) {
+                    this.apiTestResults = await response.json();
+                } else {
+                    this.apiTestResults = { openai: false, twitch: false };
+                }
+            } catch (error) {
+                this.apiTestResults = { openai: false, twitch: false };
+            } finally {
+                this.testingApi = false;
+            }
+        },
+        
+        async saveSettings(section) {
+            try {
+                let endpoint = `/api/v2/settings/consolidated/{{ streamer_id }}`;
+                let method = 'PUT';
+                let body = {};
+                
+                // Map sections to their specific endpoints and data
+                switch(section) {
+                    case 'api':
+                        endpoint = `/api/v2/settings/api-keys?streamer_id={{ streamer_id }}`;
+                        body = this.settings.api_keys;
+                        break;
+                    case 'audio':
+                        endpoint = `/api/v2/settings/voice?streamer_id={{ streamer_id }}`;
+                        body = { enabled: this.settings.audio.enabled };
+                        break;
+                    case 'chat':
+                        endpoint = `/api/v2/settings/cooldowns?streamer_id={{ streamer_id }}`;
+                        body = { 
+                            high: this.settings.chat.response_frequency === 'high' ? 3 : 8,
+                            med: this.settings.chat.response_frequency === 'medium' ? 8 : 15,
+                            low: this.settings.chat.response_frequency === 'low' ? 20 : 8
+                        };
+                        break;
+                    case 'memory':
+                        endpoint = `/api/v2/settings/memory?streamer_id={{ streamer_id }}`;
+                        body = { context_window_size: this.settings.memory.context_window_size };
+                        break;
+                    default:
+                        body = this.settings;
+                }
+                
+                const response = await fetch(endpoint, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(body)
+                });
+                
+                if (response.ok) {
+                    this.saveStatus = 'success';
+                    this.saveMessage = 'Settings saved successfully';
+                } else {
+                    this.saveStatus = 'error';
+                    this.saveMessage = 'Failed to save settings';
+                }
+            } catch (error) {
+                this.saveStatus = 'error';
+                this.saveMessage = 'Failed to save settings';
+            }
+            
+            // Clear status after 3 seconds
+            setTimeout(() => {
+                this.saveStatus = null;
+            }, 3000);
+        },
+        
+        // Bot Service Status Logic - Depends on required connections
+        getBotServiceStatus() {
+            // Check if required dependencies are met
+            if (!this.settings.api_keys?.openai) {
+                return 'tbx-status-error';
+            }
+            
+            // If all required connections are ready, bot can run
+            return 'tbx-status-success';
+        },
+        
+        getBotServiceLabel() {
+            // Check required dependencies
+            if (!this.settings.api_keys?.openai) {
+                return 'Error: API Key Missing';
+            }
+            
+            // All dependencies met
+            return 'Running';
+        }
+    };
+}
+
+// Make functions globally available
+window.tbxPersonalitySliders = tbxPersonalitySliders;
+window.settingsPage = settingsPage;
+</script>
+
+<!-- Unified Slider System -->
+<script src="/static/js/unified-slider-system.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="tbx-page-container" x-data="settingsPage()">
+    <!-- Page Header -->
+    <div class="tbx-page-header">
+        <div class="tbx-header-content">
+            <h1 class="tbx-page-title">Bot Settings</h1>
+            <p class="tbx-page-subtitle">Configure your TalkBot assistant for {{ streamer_id }}</p>
+        </div>
+    </div>
+
+    <!-- Simplified Settings Navigation - 3 Essential Tabs -->
+    <div class="tbx-settings-nav">
+        <button @click="activeSection = 'setup'" 
+                :class="{'tbx-nav-active': activeSection === 'setup'}" 
+                class="tbx-nav-item">
+            <svg class="tbx-nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
+            </svg>
+            Basic Setup
+        </button>
+        
+        <button @click="activeSection = 'personality'" 
+                :class="{'tbx-nav-active': activeSection === 'personality'}" 
+                class="tbx-nav-item">
+            <svg class="tbx-nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            Bot Personality
+        </button>
+        
+        <button @click="activeSection = 'advanced'" 
+                :class="{'tbx-nav-active': activeSection === 'advanced'}" 
+                class="tbx-nav-item">
+            <svg class="tbx-nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+            </svg>
+            Advanced
+        </button>
+    </div>
+
+    <!-- Settings Content -->
+    <div class="tbx-settings-content">
+        <!-- Basic Setup Section -->
+        <div x-show="activeSection === 'setup'" class="tbx-section">
+            <div class="tbx-section-header">
+                <h2 class="tbx-section-title">Basic Setup</h2>
+                <p class="tbx-section-subtitle">Get your bot connected and ready to use</p>
+            </div>
+            
+            <!-- Connection Status Card -->
+            <div class="tbx-content-card" style="margin-bottom: 24px;">
+                <div class="tbx-card-header">
+                    <h3 class="tbx-card-title">Connection Status</h3>
+                    <p class="tbx-card-description">Current status of your bot's connections</p>
+                </div>
+                
+                <div class="tbx-connection-status">
+                    <div class="tbx-status-item tbx-status-success">
+                        <div class="tbx-status-indicator tbx-status-success"></div>
+                        <span>Twitch Account</span>
+                        <span class="tbx-status-label">Connected</span>
+                    </div>
+                    <div class="tbx-status-item" :class="settings.api_keys?.openai ? 'tbx-status-success' : 'tbx-status-error'">
+                        <div class="tbx-status-indicator" :class="settings.api_keys?.openai ? 'tbx-status-success' : 'tbx-status-error'"></div>
+                        <span>OpenAI API</span>
+                        <span class="tbx-status-label" x-text="settings.api_keys?.openai ? 'Connected' : 'Needs Setup'"></span>
+                        <span class="tbx-required" x-show="!settings.api_keys?.openai">Required</span>
+                    </div>
+                    <div class="tbx-status-item" :class="getBotServiceStatus()">
+                        <div class="tbx-status-indicator" :class="getBotServiceStatus()"></div>
+                        <span>Bot Service</span>
+                        <span class="tbx-status-label" x-text="getBotServiceLabel()">Checking...</span>
+                        <span class="tbx-required" x-show="!settings.api_keys?.openai">Requires API Key</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- API Keys Setup -->
+            <div class="tbx-content-card" style="margin-bottom: 24px;">
+                <div class="tbx-card-header">
+                    <h3 class="tbx-card-title">API Keys</h3>
+                    <p class="tbx-card-description">Connect your bot to external services</p>
+                </div>
+                
+                <div class="tbx-settings-group">
+                    <!-- OpenAI API Key -->
+                    <div class="tbx-setting-item">
+                        <label class="tbx-setting-label">
+                            OpenAI API Key
+                            <span class="tbx-required">Required</span>
+                        </label>
+                        <p class="tbx-setting-description">Your bot needs this to generate AI responses. Get your key from OpenAI.</p>
+                        <div class="tbx-api-key-input">
+                            <input type="password" 
+                                   class="tbx-input"
+                                   :type="showApiKeys.openai ? 'text' : 'password'"
+                                   placeholder="sk-..."
+                                   :value="settings.api_keys?.openai || ''"
+                                   @input="updateApiKey('openai', $event.target.value)">
+                            <button type="button" 
+                                    class="tbx-toggle-visibility" 
+                                    @click="showApiKeys.openai = !showApiKeys.openai"
+                                    :title="showApiKeys.openai ? 'Hide API key' : 'Show API key'">
+                                <svg x-show="!showApiKeys.openai" class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                </svg>
+                                <svg x-show="showApiKeys.openai" class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Twitch Client ID -->
+                    <div class="tbx-setting-item">
+                        <label class="tbx-setting-label">
+                            Twitch Client ID
+                            <span class="tbx-optional">Optional</span>
+                        </label>
+                        <p class="tbx-setting-description">For advanced Twitch features. Most users don't need this.</p>
+                        <div class="tbx-api-key-input">
+                            <input type="password"
+                                   class="tbx-input"
+                                   :type="showApiKeys.twitch_client ? 'text' : 'password'"
+                                   placeholder="Enter Twitch Client ID..."
+                                   :value="settings.api_keys?.twitch_client_id || ''"
+                                   @input="updateApiKey('twitch_client_id', $event.target.value)">
+                            <button type="button" 
+                                    class="tbx-toggle-visibility" 
+                                    @click="showApiKeys.twitch_client = !showApiKeys.twitch_client">
+                                <svg x-show="!showApiKeys.twitch_client" class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                </svg>
+                                <svg x-show="showApiKeys.twitch_client" class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Test Connection Button -->
+                <div class="tbx-card-actions">
+                    <button @click="testApiConnection()" 
+                            :disabled="testingApi"
+                            class="tbx-btn tbx-btn-primary">
+                        <span x-show="!testingApi">Test Connections</span>
+                        <span x-show="testingApi">Testing...</span>
+                    </button>
+                    
+                    <div x-show="apiTestResults" class="tbx-test-results">
+                        <div class="tbx-test-item" :class="apiTestResults.openai ? 'tbx-test-success' : 'tbx-test-error'">
+                            <span>OpenAI:</span> 
+                            <span x-text="apiTestResults.openai ? 'Connected' : 'Failed'"></span>
+                        </div>
+                        <div class="tbx-test-item" :class="apiTestResults.twitch ? 'tbx-test-success' : 'tbx-test-error'">
+                            <span>Twitch:</span> 
+                            <span x-text="apiTestResults.twitch ? 'Connected' : 'Failed'"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bot Personality Section -->
+        <div x-show="activeSection === 'personality'" class="tbx-section">
+            <div class="tbx-section-header">
+                <h2 class="tbx-section-title">Bot Personality</h2>
+                <p class="tbx-section-subtitle">Choose how your bot behaves and responds to viewers</p>
+            </div>
+            
+            <!-- Personality Styles -->
+            <div class="tbx-content-card" style="margin-bottom: 24px;">
+                <div class="tbx-card-header">
+                    <h3 class="tbx-card-title">Quick Personality Styles</h3>
+                    <p class="tbx-card-description">Choose a preset style or customize your own</p>
+                </div>
+                
+                <div class="tbx-preset-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 24px; margin-bottom: 32px;">
+                    <button class="tbx-preset-card" style="padding: 20px; text-align: center; border: 2px solid #2A2A32; border-radius: 8px; background: #1A1A20; cursor: pointer; min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
+                        <div style="font-size: 2rem; margin-bottom: 8px;">😊</div>
+                        <div style="font-weight: 600; margin-bottom: 4px;">Friendly Helper</div>
+                        <div style="font-size: 0.875rem; color: #9CA3AF;">Warm and supportive responses</div>
+                    </button>
+                    
+                    <button class="tbx-preset-card" style="padding: 20px; text-align: center; border: 2px solid #2A2A32; border-radius: 8px; background: #1A1A20; cursor: pointer; min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
+                        <div style="font-size: 2rem; margin-bottom: 8px;">😏</div>
+                        <div style="font-weight: 600; margin-bottom: 4px;">Witty Commentator</div>
+                        <div style="font-size: 0.875rem; color: #9CA3AF;">Sarcastic and entertaining</div>
+                    </button>
+                    
+                    <button class="tbx-preset-card" style="padding: 20px; text-align: center; border: 2px solid #2A2A32; border-radius: 8px; background: #1A1A20; cursor: pointer; min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
+                        <div style="font-size: 2rem; margin-bottom: 8px;">⚡</div>
+                        <div style="font-weight: 600; margin-bottom: 4px;">Energetic Hype</div>
+                        <div style="font-size: 0.875rem; color: #9CA3AF;">High energy and enthusiasm</div>
+                    </button>
+                    
+                    <button class="tbx-preset-card" style="padding: 20px; text-align: center; border: 2px solid #2A2A32; border-radius: 8px; background: #1A1A20; cursor: pointer; min-height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
+                        <div style="font-size: 2rem; margin-bottom: 8px;">🤔</div>
+                        <div style="font-weight: 600; margin-bottom: 4px;">Thoughtful Guide</div>
+                        <div style="font-size: 0.875rem; color: #9CA3AF;">Informative and helpful</div>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Custom Personality Traits -->
+            <div class="tbx-content-card" x-data="tbxPersonalitySliders('{{ streamer_id }}')">
+                <div class="tbx-card-header">
+                    <h3 class="tbx-card-title">Custom Personality Traits</h3>
+                    <p class="tbx-card-description">Fine-tune individual personality aspects</p>
+                </div>
+                
+                <div x-show="isLoading" class="tbx-loading-state" style="text-align: center; padding: 40px;">
+                    <div class="tbx-spinner" style="margin: 0 auto 16px;"></div>
+                    <span>Loading personality settings...</span>
+                </div>
+                
+                <div x-show="!isLoading" class="tbx-personality-traits" style="display: grid; gap: 32px; margin-top: 16px;">
+                    <template x-for="(meta, trait) in traitMeta" :key="trait">
+                        <div class="tbx-trait-item" :data-trait="trait" style="padding: 20px; background: #1A1A20; border-radius: 8px; border: 1px solid #2A2A32;">
+                            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                                <span x-text="meta.icon" style="font-size: 1.25rem;"></span>
+                                <div>
+                                    <h4 x-text="meta.label" style="font-weight: 600; margin: 0;"></h4>
+                                    <p x-text="meta.description" style="font-size: 0.875rem; color: #9CA3AF; margin: 0;"></p>
+                                </div>
+                            </div>
+                            
+                            <div class="tbx-slider-container">
+                                <input type="range" 
+                                       :min="0" 
+                                       :max="1" 
+                                       :step="0.01"
+                                       class="tbx-range"
+                                       :value="traits[trait]"
+                                       @input="updateTrait(trait, $event.target.value)">
+                                <div class="tbx-slider-value" style="text-align: center; margin-top: 8px;">
+                                    <span x-text="Math.round(traits[trait] * 100)"></span>%
+                                </div>
+                            </div>
+                            
+                            <div class="tbx-slider-labels" style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #6B7280; margin-top: 4px;">
+                                <span>Low</span>
+                                <span>High</span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                
+                <!-- Save Status -->
+                <div x-show="isSaving" style="text-align: center; padding: 12px; color: #F59E0B;">
+                    Saving...
+                </div>
+                
+                <div x-show="saveSuccess" style="text-align: center; padding: 12px; color: #10B981;">
+                    ✓ Personality saved successfully
+                </div>
+                
+                <div x-show="saveError" style="text-align: center; padding: 12px; color: #EF4444;">
+                    <span x-text="saveError"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Advanced Settings Section -->
+        <div x-show="activeSection === 'advanced'" class="tbx-section">
+            <div class="tbx-section-header">
+                <h2 class="tbx-section-title">Advanced Settings</h2>
+                <p class="tbx-section-subtitle">Technical settings for fine-tuning your bot</p>
+            </div>
+            
+            <!-- Voice & Audio -->
+            <div class="tbx-content-card" style="margin-bottom: 24px;">
+                <div class="tbx-card-header">
+                    <h3 class="tbx-card-title">Voice & Audio</h3>
+                    <p class="tbx-card-description">Control when and how your bot speaks</p>
+                </div>
+                
+                <div class="tbx-settings-group">
+                    <div class="tbx-setting-item">
+                        <label class="tbx-setting-label">Voice Responses</label>
+                        <p class="tbx-setting-description">Enable text-to-speech for bot responses</p>
+                        <div class="tbx-toggle-switch">
+                            <input type="checkbox" 
+                                   id="voice-enabled" 
+                                   x-model="settings.audio.enabled"
+                                   @change="saveSettings('audio')"
+                                   class="tbx-toggle">
+                            <label for="voice-enabled" class="tbx-toggle-label"></label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Chat Behavior -->
+            <div class="tbx-content-card" style="margin-bottom: 24px;">
+                <div class="tbx-card-header">
+                    <h3 class="tbx-card-title">Chat Behavior</h3>
+                    <p class="tbx-card-description">Control how often your bot responds</p>
+                </div>
+                
+                <div class="tbx-settings-group">
+                    <div class="tbx-setting-item">
+                        <label class="tbx-setting-label">Response Activity Level</label>
+                        <p class="tbx-setting-description">How often the bot responds to chat messages</p>
+                        <div class="tbx-setting-options">
+                            <label class="tbx-radio-option">
+                                <input type="radio" name="response_frequency" value="high" x-model="settings.chat.response_frequency" @change="saveSettings('chat')">
+                                <span class="tbx-radio-label">Very Active (responds often)</span>
+                            </label>
+                            <label class="tbx-radio-option">
+                                <input type="radio" name="response_frequency" value="medium" x-model="settings.chat.response_frequency" @change="saveSettings('chat')">
+                                <span class="tbx-radio-label">Moderate (balanced responses)</span>
+                            </label>
+                            <label class="tbx-radio-option">
+                                <input type="radio" name="response_frequency" value="low" x-model="settings.chat.response_frequency" @change="saveSettings('chat')">
+                                <span class="tbx-radio-label">Quiet (responds less often)</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Chat Memory -->
+            <div class="tbx-content-card" style="margin-bottom: 24px;">
+                <div class="tbx-card-header">
+                    <h3 class="tbx-card-title">Chat Memory</h3>
+                    <p class="tbx-card-description">How much chat history the bot remembers</p>
+                </div>
+                
+                <div class="tbx-settings-group">
+                    <div class="tbx-setting-item">
+                        <label class="tbx-setting-label">Memory Length</label>
+                        <p class="tbx-setting-description">Number of recent messages the bot can remember for context</p>
+                        <div class="tbx-slider-container">
+                            <input type="range" 
+                                   min="5" 
+                                   max="50" 
+                                   step="5"
+                                   class="tbx-range"
+                                   x-model="settings.memory.context_window_size"
+                                   @change="saveSettings('memory')">
+                            <div class="tbx-slider-value" style="text-align: center; margin-top: 8px;">
+                                <span x-text="settings.memory.context_window_size || 20"></span> messages
+                            </div>
+                        </div>
+                        <div class="tbx-slider-labels" style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #6B7280; margin-top: 4px;">
+                            <span>5 (Less context)</span>
+                            <span>50 (More context)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save Status Toast -->
+    <div x-show="saveStatus" 
+         x-transition
+         class="tbx-toast"
+         :class="saveStatus === 'success' ? 'tbx-toast-success' : 'tbx-toast-error'"
+         style="position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 6px; z-index: 1000; font-weight: 500;">
+        <span x-text="saveMessage"></span>
+    </div>
+</div>
+{% endblock %}

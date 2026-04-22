@@ -1,0 +1,770 @@
+{% extends "layouts-v2/dashboard-layout.html" %}
+
+{% block title %}Statistics - TalkBot{% endblock %}
+
+{% block page_styles %}
+<link rel="stylesheet" href="/static/v2/css/pages/stats.css">
+{% endblock %}
+
+{% block content %}
+<div class="tbx-page-header">
+    <div class="tbx-page-title">
+        <h1>Statistics Dashboard</h1>
+        <span class="tbx-badge tbx-badge--info">Advanced Analytics</span>
+    </div>
+    <div class="tbx-page-actions">
+        <select class="tbx-select" id="time-range">
+            <option value="24h">Last 24 Hours</option>
+            <option value="7d" selected>Last 7 Days</option>
+            <option value="30d">Last 30 Days</option>
+            <option value="90d">Last 3 Months</option>
+            <option value="1y">Last Year</option>
+        </select>
+        <button class="tbx-btn tbx-btn--secondary" id="export-stats">
+            <i class="fas fa-download"></i> Export
+        </button>
+        <button class="tbx-btn tbx-btn--primary" id="refresh-stats">
+            <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Overview Metrics -->
+<div class="tbx-grid tbx-grid--4-col">
+    <div class="tbx-stat-card">
+        <div class="tbx-stat-icon tbx-stat-icon--messages">
+            <i class="fas fa-comments"></i>
+        </div>
+        <div class="tbx-stat-content">
+            <span class="tbx-stat-value" id="total-messages">0</span>
+            <span class="tbx-stat-label">Messages Processed</span>
+            <span class="tbx-stat-change" id="messages-change">
+                <i class="fas fa-arrow-up"></i> +12%
+            </span>
+        </div>
+    </div>
+    
+    <div class="tbx-stat-card">
+        <div class="tbx-stat-icon tbx-stat-icon--responses">
+            <i class="fas fa-reply"></i>
+        </div>
+        <div class="tbx-stat-content">
+            <span class="tbx-stat-value" id="total-responses">0</span>
+            <span class="tbx-stat-label">Bot Responses</span>
+            <span class="tbx-stat-change tbx-stat-change--positive" id="responses-change">
+                <i class="fas fa-arrow-up"></i> +8%
+            </span>
+        </div>
+    </div>
+    
+    <div class="tbx-stat-card">
+        <div class="tbx-stat-icon tbx-stat-icon--users">
+            <i class="fas fa-users"></i>
+        </div>
+        <div class="tbx-stat-content">
+            <span class="tbx-stat-value" id="unique-users">0</span>
+            <span class="tbx-stat-label">Unique Users</span>
+            <span class="tbx-stat-change tbx-stat-change--positive" id="users-change">
+                <i class="fas fa-arrow-up"></i> +15%
+            </span>
+        </div>
+    </div>
+    
+    <div class="tbx-stat-card">
+        <div class="tbx-stat-icon tbx-stat-icon--uptime">
+            <i class="fas fa-clock"></i>
+        </div>
+        <div class="tbx-stat-content">
+            <span class="tbx-stat-value" id="uptime-percentage">99.8%</span>
+            <span class="tbx-stat-label">Uptime</span>
+            <span class="tbx-stat-change tbx-stat-change--neutral" id="uptime-change">
+                <i class="fas fa-minus"></i> 0%
+            </span>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Section -->
+<div class="tbx-grid tbx-grid--2-col">
+    <!-- Activity Chart -->
+    <div class="tbx-card tbx-card--chart">
+        <div class="tbx-card__header">
+            <h3 class="tbx-card__title">Activity Over Time</h3>
+            <div class="tbx-chart-controls">
+                <button class="tbx-chart-btn active" data-metric="messages">Messages</button>
+                <button class="tbx-chart-btn" data-metric="responses">Responses</button>
+                <button class="tbx-chart-btn" data-metric="users">Users</button>
+            </div>
+        </div>
+        <div class="tbx-card__body">
+            <div class="tbx-chart-container">
+                <canvas id="activity-chart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Response Time Chart -->
+    <div class="tbx-card tbx-card--chart">
+        <div class="tbx-card__header">
+            <h3 class="tbx-card__title">Response Time Distribution</h3>
+            <span class="tbx-avg-response-time">Avg: <strong id="avg-response-time">1.2s</strong></span>
+        </div>
+        <div class="tbx-card__body">
+            <div class="tbx-chart-container">
+                <canvas id="response-time-chart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Detailed Analytics -->
+<div class="tbx-grid tbx-grid--3-col">
+    <!-- Top Commands -->
+    <div class="tbx-card">
+        <div class="tbx-card__header">
+            <h3 class="tbx-card__title">Top Commands</h3>
+            <span class="tbx-period-label" id="commands-period">Last 7 days</span>
+        </div>
+        <div class="tbx-card__body">
+            <div class="tbx-ranking-list" id="top-commands">
+                <div class="tbx-ranking-item">
+                    <span class="tbx-ranking-position">1</span>
+                    <div class="tbx-ranking-info">
+                        <span class="tbx-ranking-name">!help</span>
+                        <div class="tbx-ranking-bar">
+                            <div class="tbx-ranking-fill" style="width: 100%"></div>
+                        </div>
+                    </div>
+                    <span class="tbx-ranking-value">247</span>
+                </div>
+                <div class="tbx-ranking-item">
+                    <span class="tbx-ranking-position">2</span>
+                    <div class="tbx-ranking-info">
+                        <span class="tbx-ranking-name">!stats</span>
+                        <div class="tbx-ranking-bar">
+                            <div class="tbx-ranking-fill" style="width: 73%"></div>
+                        </div>
+                    </div>
+                    <span class="tbx-ranking-value">180</span>
+                </div>
+                <div class="tbx-ranking-item">
+                    <span class="tbx-ranking-position">3</span>
+                    <div class="tbx-ranking-info">
+                        <span class="tbx-ranking-name">!uptime</span>
+                        <div class="tbx-ranking-bar">
+                            <div class="tbx-ranking-fill" style="width: 52%"></div>
+                        </div>
+                    </div>
+                    <span class="tbx-ranking-value">128</span>
+                </div>
+                <div class="tbx-ranking-item">
+                    <span class="tbx-ranking-position">4</span>
+                    <div class="tbx-ranking-info">
+                        <span class="tbx-ranking-name">!weather</span>
+                        <div class="tbx-ranking-bar">
+                            <div class="tbx-ranking-fill" style="width: 35%"></div>
+                        </div>
+                    </div>
+                    <span class="tbx-ranking-value">87</span>
+                </div>
+                <div class="tbx-ranking-item">
+                    <span class="tbx-ranking-position">5</span>
+                    <div class="tbx-ranking-info">
+                        <span class="tbx-ranking-name">!quote</span>
+                        <div class="tbx-ranking-bar">
+                            <div class="tbx-ranking-fill" style="width: 28%"></div>
+                        </div>
+                    </div>
+                    <span class="tbx-ranking-value">69</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Most Active Users -->
+    <div class="tbx-card">
+        <div class="tbx-card__header">
+            <h3 class="tbx-card__title">Most Active Users</h3>
+            <span class="tbx-period-label" id="users-period">Last 7 days</span>
+        </div>
+        <div class="tbx-card__body">
+            <div class="tbx-ranking-list" id="top-users">
+                <div class="tbx-ranking-item">
+                    <span class="tbx-ranking-position">1</span>
+                    <div class="tbx-ranking-info">
+                        <span class="tbx-ranking-name">alice_viewer</span>
+                        <div class="tbx-ranking-bar">
+                            <div class="tbx-ranking-fill" style="width: 100%"></div>
+                        </div>
+                    </div>
+                    <span class="tbx-ranking-value">156</span>
+                </div>
+                <div class="tbx-ranking-item">
+                    <span class="tbx-ranking-position">2</span>
+                    <div class="tbx-ranking-info">
+                        <span class="tbx-ranking-name">bob_gamer</span>
+                        <div class="tbx-ranking-bar">
+                            <div class="tbx-ranking-fill" style="width: 78%"></div>
+                        </div>
+                    </div>
+                    <span class="tbx-ranking-value">122</span>
+                </div>
+                <div class="tbx-ranking-item">
+                    <span class="tbx-ranking-position">3</span>
+                    <div class="tbx-ranking-info">
+                        <span class="tbx-ranking-name">charlie_fan</span>
+                        <div class="tbx-ranking-bar">
+                            <div class="tbx-ranking-fill" style="width: 65%"></div>
+                        </div>
+                    </div>
+                    <span class="tbx-ranking-value">101</span>
+                </div>
+                <div class="tbx-ranking-item">
+                    <span class="tbx-ranking-position">4</span>
+                    <div class="tbx-ranking-info">
+                        <span class="tbx-ranking-name">diana_mod</span>
+                        <div class="tbx-ranking-bar">
+                            <div class="tbx-ranking-fill" style="width: 51%"></div>
+                        </div>
+                    </div>
+                    <span class="tbx-ranking-value">80</span>
+                </div>
+                <div class="tbx-ranking-item">
+                    <span class="tbx-ranking-position">5</span>
+                    <div class="tbx-ranking-info">
+                        <span class="tbx-ranking-name">eve_sub</span>
+                        <div class="tbx-ranking-bar">
+                            <div class="tbx-ranking-fill" style="width: 42%"></div>
+                        </div>
+                    </div>
+                    <span class="tbx-ranking-value">65</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Performance Metrics -->
+    <div class="tbx-card">
+        <div class="tbx-card__header">
+            <h3 class="tbx-card__title">Performance Metrics</h3>
+        </div>
+        <div class="tbx-card__body">
+            <div class="tbx-performance-grid">
+                <div class="tbx-performance-item">
+                    <div class="tbx-performance-label">Avg Response Time</div>
+                    <div class="tbx-performance-value">1.2s</div>
+                    <div class="tbx-performance-indicator tbx-performance-indicator--good">
+                        <div class="tbx-indicator-bar" style="width: 85%"></div>
+                    </div>
+                </div>
+                
+                <div class="tbx-performance-item">
+                    <div class="tbx-performance-label">Success Rate</div>
+                    <div class="tbx-performance-value">99.2%</div>
+                    <div class="tbx-performance-indicator tbx-performance-indicator--excellent">
+                        <div class="tbx-indicator-bar" style="width: 99.2%"></div>
+                    </div>
+                </div>
+                
+                <div class="tbx-performance-item">
+                    <div class="tbx-performance-label">Error Rate</div>
+                    <div class="tbx-performance-value">0.8%</div>
+                    <div class="tbx-performance-indicator tbx-performance-indicator--excellent">
+                        <div class="tbx-indicator-bar" style="width: 8%"></div>
+                    </div>
+                </div>
+                
+                <div class="tbx-performance-item">
+                    <div class="tbx-performance-label">Memory Usage</div>
+                    <div class="tbx-performance-value">234MB</div>
+                    <div class="tbx-performance-indicator tbx-performance-indicator--good">
+                        <div class="tbx-indicator-bar" style="width: 45%"></div>
+                    </div>
+                </div>
+                
+                <div class="tbx-performance-item">
+                    <div class="tbx-performance-label">API Latency</div>
+                    <div class="tbx-performance-value">23ms</div>
+                    <div class="tbx-performance-indicator tbx-performance-indicator--excellent">
+                        <div class="tbx-indicator-bar" style="width: 15%"></div>
+                    </div>
+                </div>
+                
+                <div class="tbx-performance-item">
+                    <div class="tbx-performance-label">Queue Length</div>
+                    <div class="tbx-performance-value">2</div>
+                    <div class="tbx-performance-indicator tbx-performance-indicator--good">
+                        <div class="tbx-indicator-bar" style="width: 20%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Detailed Statistics Table -->
+<div class="tbx-card">
+    <div class="tbx-card__header">
+        <h3 class="tbx-card__title">Detailed Statistics</h3>
+        <div class="tbx-table-controls">
+            <select class="tbx-select tbx-select--small" id="table-category">
+                <option value="all">All Categories</option>
+                <option value="commands">Commands</option>
+                <option value="users">Users</option>
+                <option value="performance">Performance</option>
+                <option value="errors">Errors</option>
+            </select>
+            <input type="text" class="tbx-input tbx-input--small" placeholder="Search..." id="table-search">
+        </div>
+    </div>
+    <div class="tbx-card__body">
+        <div class="tbx-table-container">
+            <table class="tbx-table" id="stats-table">
+                <thead>
+                    <tr>
+                        <th>Metric</th>
+                        <th>Value</th>
+                        <th>Change</th>
+                        <th>Period</th>
+                        <th>Last Updated</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <div class="tbx-table-metric">
+                                <i class="fas fa-comments tbx-metric-icon"></i>
+                                <span>Total Messages</span>
+                            </div>
+                        </td>
+                        <td><strong>12,847</strong></td>
+                        <td>
+                            <span class="tbx-change tbx-change--positive">
+                                <i class="fas fa-arrow-up"></i> +12%
+                            </span>
+                        </td>
+                        <td>7 days</td>
+                        <td class="tbx-text-muted">2 min ago</td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <div class="tbx-table-metric">
+                                <i class="fas fa-reply tbx-metric-icon"></i>
+                                <span>Bot Responses</span>
+                            </div>
+                        </td>
+                        <td><strong>3,241</strong></td>
+                        <td>
+                            <span class="tbx-change tbx-change--positive">
+                                <i class="fas fa-arrow-up"></i> +8%
+                            </span>
+                        </td>
+                        <td>7 days</td>
+                        <td class="tbx-text-muted">2 min ago</td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <div class="tbx-table-metric">
+                                <i class="fas fa-users tbx-metric-icon"></i>
+                                <span>Unique Users</span>
+                            </div>
+                        </td>
+                        <td><strong>487</strong></td>
+                        <td>
+                            <span class="tbx-change tbx-change--positive">
+                                <i class="fas fa-arrow-up"></i> +15%
+                            </span>
+                        </td>
+                        <td>7 days</td>
+                        <td class="tbx-text-muted">2 min ago</td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <div class="tbx-table-metric">
+                                <i class="fas fa-stopwatch tbx-metric-icon"></i>
+                                <span>Avg Response Time</span>
+                            </div>
+                        </td>
+                        <td><strong>1.23s</strong></td>
+                        <td>
+                            <span class="tbx-change tbx-change--negative">
+                                <i class="fas fa-arrow-down"></i> -5%
+                            </span>
+                        </td>
+                        <td>7 days</td>
+                        <td class="tbx-text-muted">2 min ago</td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <div class="tbx-table-metric">
+                                <i class="fas fa-exclamation-triangle tbx-metric-icon"></i>
+                                <span>Error Rate</span>
+                            </div>
+                        </td>
+                        <td><strong>0.8%</strong></td>
+                        <td>
+                            <span class="tbx-change tbx-change--negative">
+                                <i class="fas fa-arrow-down"></i> -12%
+                            </span>
+                        </td>
+                        <td>7 days</td>
+                        <td class="tbx-text-muted">2 min ago</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Export Modal -->
+<div class="tbx-modal" id="export-modal" style="display: none;">
+    <div class="tbx-modal-content">
+        <div class="tbx-modal-header">
+            <h4>Export Statistics</h4>
+            <button class="tbx-modal-close" onclick="closeExportModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="tbx-modal-body">
+            <div class="tbx-export-form">
+                <div class="tbx-form-group">
+                    <label class="tbx-label">Export Format</label>
+                    <select class="tbx-select" id="export-format">
+                        <option value="csv">CSV</option>
+                        <option value="json">JSON</option>
+                        <option value="xlsx">Excel (XLSX)</option>
+                        <option value="pdf">PDF Report</option>
+                    </select>
+                </div>
+                
+                <div class="tbx-form-group">
+                    <label class="tbx-label">Date Range</label>
+                    <div class="tbx-date-range">
+                        <input type="date" class="tbx-input" id="export-start-date">
+                        <span>to</span>
+                        <input type="date" class="tbx-input" id="export-end-date">
+                    </div>
+                </div>
+                
+                <div class="tbx-form-group">
+                    <label class="tbx-label">Include Data</label>
+                    <div class="tbx-checkbox-group">
+                        <label class="tbx-checkbox">
+                            <input type="checkbox" checked>
+                            <span class="tbx-checkmark"></span>
+                            Overview Metrics
+                        </label>
+                        <label class="tbx-checkbox">
+                            <input type="checkbox" checked>
+                            <span class="tbx-checkmark"></span>
+                            Command Statistics
+                        </label>
+                        <label class="tbx-checkbox">
+                            <input type="checkbox" checked>
+                            <span class="tbx-checkmark"></span>
+                            User Activity
+                        </label>
+                        <label class="tbx-checkbox">
+                            <input type="checkbox">
+                            <span class="tbx-checkmark"></span>
+                            Performance Data
+                        </label>
+                        <label class="tbx-checkbox">
+                            <input type="checkbox">
+                            <span class="tbx-checkmark"></span>
+                            Error Logs
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="tbx-modal-footer">
+            <button class="tbx-btn tbx-btn--secondary" onclick="closeExportModal()">Cancel</button>
+            <button class="tbx-btn tbx-btn--primary" onclick="exportStats()">
+                <i class="fas fa-download"></i> Export
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block page_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="/static/v2/js/pages/stats.js"></script>
+<script>
+// Statistics Dashboard JavaScript
+document.addEventListener('DOMContentLoaded', function() {
+    const streamerId = '{{ streamer_id }}';
+    let activityChart = null;
+    let responseTimeChart = null;
+    
+    // Initialize dashboard
+    initializeCharts();
+    loadStatistics();
+    setupEventListeners();
+    
+    function initializeCharts() {
+        // Activity Chart
+        const activityCtx = document.getElementById('activity-chart').getContext('2d');
+        activityChart = new Chart(activityCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Messages',
+                    data: [],
+                    borderColor: '#e86bd7',
+                    backgroundColor: 'rgba(232, 107, 215, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        },
+                        ticks: {
+                            color: 'rgba(255, 255, 255, 0.6)'
+                        }
+                    },
+                    y: {
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        },
+                        ticks: {
+                            color: 'rgba(255, 255, 255, 0.6)'
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Response Time Chart
+        const responseCtx = document.getElementById('response-time-chart').getContext('2d');
+        responseTimeChart = new Chart(responseCtx, {
+            type: 'bar',
+            data: {
+                labels: ['0-0.5s', '0.5-1s', '1-2s', '2-5s', '5s+'],
+                datasets: [{
+                    label: 'Response Count',
+                    data: [45, 32, 18, 4, 1],
+                    backgroundColor: [
+                        '#00d26a',
+                        '#3b82f6',
+                        '#f59e0b',
+                        '#ef4444',
+                        '#8b5cf6'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        },
+                        ticks: {
+                            color: 'rgba(255, 255, 255, 0.6)'
+                        }
+                    },
+                    y: {
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        },
+                        ticks: {
+                            color: 'rgba(255, 255, 255, 0.6)'
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    function loadStatistics() {
+        // Mock data loading - replace with API calls
+        updateOverviewMetrics();
+        updateActivityChart();
+        updatePeriodLabels();
+    }
+    
+    function updateOverviewMetrics() {
+        // Simulate API data
+        const metrics = {
+            totalMessages: 12847,
+            messagesChange: '+12%',
+            totalResponses: 3241,
+            responsesChange: '+8%',
+            uniqueUsers: 487,
+            usersChange: '+15%',
+            uptime: '99.8%',
+            uptimeChange: '0%'
+        };
+        
+        document.getElementById('total-messages').textContent = metrics.totalMessages.toLocaleString();
+        document.getElementById('messages-change').innerHTML = `<i class="fas fa-arrow-up"></i> ${metrics.messagesChange}`;
+        
+        document.getElementById('total-responses').textContent = metrics.totalResponses.toLocaleString();
+        document.getElementById('responses-change').innerHTML = `<i class="fas fa-arrow-up"></i> ${metrics.responsesChange}`;
+        
+        document.getElementById('unique-users').textContent = metrics.uniqueUsers.toLocaleString();
+        document.getElementById('users-change').innerHTML = `<i class="fas fa-arrow-up"></i> ${metrics.usersChange}`;
+    }
+    
+    function updateActivityChart() {
+        // Generate mock time series data
+        const labels = [];
+        const data = [];
+        const now = new Date();
+        
+        for (let i = 23; i >= 0; i--) {
+            const date = new Date(now);
+            date.setHours(date.getHours() - i);
+            labels.push(date.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}));
+            data.push(Math.floor(Math.random() * 100) + 20);
+        }
+        
+        activityChart.data.labels = labels;
+        activityChart.data.datasets[0].data = data;
+        activityChart.update();
+    }
+    
+    function updatePeriodLabels() {
+        const selectedPeriod = document.getElementById('time-range').value;
+        const periodText = document.getElementById('time-range').selectedOptions[0].textContent;
+        
+        document.getElementById('commands-period').textContent = periodText;
+        document.getElementById('users-period').textContent = periodText;
+    }
+    
+    function setupEventListeners() {
+        // Time range selector
+        document.getElementById('time-range').addEventListener('change', function() {
+            updatePeriodLabels();
+            loadStatistics();
+            showToast(`Updated statistics for ${this.selectedOptions[0].textContent}`, 'info');
+        });
+        
+        // Chart metric buttons
+        document.querySelectorAll('.tbx-chart-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.tbx-chart-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                
+                const metric = this.dataset.metric;
+                updateChartMetric(metric);
+            });
+        });
+        
+        // Refresh button
+        document.getElementById('refresh-stats').addEventListener('click', function() {
+            loadStatistics();
+            showToast('Statistics refreshed', 'success');
+        });
+        
+        // Export button
+        document.getElementById('export-stats').addEventListener('click', function() {
+            document.getElementById('export-modal').style.display = 'flex';
+        });
+        
+        // Table search and filter
+        document.getElementById('table-search').addEventListener('input', filterTable);
+        document.getElementById('table-category').addEventListener('change', filterTable);
+        
+        // Set default date range for export
+        const today = new Date();
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        
+        document.getElementById('export-end-date').valueAsDate = today;
+        document.getElementById('export-start-date').valueAsDate = weekAgo;
+    }
+    
+    function updateChartMetric(metric) {
+        const colors = {
+            messages: '#e86bd7',
+            responses: '#3b82f6',
+            users: '#00d26a'
+        };
+        
+        const labels = {
+            messages: 'Messages',
+            responses: 'Responses',
+            users: 'Active Users'
+        };
+        
+        activityChart.data.datasets[0].borderColor = colors[metric];
+        activityChart.data.datasets[0].backgroundColor = colors[metric] + '20';
+        activityChart.data.datasets[0].label = labels[metric];
+        
+        // Generate new mock data based on metric
+        const data = [];
+        for (let i = 0; i < 24; i++) {
+            let value;
+            switch(metric) {
+                case 'messages':
+                    value = Math.floor(Math.random() * 100) + 20;
+                    break;
+                case 'responses':
+                    value = Math.floor(Math.random() * 30) + 5;
+                    break;
+                case 'users':
+                    value = Math.floor(Math.random() * 20) + 2;
+                    break;
+            }
+            data.push(value);
+        }
+        
+        activityChart.data.datasets[0].data = data;
+        activityChart.update();
+    }
+    
+    function filterTable() {
+        const category = document.getElementById('table-category').value;
+        const search = document.getElementById('table-search').value.toLowerCase();
+        const rows = document.querySelectorAll('#stats-table tbody tr');
+        
+        rows.forEach(row => {
+            const metricText = row.cells[0].textContent.toLowerCase();
+            const categoryMatch = category === 'all' || metricText.includes(category);
+            const searchMatch = search === '' || metricText.includes(search);
+            
+            row.style.display = categoryMatch && searchMatch ? '' : 'none';
+        });
+    }
+    
+    window.closeExportModal = function() {
+        document.getElementById('export-modal').style.display = 'none';
+    };
+    
+    window.exportStats = function() {
+        const format = document.getElementById('export-format').value;
+        const startDate = document.getElementById('export-start-date').value;
+        const endDate = document.getElementById('export-end-date').value;
+        
+        showToast(`Generating ${format.toUpperCase()} export...`, 'info');
+        
+        // Simulate export process
+        setTimeout(() => {
+            showToast(`Statistics exported successfully as ${format.toUpperCase()}`, 'success');
+            closeExportModal();
+        }, 2000);
+    };
+});
+</script>
+{% endblock %}

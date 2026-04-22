@@ -1,0 +1,261 @@
+<!-- Circuit Breaker Monitoring Component -->
+<div class="card p-6" x-data="circuitBreakerMonitor()">
+    <h2 class="text-xl font-semibold mb-4 text-primary">Circuit Breaker Status</h2>
+    <p class="text-secondary text-sm mb-6">Real-time health monitoring of external services</p>
+
+    <!-- Overall Health Status -->
+    <div class="mb-6">
+        <div class="flex items-center justify-between mb-3">
+            <span class="text-sm font-medium">Overall Health</span>
+            <span class="text-xs px-2 py-1 rounded-full"
+                  :class="getHealthClass(overallHealth)"
+                  x-text="overallHealth.toUpperCase()">HEALTHY</span>
+        </div>
+
+        <div class="grid grid-cols-3 gap-4 text-center">
+            <div class="bg-surface rounded-lg p-3">
+                <div class="text-2xl font-bold text-green-400" x-text="summary.healthy_services">0</div>
+                <div class="text-xs text-gray-400">Healthy</div>
+            </div>
+            <div class="bg-surface rounded-lg p-3">
+                <div class="text-2xl font-bold text-yellow-400" x-text="summary.degraded_services">0</div>
+                <div class="text-xs text-gray-400">Degraded</div>
+            </div>
+            <div class="bg-surface rounded-lg p-3">
+                <div class="text-2xl font-bold text-red-400" x-text="summary.down_services">0</div>
+                <div class="text-xs text-gray-400">Down</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Service Status List -->
+    <div class="space-y-3">
+        <h3 class="text-sm font-medium text-gray-300">Service Status</h3>
+
+        <template x-for="[serviceName, service] in Object.entries(circuitBreakers)" :key="serviceName">
+            <div class="bg-surface rounded-lg p-4">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-3">
+                        <div class="w-3 h-3 rounded-full"
+                             :class="getStatusColor(service.state)"></div>
+                        <span class="font-medium capitalize" x-text="serviceName">Service</span>
+                    </div>
+                    <span class="text-xs px-2 py-1 rounded"
+                          :class="getHealthClass(service.health_category)"
+                          x-text="service.state.toUpperCase()">STATE</span>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 text-xs text-gray-400">
+                    <div>
+                        <span>Requests:</span>
+                        <span class="text-white ml-1" x-text="service.total_requests">0</span>
+                    </div>
+                    <div>
+                        <span>Failures:</span>
+                        <span class="text-white ml-1" x-text="service.failed_requests">0</span>
+                    </div>
+                    <div>
+                        <span>Success Rate:</span>
+                        <span class="text-white ml-1" x-text="((1 - service.failure_rate) * 100).toFixed(1) + '%'">100%</span>
+                    </div>
+                    <div>
+                        <span>Circuit Opens:</span>
+                        <span class="text-white ml-1" x-text="service.circuit_opens">0</span>
+                    </div>
+                </div>
+
+                <!-- Show reset button for open circuits -->
+                <template x-if="service.state === 'open'">
+                    <button class="mt-3 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded"
+                            @click="resetCircuitBreaker(serviceName)"
+                            :disabled="resetting === serviceName">
+                        <span x-show="resetting !== serviceName">Reset Circuit</span>
+                        <span x-show="resetting === serviceName">Resetting...</span>
+                    </button>
+                </template>
+            </div>
+        </template>
+
+        <!-- No services message -->
+        <div x-show="Object.keys(circuitBreakers).length === 0"
+             class="text-center py-8 text-gray-500">
+            <p class="text-sm">No circuit breakers found</p>
+        </div>
+    </div>
+
+    <!-- Resource Monitoring -->
+    <div class="mt-6 pt-6 border-t border-gray-700">
+        <h3 class="text-sm font-medium text-gray-300 mb-3">Resource Usage</h3>
+
+        <div class="grid grid-cols-2 gap-4">
+            <div class="bg-surface rounded-lg p-3">
+                <div class="text-sm text-gray-400">Memory Usage</div>
+                <div class="text-lg font-semibold" x-text="resourceStats.memory_percent + '%'">0%</div>
+                <div class="w-full bg-gray-700 rounded-full h-2 mt-2">
+                    <div class="h-2 rounded-full transition-all"
+                         :class="resourceStats.memory_percent > 80 ? 'bg-red-400' : resourceStats.memory_percent > 60 ? 'bg-yellow-400' : 'bg-green-400'"
+                         :style="`width: ${resourceStats.memory_percent}%`"></div>
+                </div>
+            </div>
+
+            <div class="bg-surface rounded-lg p-3">
+                <div class="text-sm text-gray-400">Active Connections</div>
+                <div class="text-lg font-semibold" x-text="resourceStats.websocket_connections">0</div>
+                <div class="text-xs text-gray-500 mt-1" x-text="resourceStats.active_tasks + ' tasks running'">0 tasks</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Last Updated -->
+    <div class="mt-4 text-xs text-gray-500 text-center">
+        Last updated: <span x-text="formatTime(lastUpdated)">Never</span>
+        <button class="ml-2 text-blue-400 hover:text-blue-300" @click="refresh()">Refresh</button>
+    </div>
+</div>
+
+<script>
+function circuitBreakerMonitor() {
+    return {
+        circuitBreakers: {},
+        summary: {
+            overall_health: 'healthy',
+            total_services: 0,
+            healthy_services: 0,
+            degraded_services: 0,
+            down_services: 0
+        },
+        overallHealth: 'healthy',
+        resourceStats: {
+            memory_percent: 0,
+            websocket_connections: 0,
+            active_tasks: 0
+        },
+        lastUpdated: null,
+        resetting: null,
+        refreshInterval: null,
+
+        init() {
+            this.loadData();
+            // Auto-refresh every 10 seconds
+            this.refreshInterval = timerManager.setInterval(() => {
+                this.loadData();
+            }, 10000);
+        },
+
+        destroy() {
+            if (this.refreshInterval) {
+                timerManager.clearInterval(this.refreshInterval);
+            }
+        },
+
+        async loadData() {
+            try {
+                // Load circuit breaker status
+                const cbResponse = await fetch('/api/v2/monitoring/circuit-breakers');
+                if (cbResponse.ok) {
+                    const cbData = await cbResponse.json();
+                    this.circuitBreakers = cbData.circuit_breakers || {};
+                    this.summary = cbData.summary || this.summary;
+                    this.overallHealth = this.summary.overall_health || 'healthy';
+                }
+
+                // Load resource status
+                const resourceResponse = await fetch('/api/v2/monitoring/resources');
+                if (resourceResponse.ok) {
+                    const resourceData = await resourceResponse.json();
+                    this.resourceStats = {
+                        memory_percent: Math.round(resourceData.process?.memory_percent || 0),
+                        websocket_connections: resourceData.websockets?.total_connections || 0,
+                        active_tasks: resourceData.tasks?.running_tasks || 0
+                    };
+                }
+
+                this.lastUpdated = new Date();
+
+            } catch (error) {
+                console.error('Failed to load circuit breaker data:', error);
+                this.showToast('Failed to load monitoring data', 'error');
+            }
+        },
+
+        async resetCircuitBreaker(serviceName) {
+            if (this.resetting) return;
+
+            this.resetting = serviceName;
+            try {
+                const response = await fetch(`/api/v2/monitoring/circuit-breakers/${serviceName}/reset`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    this.showToast(`Circuit breaker ${serviceName} reset successfully`, 'success');
+                    await this.loadData(); // Refresh data
+                } else {
+                    const error = await response.text();
+                    this.showToast(`Failed to reset ${serviceName}: ${error}`, 'error');
+                }
+            } catch (error) {
+                console.error('Reset failed:', error);
+                this.showToast(`Reset failed: ${error.message}`, 'error');
+            } finally {
+                this.resetting = null;
+            }
+        },
+
+        async refresh() {
+            await this.loadData();
+            this.showToast('Monitoring data refreshed', 'success');
+        },
+
+        getHealthClass(health) {
+            switch (health) {
+                case 'healthy': return 'bg-green-500/20 text-green-400';
+                case 'degraded': return 'bg-yellow-500/20 text-yellow-400';
+                case 'critical':
+                case 'down': return 'bg-red-500/20 text-red-400';
+                default: return 'bg-gray-500/20 text-gray-400';
+            }
+        },
+
+        getStatusColor(state) {
+            switch (state) {
+                case 'closed': return 'bg-green-400';
+                case 'half_open': return 'bg-yellow-400';
+                case 'open': return 'bg-red-400';
+                default: return 'bg-gray-400';
+            }
+        },
+
+        formatTime(date) {
+            if (!date) return 'Never';
+            return date.toLocaleTimeString();
+        },
+
+        showToast(message, type = 'info') {
+            if (typeof window.showToast === 'function') {
+                window.showToast(message, type);
+            }
+        }
+    };
+}
+</script>
+
+<style>
+.card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+}
+
+.bg-surface {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.text-primary {
+    color: var(--text-primary, #ffffff);
+}
+
+.text-secondary {
+    color: var(--text-secondary, #9ca3af);
+}
+</style>

@@ -1,0 +1,339 @@
+{% extends "base-clean.html" %}
+
+{% block title %}System Health - TalkBot{% endblock %}
+
+{% block charts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div x-data="healthApp()">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1>System Health</h1>
+                <p>Real-time monitoring and system diagnostics</p>
+            </div>
+            <div class="flex gap-2">
+                <button @click="autoRefresh = !autoRefresh" 
+                        :class="autoRefresh ? 'btn-primary' : 'btn-secondary'" 
+                        class="btn">
+                    <span x-text="autoRefresh ? 'Auto-Refresh ON' : 'Auto-Refresh OFF'"></span>
+                </button>
+                <button @click="exportReport()" class="btn btn-ghost">Export Report</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Status Overview -->
+    <div class="card mb-8">
+        <div class="card-body">
+            <div class="grid grid-cols-5 gap-4">
+                <div class="text-center">
+                    <div class="text-xs text-muted mb-2">System Status</div>
+                    <div class="text-2xl font-bold" :class="systemStatus === 'Healthy' ? 'text-success' : 'text-error'">
+                        <span x-text="systemStatus"></span>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <div class="text-xs text-muted mb-2">Uptime</div>
+                    <div class="text-2xl font-bold text-primary">14d 7h</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-xs text-muted mb-2">CPU Load</div>
+                    <div class="text-2xl font-bold" :class="cpuLoad > 80 ? 'text-error' : cpuLoad > 60 ? 'text-warning' : 'text-success'">
+                        <span x-text="cpuLoad + '%'"></span>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <div class="text-xs text-muted mb-2">Memory</div>
+                    <div class="text-2xl font-bold" :class="memoryUsage > 80 ? 'text-error' : memoryUsage > 60 ? 'text-warning' : 'text-success'">
+                        <span x-text="memoryUsage + '%'"></span>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <div class="text-xs text-muted mb-2">Disk I/O</div>
+                    <div class="text-2xl font-bold text-info">
+                        <span x-text="diskIO + ' MB/s'"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Real-time Metrics -->
+    <div class="grid grid-cols-2 gap-6 mb-8">
+        <!-- CPU & Memory Chart -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Resource Usage</h3>
+                <select x-model="resourceTimeframe" class="form-select" style="width: 100px;">
+                    <option value="1h">1 Hour</option>
+                    <option value="6h">6 Hours</option>
+                    <option value="24h">24 Hours</option>
+                </select>
+            </div>
+            <div class="card-body">
+                <canvas id="resourceChart" height="250"></canvas>
+            </div>
+        </div>
+
+        <!-- Network Activity -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Network Activity</h3>
+                <span class="badge badge-success">Normal</span>
+            </div>
+            <div class="card-body">
+                <canvas id="networkChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Service Health Grid -->
+    <div class="mb-8">
+        <h2 class="text-xl font-semibold mb-4">Service Health</h2>
+        <div class="grid grid-cols-4 gap-4">
+            <template x-for="service in services" :key="service.name">
+                <div class="card" :class="service.status === 'error' ? 'border-error' : service.status === 'warning' ? 'border-warning' : ''">
+                    <div class="card-body p-4">
+                        <div class="flex justify-between items-start mb-2">
+                            <h4 class="font-medium" x-text="service.name"></h4>
+                            <div class="w-2 h-2 rounded-full"
+                                 :class="{
+                                     'bg-success': service.status === 'healthy',
+                                     'bg-warning': service.status === 'warning',
+                                     'bg-error': service.status === 'error'
+                                 }"></div>
+                        </div>
+                        <div class="text-xs text-muted mb-2" x-text="service.description"></div>
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                                <span class="text-muted">Uptime:</span>
+                                <span class="font-medium" x-text="service.uptime"></span>
+                            </div>
+                            <div>
+                                <span class="text-muted">Latency:</span>
+                                <span class="font-medium" x-text="service.latency + 'ms'"></span>
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            <div class="w-full bg-elevated rounded-full" style="height: 4px;">
+                                <div class="rounded-full" 
+                                     :style="`width: ${service.health}%; height: 4px; background: ${service.status === 'healthy' ? 'var(--color-success)' : service.status === 'warning' ? 'var(--color-warning)' : 'var(--color-error)'};`"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- Error Logs -->
+    <div class="grid grid-cols-2 gap-6">
+        <!-- Recent Errors -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Recent Errors</h3>
+                <button class="btn btn-sm btn-ghost">Clear</button>
+            </div>
+            <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                <div class="space-y-2">
+                    <template x-for="error in errors" :key="error.id">
+                        <div class="p-3 bg-elevated rounded-lg border-l-4"
+                             :class="{
+                                 'border-error': error.level === 'error',
+                                 'border-warning': error.level === 'warning',
+                                 'border-info': error.level === 'info'
+                             }">
+                            <div class="flex justify-between items-start mb-1">
+                                <span class="text-xs font-medium" x-text="error.service"></span>
+                                <span class="text-xs text-muted" x-text="error.time"></span>
+                            </div>
+                            <div class="text-sm" x-text="error.message"></div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- Performance Metrics -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Performance Metrics</h3>
+            </div>
+            <div class="card-body">
+                <div class="space-y-3">
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <span class="text-sm">API Response Time</span>
+                            <span class="text-sm font-medium">120ms</span>
+                        </div>
+                        <div class="w-full bg-elevated rounded-full" style="height: 6px;">
+                            <div class="rounded-full bg-success" style="width: 30%; height: 6px;"></div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <span class="text-sm">Database Query Time</span>
+                            <span class="text-sm font-medium">45ms</span>
+                        </div>
+                        <div class="w-full bg-elevated rounded-full" style="height: 6px;">
+                            <div class="rounded-full bg-success" style="width: 15%; height: 6px;"></div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <span class="text-sm">Cache Hit Rate</span>
+                            <span class="text-sm font-medium">94%</span>
+                        </div>
+                        <div class="w-full bg-elevated rounded-full" style="height: 6px;">
+                            <div class="rounded-full bg-success" style="width: 94%; height: 6px;"></div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <span class="text-sm">WebSocket Connections</span>
+                            <span class="text-sm font-medium">42 / 100</span>
+                        </div>
+                        <div class="w-full bg-elevated rounded-full" style="height: 6px;">
+                            <div class="rounded-full bg-info" style="width: 42%; height: 6px;"></div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <span class="text-sm">Queue Depth</span>
+                            <span class="text-sm font-medium">8 / 1000</span>
+                        </div>
+                        <div class="w-full bg-elevated rounded-full" style="height: 6px;">
+                            <div class="rounded-full bg-success" style="width: 0.8%; height: 6px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function healthApp() {
+    return {
+        systemStatus: 'Healthy',
+        cpuLoad: 35,
+        memoryUsage: 52,
+        diskIO: 12.4,
+        autoRefresh: true,
+        resourceTimeframe: '1h',
+        
+        services: [
+            { name: 'Bot Core', description: 'Main bot service', status: 'healthy', uptime: '99.9%', latency: 12, health: 100 },
+            { name: 'Database', description: 'PostgreSQL', status: 'healthy', uptime: '99.8%', latency: 8, health: 98 },
+            { name: 'Cache', description: 'Redis cache', status: 'healthy', uptime: '100%', latency: 2, health: 100 },
+            { name: 'WebSocket', description: 'Real-time connections', status: 'healthy', uptime: '99.5%', latency: 15, health: 95 },
+            { name: 'TTS Engine', description: 'Text-to-speech', status: 'warning', uptime: '98.2%', latency: 180, health: 75 },
+            { name: 'Memory System', description: 'Context storage', status: 'healthy', uptime: '99.9%', latency: 22, health: 100 },
+            { name: 'API Gateway', description: 'FastAPI server', status: 'healthy', uptime: '100%', latency: 5, health: 100 },
+            { name: 'Task Queue', description: 'Background tasks', status: 'healthy', uptime: '99.7%', latency: 35, health: 92 }
+        ],
+        
+        errors: [
+            { id: 1, level: 'warning', service: 'TTS Engine', message: 'High latency detected (>150ms)', time: '2 mins ago' },
+            { id: 2, level: 'info', service: 'Cache', message: 'Cache cleared: 1.2GB freed', time: '15 mins ago' },
+            { id: 3, level: 'error', service: 'WebSocket', message: 'Connection timeout for user_123', time: '1 hour ago' },
+            { id: 4, level: 'warning', service: 'Database', message: 'Slow query detected (>100ms)', time: '2 hours ago' }
+        ],
+        
+        init() {
+            this.initCharts();
+            if (this.autoRefresh) {
+                this.startAutoRefresh();
+            }
+        },
+        
+        initCharts() {
+            // Resource Usage Chart
+            const resourceCtx = document.getElementById('resourceChart').getContext('2d');
+            new Chart(resourceCtx, {
+                type: 'line',
+                data: {
+                    labels: Array(20).fill().map((_, i) => `${i * 3}m`),
+                    datasets: [{
+                        label: 'CPU',
+                        data: Array(20).fill().map(() => Math.random() * 50 + 20),
+                        borderColor: '#8b5cf6',
+                        backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.3
+                    }, {
+                        label: 'Memory',
+                        data: Array(20).fill().map(() => Math.random() * 30 + 40),
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+
+            // Network Activity Chart
+            const networkCtx = document.getElementById('networkChart').getContext('2d');
+            new Chart(networkCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['In', 'Out'],
+                    datasets: [{
+                        label: 'Current',
+                        data: [45, 32],
+                        backgroundColor: '#3b82f6'
+                    }, {
+                        label: 'Average',
+                        data: [38, 28],
+                        backgroundColor: '#737373'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+        },
+        
+        startAutoRefresh() {
+            timerManager.setInterval(() => {
+                if (this.autoRefresh) {
+                    // Update values
+                    this.cpuLoad = Math.floor(Math.random() * 30) + 25;
+                    this.memoryUsage = Math.floor(Math.random() * 30) + 45;
+                    this.diskIO = (Math.random() * 20 + 5).toFixed(1);
+                }
+            }, 5000);
+        },
+        
+        exportReport() {
+            Toast.show('Health report exported', 'success');
+        }
+    }
+}
+</script>
+{% endblock %}

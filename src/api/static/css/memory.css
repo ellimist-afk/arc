@@ -1,0 +1,386 @@
+/* Memory System Styles */
+
+/* Memory Controls */
+.tbx-memory-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.tbx-filter-group {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+@media (min-width: 768px) {
+    .tbx-memory-controls {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: flex-start;
+    }
+    
+    .tbx-filter-group {
+        flex-wrap: nowrap;
+    }
+}
+
+/* Memory List */
+.tbx-memory-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.tbx-memory-item {
+    background: var(--tbx-color-surface-2);
+    border: 1px solid var(--tbx-color-border);
+    border-radius: var(--tbx-border-radius-lg);
+    padding: 1.5rem;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.tbx-memory-item:hover {
+    background: var(--tbx-color-surface-3);
+    border-color: var(--tbx-color-primary-500);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.tbx-memory-item__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.75rem;
+}
+
+.tbx-memory-item__meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.tbx-memory-item__type {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.75rem;
+    border-radius: var(--tbx-border-radius-full);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.tbx-memory-item__type--conversation {
+    background: var(--tbx-color-primary-100);
+    color: var(--tbx-color-primary-700);
+}
+
+.tbx-memory-item__type--preference {
+    background: var(--tbx-color-success-100);
+    color: var(--tbx-color-success-700);
+}
+
+.tbx-memory-item__type--fact {
+    background: var(--tbx-color-warning-100);
+    color: var(--tbx-color-warning-700);
+}
+
+.tbx-memory-item__type--emotion {
+    background: var(--tbx-color-error-100);
+    color: var(--tbx-color-error-700);
+}
+
+/* Dark theme overrides */
+.tbx-theme-dark .tbx-memory-item__type--conversation {
+    background: var(--tbx-color-primary-900);
+    color: var(--tbx-color-primary-200);
+}
+
+.tbx-theme-dark .tbx-memory-item__type--preference {
+    background: var(--tbx-color-success-900);
+    color: var(--tbx-color-success-200);
+}
+
+.tbx-theme-dark .tbx-memory-item__type--fact {
+    background: var(--tbx-color-warning-900);
+    color: var(--tbx-color-warning-200);
+}
+
+.tbx-theme-dark .tbx-memory-item__type--emotion {
+    background: var(--tbx-color-error-900);
+    color: var(--tbx-color-error-200);
+}
+
+.tbx-memory-item__timestamp {
+    font-size: 0.75rem;
+    color: var(--tbx-color-text-muted);
+}
+
+.tbx-memory-item__content {
+    margin-bottom: 1rem;
+}
+
+.tbx-memory-item__text {
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--tbx-color-text-primary);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.tbx-memory-item__footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--tbx-color-border);
+}
+
+.tbx-memory-item__tags {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.tbx-memory-item__tag {
+    padding: 0.25rem 0.5rem;
+    background: var(--tbx-color-surface-3);
+    border-radius: var(--tbx-border-radius-sm);
+    font-size: 0.75rem;
+    color: var(--tbx-color-text-muted);
+}
+
+.tbx-memory-item__actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.tbx-memory-item__action {
+    padding: 0.25rem;
+    background: transparent;
+    border: none;
+    border-radius: var(--tbx-border-radius-sm);
+    color: var(--tbx-color-text-muted);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.tbx-memory-item__action:hover {
+    background: var(--tbx-color-surface-3);
+    color: var(--tbx-color-text-primary);
+}
+
+.tbx-memory-item__action--delete:hover {
+    background: var(--tbx-color-error-100);
+    color: var(--tbx-color-error-600);
+}
+
+.tbx-theme-dark .tbx-memory-item__action--delete:hover {
+    background: var(--tbx-color-error-900);
+    color: var(--tbx-color-error-300);
+}
+
+/* Memory Detail Modal */
+.tbx-memory-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.tbx-memory-detail__section {
+    padding: 1rem;
+    background: var(--tbx-color-surface-1);
+    border-radius: var(--tbx-border-radius-md);
+    border: 1px solid var(--tbx-color-border);
+}
+
+.tbx-memory-detail__section h4 {
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: var(--tbx-color-text-primary);
+}
+
+.tbx-memory-detail__content {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    line-height: 1.6;
+}
+
+.tbx-memory-detail__metadata {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.tbx-memory-detail__meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.tbx-memory-detail__meta-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--tbx-color-text-muted);
+}
+
+.tbx-memory-detail__meta-value {
+    color: var(--tbx-color-text-primary);
+}
+
+/* Pagination */
+.tbx-pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--tbx-color-border);
+}
+
+.tbx-pagination__info {
+    font-size: 0.875rem;
+    color: var(--tbx-color-text-muted);
+    white-space: nowrap;
+}
+
+/* Loading States */
+.tbx-memory-item--skeleton {
+    animation: skeleton-loading 1.5s infinite;
+    cursor: default;
+}
+
+.tbx-memory-item--skeleton:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+.tbx-memory-item--skeleton .tbx-memory-item__text,
+.tbx-memory-item--skeleton .tbx-memory-item__type,
+.tbx-memory-item--skeleton .tbx-memory-item__timestamp {
+    background: var(--tbx-color-surface-3);
+    color: transparent;
+    border-radius: var(--tbx-border-radius-sm);
+}
+
+@keyframes skeleton-loading {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .tbx-memory-item {
+        padding: 1rem;
+    }
+    
+    .tbx-memory-item__header {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    
+    .tbx-memory-item__footer {
+        flex-direction: column;
+        gap: 0.75rem;
+        align-items: flex-start;
+    }
+    
+    .tbx-filter-group {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .tbx-filter-group .tbx-select {
+        width: 100%;
+    }
+}
+
+/* Memory Statistics */
+.tbx-memory-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.tbx-memory-stat {
+    background: var(--tbx-color-surface-2);
+    border: 1px solid var(--tbx-color-border);
+    border-radius: var(--tbx-border-radius-lg);
+    padding: 1.5rem;
+    text-align: center;
+}
+
+.tbx-memory-stat__value {
+    font-size: 2rem;
+    font-weight: bold;
+    color: var(--tbx-color-primary-500);
+    margin-bottom: 0.5rem;
+}
+
+.tbx-memory-stat__label {
+    font-size: 0.875rem;
+    color: var(--tbx-color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Memory Configuration */
+.tbx-memory-config {
+    background: var(--tbx-color-surface-1);
+    border: 1px solid var(--tbx-color-border);
+    border-radius: var(--tbx-border-radius-lg);
+    padding: 1.5rem;
+}
+
+.tbx-memory-config__section {
+    margin-bottom: 2rem;
+}
+
+.tbx-memory-config__section:last-child {
+    margin-bottom: 0;
+}
+
+.tbx-memory-config__title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--tbx-color-text-primary);
+    margin-bottom: 1rem;
+}
+
+.tbx-memory-config__option {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--tbx-color-border);
+}
+
+.tbx-memory-config__option:last-child {
+    border-bottom: none;
+}
+
+.tbx-memory-config__option-info {
+    flex: 1;
+    margin-right: 1rem;
+}
+
+.tbx-memory-config__option-label {
+    font-weight: 500;
+    color: var(--tbx-color-text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.tbx-memory-config__option-desc {
+    font-size: 0.875rem;
+    color: var(--tbx-color-text-muted);
+    line-height: 1.4;
+}

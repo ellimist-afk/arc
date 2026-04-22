@@ -1,0 +1,363 @@
+{% extends "base.html" %}
+
+{% block title %}Personality Health Monitor - TalkBot{% endblock %}
+
+{% block content %}
+<style>
+    .personality-monitor {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .thread-status {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .thread-status h3 {
+        margin-top: 0;
+        margin-bottom: 1rem;
+        color: var(--accent);
+        border-bottom: 2px solid var(--accent);
+        padding-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .metric {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 0;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .metric:last-child {
+        border-bottom: none;
+    }
+
+    .metric label {
+        font-weight: 600;
+        color: var(--text-secondary);
+    }
+
+    .metric span {
+        font-family: 'Courier New', monospace;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        padding: 0.375rem 0.75rem;
+        border-radius: 0.375rem;
+        font-weight: bold;
+        font-size: 0.875rem;
+    }
+
+    .sentiment-positive { color: var(--success) !important; }
+    .sentiment-negative { color: var(--error) !important; }
+    .sentiment-neutral { color: var(--warning) !important; }
+
+    .health-ok { color: var(--success) !important; }
+    .health-warning { color: var(--warning) !important; }
+    .health-critical { color: var(--error) !important; }
+
+    .emergency-controls {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        margin-top: 2rem;
+        flex-wrap: wrap;
+    }
+
+    .status-indicator {
+        display: inline-block;
+        width: 0.75rem;
+        height: 0.75rem;
+        border-radius: 50%;
+        margin-left: 0.5rem;
+    }
+
+    .status-online { background: var(--success); }
+    .status-warning { background: var(--warning); }
+    .status-offline { background: var(--error); }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+
+    .status-indicator.pulse {
+        animation: pulse 2s infinite;
+    }
+
+    @media (max-width: 768px) {
+        .emergency-controls {
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .emergency-controls button {
+            width: 100%;
+            max-width: 20rem;
+        }
+    }
+</style>
+
+<div class="personality-monitor">
+    <!-- Page Header -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-3xl font-bold text-white">Personality Health Monitor</h1>
+            <p class="text-gray-400 mt-1">Real-time monitoring of bot personality systems</p>
+        </div>
+        <div id="connection-status" class="flex items-center gap-2">
+            <div class="status-indicator status-offline" id="main-connection-indicator"></div>
+            <span class="text-sm text-gray-400">WebSocket Status</span>
+        </div>
+    </div>
+
+    <div class="personality-monitor space-y-6">
+
+        <!-- Thread 1: Stochastic Engine -->
+        <div class="thread-status" id="stochastic-status">
+            <h3>Response Probability Engine <span class="status-indicator status-online pulse" id="stochastic-indicator"></span></h3>
+            <div class="metric">
+                <label>Current Context:</label>
+                <span id="current-context">AMBIENT</span>
+            </div>
+            <div class="metric">
+                <label>Response Chance:</label>
+                <span id="response-chance">5%</span>
+            </div>
+            <div class="metric">
+                <label>Last Decision:</label>
+                <span id="last-decision">SKIPPED</span>
+            </div>
+        </div>
+
+        <!-- Thread 2: Adaptive Cooldown -->
+        <div class="thread-status" id="cooldown-status">
+            <h3>Adaptive Cooldown <span class="status-indicator status-online pulse" id="cooldown-indicator"></span></h3>
+            <div class="metric">
+                <label>Effective Cooldown:</label>
+                <span id="effective-cooldown">120s</span>
+            </div>
+            <div class="metric">
+                <label>Viewer Sentiment:</label>
+                <span id="viewer-sentiment" class="sentiment-neutral">Neutral</span>
+            </div>
+            <div class="metric">
+                <label>Health Status:</label>
+                <span id="health-status" class="health-ok">Healthy</span>
+            </div>
+        </div>
+
+        <!-- Thread 3: Context Analysis -->
+        <div class="thread-status" id="context-status">
+            <h3>Context Analyzer <span class="status-indicator status-online pulse" id="context-indicator"></span></h3>
+            <div class="metric">
+                <label>Messages Analyzed:</label>
+                <span id="messages-analyzed">0</span>
+            </div>
+            <div class="metric">
+                <label>Avg Quality Score:</label>
+                <span id="avg-quality">0.0</span>
+            </div>
+            <div class="metric">
+                <label>Response Required:</label>
+                <span id="responses-required">0%</span>
+            </div>
+        </div>
+
+        <!-- Emergency Controls -->
+        <div class="card p-6">
+            <h3 class="text-lg font-semibold text-white mb-4 pb-2 border-b border-gray-700">Emergency Controls</h3>
+            <div class="flex gap-4 justify-center flex-wrap">
+                <button onclick="emergencyMute()" class="btn-danger">
+                    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.524 5.11a6 6 0 018.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z" clip-rule="evenodd"/>
+                    </svg>
+                    EMERGENCY MUTE
+                </button>
+                <button onclick="increaseAllCooldowns()" class="btn-secondary">
+                    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
+                    </svg>
+                    Double Cooldowns
+                </button>
+                <button onclick="resetPersonality()" class="btn-outline">
+                    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+                    </svg>
+                    Reset to Defaults
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+        // Connection status tracking
+        let ws = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+
+        function connectWebSocket() {
+            try {
+                ws = new WebSocket('ws://localhost:8000/personality-metrics');
+
+                ws.onopen = () => {
+                    console.log('Connected to personality metrics');
+                    reconnectAttempts = 0;
+                    updateConnectionStatus(true);
+                };
+
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    updatePersonalityMetrics(data);
+                };
+
+                ws.onclose = () => {
+                    console.log('Disconnected from personality metrics');
+                    updateConnectionStatus(false);
+                    attemptReconnect();
+                };
+
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    updateConnectionStatus(false);
+                };
+            } catch (error) {
+                console.error('Failed to connect WebSocket:', error);
+                updateConnectionStatus(false);
+                attemptReconnect();
+            }
+        }
+
+        function attemptReconnect() {
+            if (reconnectAttempts < maxReconnectAttempts) {
+                reconnectAttempts++;
+                console.log(`Attempting reconnect ${reconnectAttempts}/${maxReconnectAttempts}`);
+                timerManager.setTimeout(connectWebSocket, 2000 * reconnectAttempts);
+            }
+        }
+
+        function updateConnectionStatus(connected) {
+            const indicators = ['stochastic-indicator', 'cooldown-indicator', 'context-indicator', 'main-connection-indicator'];
+            indicators.forEach(id => {
+                const indicator = document.getElementById(id);
+                if (connected) {
+                    indicator.className = 'status-indicator status-online pulse';
+                } else {
+                    indicator.className = 'status-indicator status-offline';
+                }
+            });
+        }
+
+        function updatePersonalityMetrics(data) {
+            // Update Thread 1 metrics
+            document.getElementById('current-context').textContent = data.context || 'NONE';
+            document.getElementById('response-chance').textContent = `${(data.probability * 100).toFixed(1)}%`;
+            document.getElementById('last-decision').textContent = data.decision || 'NONE';
+
+            // Update Thread 2 metrics
+            document.getElementById('effective-cooldown').textContent = `${data.cooldown}s`;
+            const sentimentEl = document.getElementById('viewer-sentiment');
+            const sentiment = data.sentiment || 0;
+            if (sentiment > 0) {
+                sentimentEl.textContent = 'Positive';
+                sentimentEl.className = 'sentiment-positive';
+            } else if (sentiment < 0) {
+                sentimentEl.textContent = 'Negative';
+                sentimentEl.className = 'sentiment-negative';
+            } else {
+                sentimentEl.textContent = 'Neutral';
+                sentimentEl.className = 'sentiment-neutral';
+            }
+
+            const healthEl = document.getElementById('health-status');
+            const health = data.health || 'Unknown';
+            healthEl.textContent = health;
+            if (health === 'Healthy') {
+                healthEl.className = 'health-ok';
+            } else if (health === 'Warning') {
+                healthEl.className = 'health-warning';
+            } else {
+                healthEl.className = 'health-critical';
+            }
+
+            // Update Thread 3 metrics
+            document.getElementById('messages-analyzed').textContent = data.analyzed || '0';
+            document.getElementById('avg-quality').textContent = (data.quality || 0).toFixed(2);
+            document.getElementById('responses-required').textContent = `${(data.required_rate * 100).toFixed(1)}%`;
+        }
+
+        function emergencyMute() {
+            if (confirm('EMERGENCY MUTE - This will silence the bot for 10 minutes. Continue?')) {
+                fetch('/api/v2/personality/emergency-mute', { method: 'POST' })
+                    .then(response => {
+                        if (response.ok) {
+                            Toast.show('Bot muted for 10 minutes', 'success');
+                        } else {
+                            Toast.show('Failed to mute bot', 'error');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        Toast.show('Error occurred while muting bot', 'error');
+                    });
+            }
+        }
+
+        function increaseAllCooldowns() {
+            if (confirm('This will double all current cooldowns. Continue?')) {
+                fetch('/api/v2/personality/double-cooldowns', { method: 'POST' })
+                    .then(response => {
+                        if (response.ok) {
+                            Toast.show('All cooldowns doubled', 'success');
+                        } else {
+                            Toast.show('Failed to update cooldowns', 'error');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        Toast.show('Error occurred while updating cooldowns', 'error');
+                    });
+            }
+        }
+
+        function resetPersonality() {
+            if (confirm('This will reset all personality settings to defaults. Continue?')) {
+                fetch('/api/v2/personality/reset', { method: 'POST' })
+                    .then(response => {
+                        if (response.ok) {
+                            Toast.show('Personality settings reset to defaults', 'success');
+                            timerManager.setTimeout(() => location.reload(), 1500); // Delay reload to show toast
+                        } else {
+                            Toast.show('Failed to reset personality settings', 'error');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        Toast.show('Error occurred while resetting personality', 'error');
+                    });
+            }
+        }
+
+        // Initialize connection when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            connectWebSocket();
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (ws) {
+                ws.close();
+            }
+        });
+</script>
+{% endblock %}

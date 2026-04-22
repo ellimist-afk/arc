@@ -1,0 +1,73 @@
+/* Fix for modal overlay blocking issue */
+
+/* Ensure x-cloak elements are hidden until Alpine loads */
+[x-cloak] {
+    display: none !important;
+}
+
+/* Ensure modal is properly hidden when not shown */
+[x-show="showCustomPresetModal"]:not([style*="display: none"]):not([style*="display:none"]) {
+    /* This selector targets modals that should be hidden but aren't */
+}
+
+/* Force hide any fixed overlays that shouldn't be visible */
+.fixed.inset-0:not(.active-modal) {
+    pointer-events: none;
+}
+
+/* Ensure backdrop doesn't block when modal is closed */
+[x-show="showCustomPresetModal"] .fixed.inset-0 {
+    z-index: 9998;
+}
+
+/* Modal content should be above backdrop */
+[x-show="showCustomPresetModal"] > div:last-child {
+    z-index: 9999;
+}
+
+/* Emergency override - remove any blocking overlays */
+body.settings-page .fixed.inset-0:empty {
+    display: none !important;
+}
+
+/* Prevent accidental oval shapes from blocking */
+.rounded-full,
+[style*="border-radius: 50%"],
+[style*="border-radius:50%"] {
+    pointer-events: auto;
+    position: relative;
+    z-index: auto;
+}
+
+/* Ensure main content is interactive */
+.tbx-settings-content,
+.settings-content,
+#settings-content,
+main {
+    position: relative;
+    z-index: 1;
+    pointer-events: auto;
+}
+
+/* Fix for large elements with border-radius */
+div[style*="border-radius"]:not(button):not(input):not(.modal) {
+    max-width: 100%;
+    max-height: 100vh;
+    overflow: visible;
+}
+
+/* Ensure the Advanced section is clickable */
+.mt-6.p-6.rounded-xl.border,
+[class*="personality"],
+[class*="advanced"] {
+    position: relative;
+    z-index: 2;
+    pointer-events: auto;
+}
+
+/* Debug helper - highlights blocking elements */
+.debug-blocking-elements .fixed.inset-0:not([x-show]),
+.debug-blocking-elements .absolute.inset-0:not([x-show]) {
+    border: 5px solid red !important;
+    background: rgba(255, 0, 0, 0.2) !important;
+}

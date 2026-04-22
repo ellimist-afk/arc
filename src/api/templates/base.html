@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}TalkBot Settings{% endblock %}</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="AI-powered streaming assistant for Twitch with real-time chat interaction and voice synthesis">
+    <meta name="theme-color" content="#9146FF">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TalkBot">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/static/manifest.json">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- HTMX -->
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.10/dist/htmx.min.js"></script>
+    <!-- HTMX WebSocket Extension -->
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.10/dist/ext/ws.js"></script>
+
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/design-system.css">
+    <link rel="stylesheet" href="/static/css/navigation.css">
+    <link rel="stylesheet" href="/static/css/settings.css">
+    <link rel="stylesheet" href="/static/css/unified-slider-system.css">
+    <link rel="stylesheet" href="/static/css/loading-states.css">
+    <link rel="stylesheet" href="/static/css/memory-interface.css">
+    <link rel="stylesheet" href="/static/css/quick-actions.css">
+    <link rel="stylesheet" href="/static/css/connection-status.css">
+    
+    <!-- Thread 2 V2 Design System -->
+    <link rel="stylesheet" href="/static/v2/css/design-tokens.css">
+    <link rel="stylesheet" href="/static/v2/css/base.css">
+    <link rel="stylesheet" href="/static/v2/css/components.css">
+    <link rel="stylesheet" href="/static/v2/css/utilities.css">
+
+    <style>
+        /* Import professional design system variables */
+        :root {
+            /* Professional color palette - muted and sophisticated */
+            --bg-primary: #0a0a0b;
+            --bg-surface: #111113;
+            --bg-elevated: #18181b;
+            --border: rgba(255,255,255,0.1);
+            --accent: #9333ea;  /* Muted purple instead of bright */
+            --radius: 0.5rem;
+            --text-primary: #f4f4f5;
+            --text-secondary: #a1a1aa;
+            --text-muted: #71717a;
+
+            /* Semantic colors - professional tones */
+            --surface: #111113;
+            --surface-elevated: #18181b;
+            --border-light: rgba(255,255,255,0.06);
+            --success: #22c55e;
+            --warning: #eab308;
+            --error: #ef4444;
+            --info: #3b82f6;
+            
+            /* Focus and interaction states */
+            --focus-ring: rgba(147, 51, 234, 0.4);
+            --hover-overlay: rgba(255, 255, 255, 0.05);
+        }
+
+        /* Force dark theme on body and html */
+        html {
+            background-color: var(--bg-primary) !important;
+        }
+
+        body {
+            background-color: var(--bg-primary) !important;
+            color: var(--text-primary) !important;
+            font-family: system-ui, -apple-system, sans-serif;
+            min-height: 100vh;
+        }
+
+        /* Override Tailwind white backgrounds */
+        .bg-white {
+            background-color: var(--surface) !important;
+        }
+
+        .text-black {
+            color: var(--text-primary) !important;
+        }
+
+        .text-gray-900, .text-gray-800 {
+            color: var(--text-primary) !important;
+        }
+
+        /* Ensure SVG icons are always properly sized regardless of Tailwind */
+        svg.w-4, .w-4 svg { width: 1rem !important; height: 1rem !important; }
+        svg.w-5, .w-5 svg { width: 1.25rem !important; height: 1.25rem !important; }
+
+        /* Fix select dropdown visibility */
+        select {
+            background-color: var(--bg-surface) !important;
+            color: white !important;
+            border: 1px solid var(--border) !important;
+        }
+
+        select option {
+            background-color: var(--bg-surface) !important;
+            color: white !important;
+            padding: 0.5rem !important;
+        }
+
+        select option:hover, select option:focus {
+            background-color: var(--accent) !important;
+            color: white !important;
+        }
+
+        /* Fix text input and textarea visibility */
+        input[type="text"], input[type="email"], input[type="password"],
+        input[type="search"], input[type="url"], textarea {
+            background-color: var(--bg-surface) !important;
+            color: var(--text-primary) !important;
+            border: 1px solid var(--border) !important;
+        }
+
+        input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus,
+        input[type="search"]:focus, input[type="url"]:focus, textarea:focus {
+            border-color: var(--accent) !important;
+            outline: none !important;
+            box-shadow: 0 0 0 1px rgba(232, 107, 215, 0.2) !important;
+        }
+
+        /* Fix placeholder text color */
+        input::placeholder, textarea::placeholder {
+            color: var(--text-muted) !important;
+            opacity: 0.8 !important;
+        }
+
+        .card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+            border: 1px solid rgba(147, 51, 234, 0.8);
+            border-radius: var(--radius);
+            padding: 0.625rem 1.25rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #7e22ce;
+            border-color: #6b21a8;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
+        }
+
+        .btn-secondary {
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 0.625rem 1.25rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #27272a;
+            border-color: rgba(255, 255, 255, 0.2);
+            color: var(--text-primary);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: var(--accent);
+            border: 1px solid var(--accent);
+            border-radius: var(--radius);
+            padding: 0.75rem 1.5rem;
+            font-weight: 500;
+            transition: all 0.15s ease;
+            cursor: pointer;
+        }
+
+        .btn-outline:hover {
+            background: rgba(232, 107, 215, 0.1);
+        }
+
+        .btn-danger {
+            background: var(--error);
+            color: white;
+            border: none;
+            border-radius: var(--radius);
+            padding: 0.75rem 1.5rem;
+            font-weight: 500;
+            transition: all 0.15s ease;
+            cursor: pointer;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+            transform: translateY(-1px);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .toggle {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+        }
+
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255,255,255,0.1);
+            transition: 0.3s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--accent);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+
+        /* Legacy slider styles moved to personality-sliders.css for better organization and trait-specific styling */
+        /* The new professional slider system supports trait-specific colors and better accessibility */
+
+        .sidebar {
+            width: 240px;
+            background: var(--bg-surface);
+            border-right: 1px solid var(--border);
+            min-height: 100vh;
+            position: fixed;
+            left: 0;
+            top: 0;
+            z-index: 10;
+        }
+
+        /* Sidebar styling improvements */
+        .sidebar svg {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+        }
+
+        .sidebar .nav-text {
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .sidebar a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem;
+            border-radius: 0.75rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .sidebar a:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .sidebar .logo-container {
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 1rem;
+        }
+
+        .sidebar .nav-container {
+            padding: 0 1rem;
+        }
+
+        .main-content {
+            margin-left: 240px;
+            padding: 2rem;
+            min-height: 100vh;
+            max-width: calc(100vw - 240px);
+        }
+
+        .right-rail {
+            display: none; /* Hide right rail for cleaner layout */
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 12px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-speaking { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
+        .status-listening { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+        .status-thinking { background: rgba(251, 191, 36, 0.1); color: #fbbf24; }
+        .status-muted { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+
+        .status-speaking .status-dot { background: #22c55e; }
+        .status-listening .status-dot { background: #3b82f6; }
+        .status-thinking .status-dot { background: #fbbf24; }
+        .status-muted .status-dot { background: #ef4444; }
+
+        .status-connected { background: rgba(0, 210, 106, 0.1); color: #00d26a; }
+        .status-connecting { background: rgba(255, 176, 32, 0.1); color: #ffb020; }
+        .status-disconnected { background: rgba(255, 71, 87, 0.1); color: #ff4757; }
+        
+        .status-connected .status-dot { background: #00d26a; }
+        .status-connecting .status-dot { background: #ffb020; }
+        .status-disconnected .status-dot { background: #ff4757; }
+        .status-online .status-dot { background: #00d26a; }
+        .status-offline .status-dot { background: #ff4757; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .interaction-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 0.75rem;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            margin-bottom: 0.5rem;
+        }
+
+        .interaction-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .energy-meter {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .energy-fill {
+            height: 100%;
+            background: var(--success);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        @media (max-width: 1024px) {
+            .sidebar {
+                width: 60px;
+            }
+
+            .sidebar .nav-text {
+                display: none;
+            }
+
+            .main-content {
+                margin-left: 60px;
+                margin-right: 0;
+            }
+
+            .right-rail {
+                position: static;
+                width: 100%;
+                margin-top: 2rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                display: none;
+            }
+
+            .main-content {
+                margin-left: 0;
+                margin-right: 0;
+                padding: 1rem;
+            }
+
+            .right-rail {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Enhanced Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="logo-container">
+                <div class="flex items-center gap-3">
+                    <div class="logo-icon">
+                        <span class="text-white font-bold">T</span>
+                    </div>
+                    <span class="nav-text font-semibold text-lg">TalkBot</span>
+                </div>
+            </div>
+
+            <div class="nav-container">
+                <a href="{% if streamer_id %}/ui/v2/dashboard/{{ streamer_id }}{% else %}/ui/v2/dashboard{% endif %}" 
+                   class="nav-link {% if request.path.startswith('/ui/v2/dashboard') %}active{% endif %}">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                    </svg>
+                    <span class="nav-text">Dashboard</span>
+                </a>
+
+                <a href="{% if streamer_id %}/ui/v2/settings/{{ streamer_id }}{% else %}/ui/v2/settings/confusedamish{% endif %}"
+                   class="nav-link {% if request.path.startswith('/ui/v2/settings') %}active{% endif %}">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    <span class="nav-text">Settings</span>
+                </a>
+
+                <a href="{% if streamer_id %}/ui/v2/analytics/{{ streamer_id }}{% else %}/ui/v2/analytics/confusedamish{% endif %}"
+                   class="nav-link {% if request.path.startswith('/ui/v2/analytics') %}active{% endif %}">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                    <span class="nav-text">Analytics</span>
+                </a>
+
+                <a href="{% if streamer_id %}/visualizer/{{ streamer_id }}{% else %}/visualizer/demo{% endif %}"
+                   class="nav-link {% if request.path.startswith('/visualizer') %}active{% endif %}">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                    <span class="nav-text">Visualizer</span>
+                </a>
+
+                <a href="{% if streamer_id %}/ui/v2/health/{{ streamer_id }}{% else %}/ui/v2/health{% endif %}"
+                   class="nav-link {% if request.path.startswith('/ui/v2/health') %}active{% endif %}">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                    </svg>
+                    <span class="nav-text">Health</span>
+                </a>
+            </div>
+            
+            <!-- Live Status Indicator -->
+            <div class="mt-auto p-4">
+                <div class="live-indicator">
+                    <span class="dot"></span>
+                    <span>LIVE</span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+
+        <!-- Right Rail -->
+        <aside class="right-rail">
+            {% block right_rail %}{% endblock %}
+        </aside>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+
+    <!-- Settings Infrastructure - Commented out missing files that were causing errors -->
+    <!-- <script src="/static/js/settings/services/SettingsApiService.js"></script> -->
+    <!-- <script src="/static/js/settings/core/StateManager.js"></script> -->
+    <!-- <script src="/static/js/settings/core/SettingsCore.js"></script> -->
+    
+    <!-- Settings Modules - Commented out missing files -->
+    <!-- <script src="/static/js/settings/modules/PersonalityManager.js"></script> -->
+    <!-- <script src="/static/js/settings/modules/ModelManager.js"></script> -->
+    <!-- <script src="/static/js/settings/modules/AudioManager.js"></script> -->
+    <!-- <script src="/static/js/settings/modules/ResponseManager.js"></script> -->
+    <!-- <script src="/static/js/settings/modules/PrivacyManager.js"></script> -->
+    
+    <!-- Settings Utilities - Commented out missing files -->
+    <!-- <script src="/static/js/settings/utils/ErrorHandler.js"></script> -->
+    <!-- <script src="/static/js/settings/utils/LoadingManager.js"></script> -->
+    
+    <!-- Migration Support - Commented out missing files -->
+    <!-- <script src="/static/js/settings/migration/SettingsMigration.js"></script> -->
+    
+    <!-- Custom JavaScript -->
+    <script src="/static/js/settings.js"></script>
+    <script src="/static/js/app.js"></script>
+    
+    <!-- Thread 2 V2 Components - Advanced UI System -->
+    <script src="/static/v2/js/stores/app-store.js"></script>
+    <script src="/static/v2/js/websocket-manager.js"></script>
+    <script src="/static/v2/js/api-client.js"></script>
+    <script src="/static/v2/js/components/state-manager.js"></script>
+    <!-- Unified slider system replaces all slider implementations -->
+    <script src="/static/v2/js/components/settings-panel-v2.js"></script>
+    <script src="/static/v2/js/components/analytics-charts.js"></script>
+    <script src="/static/v2/js/components/live-monitor.js"></script>
+    <script src="/static/v2/js/components/navigation-v2.js"></script>
+    <script src="/static/v2/js/components/system-health-dashboard-v2.js"></script>
+    <script src="/static/v2/js/components/modal-system-v2.js"></script>
+    <script src="/static/js/unified-slider-system.js"></script>
+    <script src="/static/v2/js/components/command-interface-v2.js"></script>
+
+    <script nonce="{{ get_csp_nonce(request) if get_csp_nonce else '' }}">
+        // HTMX event listeners - using consolidated Toast manager
+        document.addEventListener('htmx:responseError', function(evt) {
+            Toast.show('Request failed. Please try again.', 'error');
+        });
+
+        document.addEventListener('htmx:afterRequest', function(evt) {
+            if (evt.detail.successful && evt.detail.xhr.status === 200) {
+                const response = JSON.parse(evt.detail.xhr.responseText || '{}');
+                if (response.message) {
+                    Toast.show(response.message, 'success');
+                }
+            }
+        });
+
+        // Backward compatibility
+        window.showToast = Toast.show;
+    </script>
+
+    <!-- Toast Notifications Component -->
+    {% include 'components/toast.html' %}
+
+    <!-- PWA Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', async () => {
+                try {
+                    const registration = await navigator.serviceWorker.register('/static/sw.js');
+                    console.log('Service Worker registered successfully:', registration);
+                } catch (error) {
+                    console.log('Service Worker registration failed:', error);
+                }
+            });
+        }
+    </script>
+
+    <!-- Additional page-specific scripts -->
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

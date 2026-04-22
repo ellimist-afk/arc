@@ -1,0 +1,452 @@
+{% extends "layouts-v2/dashboard-layout.html" %}
+
+{% block title %}Live Stream Monitor - TalkBot{% endblock %}
+
+{% block page_styles %}
+<link rel="stylesheet" href="/static/v2/css/pages/live.css">
+{% endblock %}
+
+{% block content %}
+<div class="tbx-page-header">
+    <div class="tbx-page-title">
+        <h1>Live Stream Monitor</h1>
+        <span class="tbx-badge tbx-badge--success">LIVE</span>
+    </div>
+    <div class="tbx-page-actions">
+        <button class="tbx-btn tbx-btn--secondary" id="refresh-btn">
+            <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+        <button class="tbx-btn tbx-btn--primary" id="stream-control-btn">
+            <i class="fas fa-play"></i> Start Monitoring
+        </button>
+    </div>
+</div>
+
+<div class="tbx-grid tbx-grid--responsive">
+    <!-- Stream Preview Section -->
+    <div class="tbx-card tbx-card--large">
+        <div class="tbx-card__header">
+            <h2 class="tbx-card__title">Stream Preview</h2>
+            <div class="tbx-status-indicator" id="stream-status">
+                <span class="tbx-status-dot tbx-status-dot--inactive"></span>
+                <span>Offline</span>
+            </div>
+        </div>
+        <div class="tbx-card__body">
+            <div class="tbx-stream-preview" id="stream-preview">
+                <div class="tbx-stream-placeholder">
+                    <i class="fas fa-video fa-3x"></i>
+                    <p>Stream preview will appear here when live</p>
+                </div>
+                <div class="tbx-stream-overlay" style="display: none;">
+                    <div class="tbx-stream-info">
+                        <span class="tbx-stream-viewers">
+                            <i class="fas fa-eye"></i> <span id="viewer-count">0</span> viewers
+                        </span>
+                        <span class="tbx-stream-duration">
+                            <i class="fas fa-clock"></i> <span id="stream-duration">00:00:00</span>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Integration Panel -->
+    <div class="tbx-card">
+        <div class="tbx-card__header">
+            <h2 class="tbx-card__title">Live Chat</h2>
+            <div class="tbx-chat-controls">
+                <button class="tbx-btn tbx-btn--small tbx-btn--icon" title="Clear Chat">
+                    <i class="fas fa-trash"></i>
+                </button>
+                <button class="tbx-btn tbx-btn--small tbx-btn--icon" title="Pause Auto-scroll">
+                    <i class="fas fa-pause"></i>
+                </button>
+            </div>
+        </div>
+        <div class="tbx-card__body">
+            <div class="tbx-chat-container" id="chat-container">
+                <div class="tbx-chat-messages" id="chat-messages">
+                    <!-- Chat messages will be dynamically added here -->
+                    <div class="tbx-chat-placeholder">
+                        <i class="fas fa-comments fa-2x"></i>
+                        <p>Chat messages will appear here</p>
+                    </div>
+                </div>
+                <div class="tbx-chat-input">
+                    <input type="text" class="tbx-input" placeholder="Type a message..." id="chat-input">
+                    <button class="tbx-btn tbx-btn--primary" id="send-message">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bot Activity & Metrics -->
+<div class="tbx-grid tbx-grid--3-col">
+    <!-- Bot Response Tracking -->
+    <div class="tbx-card">
+        <div class="tbx-card__header">
+            <h3 class="tbx-card__title">Bot Activity</h3>
+        </div>
+        <div class="tbx-card__body">
+            <div class="tbx-metric-list">
+                <div class="tbx-metric-item">
+                    <span class="tbx-metric-label">Responses Today</span>
+                    <span class="tbx-metric-value" id="responses-today">0</span>
+                </div>
+                <div class="tbx-metric-item">
+                    <span class="tbx-metric-label">Avg Response Time</span>
+                    <span class="tbx-metric-value" id="avg-response-time">0ms</span>
+                </div>
+                <div class="tbx-metric-item">
+                    <span class="tbx-metric-label">Commands Processed</span>
+                    <span class="tbx-metric-value" id="commands-processed">0</span>
+                </div>
+                <div class="tbx-metric-item">
+                    <span class="tbx-metric-label">Active Since</span>
+                    <span class="tbx-metric-value" id="bot-uptime">--:--:--</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Viewer Engagement -->
+    <div class="tbx-card">
+        <div class="tbx-card__header">
+            <h3 class="tbx-card__title">Engagement Metrics</h3>
+        </div>
+        <div class="tbx-card__body">
+            <div class="tbx-metric-list">
+                <div class="tbx-metric-item">
+                    <span class="tbx-metric-label">Active Chatters</span>
+                    <span class="tbx-metric-value" id="active-chatters">0</span>
+                </div>
+                <div class="tbx-metric-item">
+                    <span class="tbx-metric-label">Messages/Min</span>
+                    <span class="tbx-metric-value" id="messages-per-minute">0</span>
+                </div>
+                <div class="tbx-metric-item">
+                    <span class="tbx-metric-label">Engagement Rate</span>
+                    <span class="tbx-metric-value" id="engagement-rate">0%</span>
+                </div>
+                <div class="tbx-metric-item">
+                    <span class="tbx-metric-label">Peak Viewers</span>
+                    <span class="tbx-metric-value" id="peak-viewers">0</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stream Health -->
+    <div class="tbx-card">
+        <div class="tbx-card__header">
+            <h3 class="tbx-card__title">Stream Health</h3>
+        </div>
+        <div class="tbx-card__body">
+            <div class="tbx-health-indicators">
+                <div class="tbx-health-item">
+                    <span class="tbx-health-label">Connection</span>
+                    <div class="tbx-health-status">
+                        <span class="tbx-status-dot tbx-status-dot--success"></span>
+                        <span>Stable</span>
+                    </div>
+                </div>
+                <div class="tbx-health-item">
+                    <span class="tbx-health-label">Bot Status</span>
+                    <div class="tbx-health-status">
+                        <span class="tbx-status-dot tbx-status-dot--success"></span>
+                        <span>Online</span>
+                    </div>
+                </div>
+                <div class="tbx-health-item">
+                    <span class="tbx-health-label">API Latency</span>
+                    <div class="tbx-health-value">
+                        <span id="api-latency">12ms</span>
+                    </div>
+                </div>
+                <div class="tbx-health-item">
+                    <span class="tbx-health-label">Memory Usage</span>
+                    <div class="tbx-progress">
+                        <div class="tbx-progress__bar" style="width: 45%"></div>
+                    </div>
+                    <span class="tbx-health-value">45%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Activity Log -->
+<div class="tbx-card">
+    <div class="tbx-card__header">
+        <h3 class="tbx-card__title">Recent Activity</h3>
+        <button class="tbx-btn tbx-btn--small tbx-btn--secondary">
+            <i class="fas fa-download"></i> Export Log
+        </button>
+    </div>
+    <div class="tbx-card__body">
+        <div class="tbx-activity-log" id="activity-log">
+            <div class="tbx-log-entry">
+                <span class="tbx-log-time">12:34:56</span>
+                <span class="tbx-log-type tbx-badge tbx-badge--info">INFO</span>
+                <span class="tbx-log-message">Stream monitoring started</span>
+            </div>
+            <div class="tbx-log-entry">
+                <span class="tbx-log-time">12:35:02</span>
+                <span class="tbx-log-type tbx-badge tbx-badge--success">BOT</span>
+                <span class="tbx-log-message">Responded to user command !help</span>
+            </div>
+            <div class="tbx-log-entry">
+                <span class="tbx-log-time">12:35:15</span>
+                <span class="tbx-log-type tbx-badge tbx-badge--warning">ALERT</span>
+                <span class="tbx-log-message">High chat activity detected</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block page_scripts %}
+<script src="/static/v2/js/pages/live.js"></script>
+<script>
+// Initialize live stream monitoring
+document.addEventListener('DOMContentLoaded', function() {
+    const streamerId = '{{ streamer_id }}';
+    
+    // WebSocket connection for real-time updates
+    let ws = null;
+    let isMonitoring = false;
+    let startTime = null;
+    
+    // Control button functionality
+    const controlBtn = document.getElementById('stream-control-btn');
+    controlBtn.addEventListener('click', toggleMonitoring);
+    
+    function toggleMonitoring() {
+        if (isMonitoring) {
+            stopMonitoring();
+        } else {
+            startMonitoring();
+        }
+    }
+    
+    function startMonitoring() {
+        isMonitoring = true;
+        startTime = Date.now();
+        controlBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Monitoring';
+        controlBtn.classList.remove('tbx-btn--primary');
+        controlBtn.classList.add('tbx-btn--danger');
+        
+        // Connect WebSocket
+        connectWebSocket();
+        
+        // Start update timers
+        startUpdateTimers();
+        
+        // Update stream status
+        updateStreamStatus(true);
+        
+        // Show stream overlay
+        document.querySelector('.tbx-stream-overlay').style.display = 'flex';
+        
+        // Log activity
+        addActivityLog('INFO', 'Stream monitoring started');
+    }
+    
+    function stopMonitoring() {
+        isMonitoring = false;
+        controlBtn.innerHTML = '<i class="fas fa-play"></i> Start Monitoring';
+        controlBtn.classList.remove('tbx-btn--danger');
+        controlBtn.classList.add('tbx-btn--primary');
+        
+        // Disconnect WebSocket
+        if (ws) {
+            ws.close();
+        }
+        
+        // Stop update timers
+        stopUpdateTimers();
+        
+        // Update stream status
+        updateStreamStatus(false);
+        
+        // Hide stream overlay
+        document.querySelector('.tbx-stream-overlay').style.display = 'none';
+        
+        // Log activity
+        addActivityLog('INFO', 'Stream monitoring stopped');
+    }
+    
+    function connectWebSocket() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${protocol}//${window.location.host}/api/v2/ws/live/${streamerId}`);
+        
+        ws.onopen = function() {
+            console.log('WebSocket connected');
+        };
+        
+        ws.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            handleRealtimeUpdate(data);
+        };
+        
+        ws.onerror = function(error) {
+            console.error('WebSocket error:', error);
+            addActivityLog('ERROR', 'WebSocket connection error');
+        };
+        
+        ws.onclose = function() {
+            console.log('WebSocket disconnected');
+            if (isMonitoring) {
+                // Attempt to reconnect after 3 seconds
+                timerManager.setTimeout(connectWebSocket, 3000);
+            }
+        };
+    }
+    
+    function handleRealtimeUpdate(data) {
+        switch(data.type) {
+            case 'chat_message':
+                addChatMessage(data.message);
+                break;
+            case 'viewer_update':
+                updateViewerCount(data.count);
+                break;
+            case 'bot_response':
+                updateBotMetrics(data);
+                break;
+            case 'stream_health':
+                updateStreamHealth(data);
+                break;
+        }
+    }
+    
+    function addChatMessage(message) {
+        const chatMessages = document.getElementById('chat-messages');
+        const placeholder = chatMessages.querySelector('.tbx-chat-placeholder');
+        if (placeholder) {
+            placeholder.remove();
+        }
+        
+        const messageEl = document.createElement('div');
+        messageEl.className = 'tbx-chat-message';
+        messageEl.innerHTML = `
+            <span class="tbx-chat-author">${message.author}:</span>
+            <span class="tbx-chat-text">${message.text}</span>
+        `;
+        chatMessages.appendChild(messageEl);
+        
+        // Auto-scroll to bottom
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+    
+    function updateStreamStatus(isLive) {
+        const statusEl = document.getElementById('stream-status');
+        const statusDot = statusEl.querySelector('.tbx-status-dot');
+        const statusText = statusEl.querySelector('span:last-child');
+        
+        if (isLive) {
+            statusDot.className = 'tbx-status-dot tbx-status-dot--success';
+            statusText.textContent = 'Live';
+        } else {
+            statusDot.className = 'tbx-status-dot tbx-status-dot--inactive';
+            statusText.textContent = 'Offline';
+        }
+    }
+    
+    function addActivityLog(type, message) {
+        const logContainer = document.getElementById('activity-log');
+        const now = new Date();
+        const timeStr = now.toTimeString().split(' ')[0];
+        
+        const logEntry = document.createElement('div');
+        logEntry.className = 'tbx-log-entry';
+        
+        let badgeClass = 'tbx-badge--info';
+        if (type === 'ERROR') badgeClass = 'tbx-badge--danger';
+        else if (type === 'BOT') badgeClass = 'tbx-badge--success';
+        else if (type === 'ALERT') badgeClass = 'tbx-badge--warning';
+        
+        logEntry.innerHTML = `
+            <span class="tbx-log-time">${timeStr}</span>
+            <span class="tbx-log-type tbx-badge ${badgeClass}">${type}</span>
+            <span class="tbx-log-message">${message}</span>
+        `;
+        
+        logContainer.insertBefore(logEntry, logContainer.firstChild);
+        
+        // Keep only last 20 entries
+        while (logContainer.children.length > 20) {
+            logContainer.removeChild(logContainer.lastChild);
+        }
+    }
+    
+    let updateInterval;
+    function startUpdateTimers() {
+        updateInterval = timerManager.setInterval(() => {
+            // Update stream duration
+            if (startTime) {
+                const duration = Date.now() - startTime;
+                const hours = Math.floor(duration / 3600000);
+                const minutes = Math.floor((duration % 3600000) / 60000);
+                const seconds = Math.floor((duration % 60000) / 1000);
+                document.getElementById('stream-duration').textContent = 
+                    `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            }
+            
+            // Fetch latest metrics
+            fetchLatestMetrics();
+        }, 1000);
+    }
+    
+    function stopUpdateTimers() {
+        if (updateInterval) {
+            timerManager.clearInterval(updateInterval);
+        }
+    }
+    
+    function fetchLatestMetrics() {
+        // This would normally fetch from the API
+        // For demo purposes, we'll use random values
+        if (Math.random() > 0.95) {
+            const viewers = Math.floor(Math.random() * 1000) + 100;
+            document.getElementById('viewer-count').textContent = viewers;
+            
+            const peak = document.getElementById('peak-viewers');
+            if (viewers > parseInt(peak.textContent)) {
+                peak.textContent = viewers;
+            }
+        }
+    }
+    
+    // Chat input functionality
+    document.getElementById('send-message').addEventListener('click', sendMessage);
+    document.getElementById('chat-input').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            sendMessage();
+        }
+    });
+    
+    function sendMessage() {
+        const input = document.getElementById('chat-input');
+        const message = input.value.trim();
+        if (message && ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: 'chat_message',
+                message: message
+            }));
+            input.value = '';
+        }
+    }
+    
+    // Refresh button
+    document.getElementById('refresh-btn').addEventListener('click', function() {
+        location.reload();
+    });
+});
+</script>
+{% endblock %}

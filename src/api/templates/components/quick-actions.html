@@ -1,0 +1,615 @@
+<!-- Quick Actions Component -->
+<div class="card p-6" x-data="quickActionsComponent()">
+    <h2 class="text-xl font-semibold mb-4 text-primary">Quick Actions</h2>
+    <p class="text-secondary text-sm mb-6">Instant controls for your co-host</p>
+
+    <div class="actions-grid">
+        <!-- Test Co-Host -->
+        <button class="action-btn primary"
+                @click="performAction('test')"
+                :disabled="actionLoading === 'test'"
+                hx-post="/api/actions/test"
+                hx-trigger="click"
+                hx-swap="none"
+                hx-on::after-request="handleActionResponse(event)">
+            <div class="action-icon">🎤</div>
+            <div class="action-content">
+                <span class="action-title">Test Co-Host</span>
+                <span class="action-subtitle">Send a test message</span>
+            </div>
+            <div class="action-status" x-show="actionLoading === 'test'">
+                <div class="spinner"></div>
+            </div>
+        </button>
+
+        <!-- Emergency Mute -->
+        <button class="action-btn danger"
+                @click="performMuteAction()"
+                :disabled="actionLoading === 'mute'"
+                :class="isMuted ? 'active' : ''">
+            <div class="action-icon" x-text="isMuted ? '🔊' : '🔇'">🔇</div>
+            <div class="action-content">
+                <span class="action-title" x-text="isMuted ? 'Unmute' : 'Emergency Mute'">Emergency Mute</span>
+                <span class="action-subtitle" x-text="isMuted ? 'Restore co-host' : 'Silence immediately'">Silence immediately</span>
+            </div>
+            <div class="action-status" x-show="actionLoading === 'mute'">
+                <div class="spinner"></div>
+            </div>
+        </button>
+
+        <!-- Test Bot TTS -->
+        <button class="action-btn info"
+                @click="performAction('assist')"
+                :disabled="actionLoading === 'assist'"
+                hx-post="/api/actions/assist"
+                hx-trigger="click"
+                hx-swap="none"
+                hx-on::after-request="handleActionResponse(event)">
+            <div class="action-icon">🔉</div>
+            <div class="action-content">
+                <span class="action-title">Test Bot TTS</span>
+                <span class="action-subtitle">Test text-to-speech system</span>
+            </div>
+            <div class="action-status" x-show="actionLoading === 'assist'">
+                <div class="spinner"></div>
+            </div>
+        </button>
+
+        <!-- Restart Bot -->
+        <button class="action-btn warning"
+                @click="performAction('restart')"
+                :disabled="actionLoading === 'restart'"
+                hx-post="/api/actions/restart"
+                hx-trigger="click"
+                hx-swap="none"
+                hx-on::after-request="handleActionResponse(event)">
+            <div class="action-icon">🔄</div>
+            <div class="action-content">
+                <span class="action-title">Restart Bot</span>
+                <span class="action-subtitle">Fresh start</span>
+            </div>
+            <div class="action-status" x-show="actionLoading === 'restart'">
+                <div class="spinner"></div>
+            </div>
+        </button>
+    </div>
+
+    <!-- Advanced Actions -->
+    <div class="advanced-actions" x-show="showAdvanced" x-transition>
+        <div class="actions-separator">
+            <span class="separator-text">Advanced Actions</span>
+        </div>
+
+        <div class="advanced-grid">
+            <button class="action-btn danger-outline"
+                    @click="performAction('panic')"
+                    :disabled="actionLoading === 'panic'"
+                    hx-post="/api/actions/panic"
+                    hx-trigger="click"
+                    hx-swap="none"
+                    hx-confirm="Are you sure? This will stop all bot systems immediately."
+                    hx-on::after-request="handleActionResponse(event)">
+                <div class="action-icon">🚨</div>
+                <div class="action-content">
+                    <span class="action-title">Panic Stop</span>
+                    <span class="action-subtitle">Emergency shutdown</span>
+                </div>
+                <div class="action-status" x-show="actionLoading === 'panic'">
+                    <div class="spinner"></div>
+                </div>
+            </button>
+
+            <button class="action-btn info-outline"
+                    @click="performAction('diagnostics')"
+                    :disabled="actionLoading === 'diagnostics'"
+                    hx-post="/api/actions/diagnostics"
+                    hx-trigger="click"
+                    hx-swap="none"
+                    hx-on::after-request="handleActionResponse(event)">
+                <div class="action-icon">🔍</div>
+                <div class="action-content">
+                    <span class="action-title">Run Diagnostics</span>
+                    <span class="action-subtitle">System health check</span>
+                </div>
+                <div class="action-status" x-show="actionLoading === 'diagnostics'">
+                    <div class="spinner"></div>
+                </div>
+            </button>
+        </div>
+    </div>
+
+    <!-- Toggle Advanced -->
+    <div class="advanced-toggle">
+        <button class="toggle-btn" @click="showAdvanced = !showAdvanced">
+            <span x-text="showAdvanced ? 'Hide Advanced' : 'Show Advanced'">Show Advanced</span>
+            <svg class="toggle-icon" :class="showAdvanced ? 'rotated' : ''"
+                 viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Action History -->
+    <div class="action-history" x-show="actionHistory.length > 0">
+        <h3 class="history-title">Recent Actions</h3>
+        <div class="history-list">
+            <template x-for="action in actionHistory.slice(0, 3)" :key="action.id">
+                <div class="history-item">
+                    <div class="history-icon" x-text="action.icon">🎤</div>
+                    <div class="history-content">
+                        <span class="history-action" x-text="action.title">Test Co-Host</span>
+                        <span class="history-time" x-text="formatTime(action.timestamp)">2m ago</span>
+                    </div>
+                    <div class="history-status" :class="action.status">
+                        <span x-text="action.status">success</span>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>
+
+<script>
+function quickActionsComponent() {
+    return {
+        actionLoading: null,
+        isMuted: false,
+        showAdvanced: false,
+        actionHistory: [],
+
+        init() {
+            this.loadBotStatus();
+        },
+
+        async loadBotStatus() {
+            try {
+                const response = await fetch('/api/v2/bots/default');
+                if (response.ok) {
+                    const status = await response.json();
+                    this.isMuted = status.state === 'muted';
+                }
+            } catch (error) {
+                console.warn('Could not load bot status:', error);
+            }
+        },
+
+        async performAction(actionType) {
+            this.actionLoading = actionType;
+
+            try {
+                const response = await fetch(`/api/v2/actions/quick/${actionType}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    this.handleActionSuccess(actionType, result);
+                } else {
+                    this.handleActionError(actionType, result);
+                }
+            } catch (error) {
+                this.handleActionError(actionType, { message: 'Network error' });
+            } finally {
+                this.actionLoading = null;
+            }
+        },
+
+        async performMuteAction() {
+            if (this.actionLoading === 'mute') return;
+
+            this.actionLoading = 'mute';
+
+            try {
+                // Use the correct endpoint based on current mute state
+                const endpoint = this.isMuted ? '/api/actions/unmute' : '/api/actions/mute';
+                const actionType = this.isMuted ? 'unmute' : 'mute';
+
+                console.log(`[QuickActions] Performing ${actionType} action`);
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    // Toggle the muted state
+                    this.isMuted = !this.isMuted;
+
+                    // Show success message
+                    this.showToast(result.message || `Bot ${this.isMuted ? 'muted' : 'unmuted'} successfully`, 'success');
+
+                    // Add to history
+                    this.addToHistory({
+                        id: Date.now(),
+                        icon: this.isMuted ? '🔇' : '🔊',
+                        title: this.isMuted ? 'Muted' : 'Unmuted',
+                        status: 'success',
+                        timestamp: Date.now(),
+                        message: result.message
+                    });
+                } else {
+                    this.showToast(`${actionType} failed: ${result.message}`, 'error');
+                }
+            } catch (error) {
+                console.error('[QuickActions] Mute action error:', error);
+                this.showToast(`Mute action failed: ${error.message}`, 'error');
+            } finally {
+                this.actionLoading = null;
+            }
+        },
+
+        handleActionSuccess(actionType, result) {
+            const actionMap = {
+                test: { icon: '🎤', title: 'Test Co-Host' },
+                mute: { icon: '🔇', title: this.isMuted ? 'Unmute' : 'Mute' },
+                assist: { icon: '🔉', title: 'Test Bot TTS' },
+                restart: { icon: '🔄', title: 'Restart Bot' },
+                panic: { icon: '🚨', title: 'Panic Stop' },
+                diagnostics: { icon: '🔍', title: 'Diagnostics' }
+            };
+
+            // Update state for mute action
+            if (actionType === 'mute') {
+                this.isMuted = !this.isMuted;
+            }
+
+            // Add to history
+            this.addToHistory({
+                id: Date.now(),
+                ...actionMap[actionType],
+                status: 'success',
+                timestamp: Date.now(),
+                message: result.message
+            });
+
+            this.showToast(result.message || `${actionMap[actionType].title} executed successfully`, 'success');
+        },
+
+        handleActionError(actionType, error) {
+            const actionMap = {
+                test: 'Test Co-Host',
+                mute: 'Emergency Mute',
+                assist: 'Test Bot TTS',
+                restart: 'Restart Bot',
+                panic: 'Panic Stop',
+                diagnostics: 'Diagnostics'
+            };
+
+            this.showToast(`${actionMap[actionType]} failed: ${error.message}`, 'error');
+        },
+
+        handleActionResponse(event) {
+            // HTMX event handler
+            const response = JSON.parse(event.detail.xhr.responseText || '{}');
+            if (event.detail.successful) {
+                this.handleActionSuccess(event.detail.triggeringEvent.target.getAttribute('hx-post').split('/').pop(), response);
+            }
+        },
+
+        addToHistory(action) {
+            this.actionHistory.unshift(action);
+
+            // Keep only last 10 actions
+            if (this.actionHistory.length > 10) {
+                this.actionHistory = this.actionHistory.slice(0, 10);
+            }
+        },
+
+        formatTime(timestamp) {
+            const now = Date.now();
+            const diff = now - timestamp;
+            const minutes = Math.floor(diff / 60000);
+            const seconds = Math.floor((diff % 60000) / 1000);
+
+            if (minutes > 0) {
+                return `${minutes}m ago`;
+            } else {
+                return `${seconds}s ago`;
+            }
+        },
+
+        showToast(message, type = 'success') {
+            if (typeof window.showToast === 'function') {
+                window.showToast(message, type);
+            }
+        }
+    };
+}
+</script>
+
+<style>
+.actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.action-btn {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.5rem;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    transition: all 0.2s ease;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.action-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.action-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.action-btn.primary {
+    border-color: #9146ff;
+    background: rgba(145, 70, 255, 0.15);
+}
+
+.action-btn.primary:hover {
+    background: rgba(145, 70, 255, 0.25);
+    border-color: #772ce8;
+}
+
+.action-btn.danger {
+    border-color: #f91880;
+    background: rgba(249, 24, 128, 0.15);
+}
+
+.action-btn.danger:hover {
+    background: rgba(249, 24, 128, 0.25);
+    border-color: #e50e6b;
+}
+
+.action-btn.danger.active {
+    background: rgba(249, 24, 128, 0.3);
+    border-color: #d10654;
+}
+
+.action-btn.warning {
+    border-color: #ff9500;
+    background: rgba(255, 149, 0, 0.15);
+}
+
+.action-btn.warning:hover {
+    background: rgba(255, 149, 0, 0.25);
+    border-color: #e5861a;
+}
+
+.action-btn.secondary {
+    border-color: var(--border-light);
+}
+
+.action-btn.secondary:hover {
+    border-color: var(--accent);
+}
+
+.action-btn.danger-outline {
+    border-color: #ef4444;
+    background: transparent;
+}
+
+.action-btn.danger-outline:hover {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.action-btn.info {
+    border-color: #9146ff;
+    background: rgba(145, 70, 255, 0.1);
+}
+
+.action-btn.info:hover {
+    background: rgba(145, 70, 255, 0.2);
+}
+
+.action-btn.info-outline {
+    border-color: #9146ff;
+    background: transparent;
+}
+
+.action-btn.info-outline:hover {
+    background: rgba(145, 70, 255, 0.1);
+}
+
+.action-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.action-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    text-align: left;
+}
+
+.action-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.action-subtitle {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.action-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.advanced-actions {
+    margin-top: 2rem;
+}
+
+.actions-separator {
+    display: flex;
+    align-items: center;
+    margin: 2rem 0 1.5rem;
+}
+
+.actions-separator::before,
+.actions-separator::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+}
+
+.separator-text {
+    padding: 0 1rem;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.advanced-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.advanced-toggle {
+    display: flex;
+    justify-content: center;
+    margin-top: 1.5rem;
+}
+
+.toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.toggle-btn:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+.toggle-icon {
+    width: 1rem;
+    height: 1rem;
+    transition: transform 0.2s ease;
+}
+
+.toggle-icon.rotated {
+    transform: rotate(180deg);
+}
+
+.action-history {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+}
+
+.history-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+}
+
+.history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.history-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+
+.history-icon {
+    font-size: 1.25rem;
+    flex-shrink: 0;
+}
+
+.history-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.history-action {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.history-time {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.history-status {
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+}
+
+.history-status.success {
+    background: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+}
+
+.history-status.error {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+.history-status.warning {
+    background: rgba(245, 158, 11, 0.2);
+    color: #f59e0b;
+}
+
+/* Spinner Animation */
+.spinner {
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid var(--border);
+    border-top: 2px solid var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+</style>

@@ -1,0 +1,106 @@
+/* Navigation Effects CSS */
+/* Visual effects and animations for navigation */
+
+/* Smooth transitions */
+.nav-link,
+.tbx-nav-link,
+.nav-item {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+}
+
+/* Hover glow effect */
+.nav-link:hover::before,
+.tbx-nav-link:hover::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    background: linear-gradient(135deg, #9146FF, #7C3AED);
+    border-radius: 8px;
+    opacity: 0.2;
+    filter: blur(8px);
+    z-index: -1;
+    animation: pulse 2s infinite;
+}
+
+/* Active indicator bar */
+.nav-link.active::after,
+.tbx-nav-link.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #9146FF, #7C3AED);
+    box-shadow: 0 0 12px rgba(145, 70, 255, 0.6);
+}
+
+/* Pulse animation */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 0.2;
+    }
+    50% {
+        opacity: 0.4;
+    }
+}
+
+/* Slide in animation - DISABLED for instant navigation appearance */
+/* @keyframes slideIn {
+    from {
+        transform: translateX(-20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+} */
+
+/* Navigation items slide in - DISABLED */
+/* .nav-link,
+.tbx-nav-link {
+    animation: slideIn 0.3s ease-out;
+    animation-fill-mode: both;
+} */
+
+/* Animation delays - DISABLED */
+/* .nav-link:nth-child(1) { animation-delay: 0.05s; }
+.nav-link:nth-child(2) { animation-delay: 0.1s; }
+.nav-link:nth-child(3) { animation-delay: 0.15s; }
+.nav-link:nth-child(4) { animation-delay: 0.2s; }
+.nav-link:nth-child(5) { animation-delay: 0.25s; } */
+
+/* Focus styles for accessibility */
+.nav-link:focus,
+.tbx-nav-link:focus {
+    outline: 2px solid #9146FF;
+    outline-offset: 2px;
+}
+
+/* Loading state */
+.nav-loading {
+    pointer-events: none;
+    opacity: 0.6;
+}
+
+.nav-loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 16px;
+    height: 16px;
+    margin: -8px 0 0 -8px;
+    border: 2px solid #9146FF;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}

@@ -1,0 +1,315 @@
+<!-- Toast Notification Component -->
+<!-- Container already exists in base.html, don't duplicate -->
+
+<style>
+    /* Toast styles - using regular CSS instead of @apply for CDN compatibility */
+    .toast {
+        display: flex;
+        align-items: center;
+        padding: 12px 16px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        transition: all 300ms ease;
+        transform: translateX(0);
+        min-width: 280px;
+        max-width: 420px;
+        font-size: 14px;
+        line-height: 1.5;
+        margin-bottom: 8px;
+    }
+
+    .toast.toast-enter {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+
+    .toast.toast-exit {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+
+    .toast-success {
+        background-color: #16a34a;
+        color: white;
+    }
+
+    .toast-error {
+        background-color: #dc2626;
+        color: white;
+    }
+
+    .toast-warning {
+        background-color: #eab308;
+        color: white;
+    }
+
+    .toast-info {
+        background-color: #2563eb;
+        color: white;
+    }
+
+    .toast-icon {
+        width: 20px;
+        height: 20px;
+        margin-right: 12px;
+        flex-shrink: 0;
+    }
+
+    .toast-message {
+        flex: 1;
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    .toast-close {
+        margin-left: 12px;
+        cursor: pointer;
+        transition: opacity 150ms ease;
+        padding: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .toast-close:hover {
+        opacity: 0.75;
+    }
+    
+    .toast-close svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    /* Loading spinner for buttons */
+    .btn-loading {
+        position: relative;
+        color: transparent !important;
+        pointer-events: none;
+    }
+
+    .btn-loading::after {
+        content: "";
+        position: absolute;
+        width: 16px;
+        height: 16px;
+        top: 50%;
+        left: 50%;
+        margin-left: -8px;
+        margin-top: -8px;
+        border: 2px solid #ffffff;
+        border-radius: 50%;
+        border-top-color: transparent;
+        animation: spinner 0.6s linear infinite;
+    }
+
+    @keyframes spinner {
+        to { transform: rotate(360deg); }
+    }
+
+    /* Loading overlay for cards/sections */
+    .loading-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.9);
+        dark:background: rgba(0, 0, 0, 0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+        border-radius: inherit;
+    }
+
+    .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid rgba(59, 130, 246, 0.2);
+        border-top-color: rgb(59, 130, 246);
+        border-radius: 50%;
+        animation: spinner 0.8s linear infinite;
+    }
+
+    /* Skeleton loader for content */
+    .skeleton {
+        background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+        background-size: 200% 100%;
+        animation: loading 1.5s infinite;
+        border-radius: 4px;
+    }
+
+    @keyframes loading {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+    }
+
+    .skeleton-text {
+        height: 12px;
+        margin-bottom: 8px;
+        width: 100%;
+    }
+
+    .skeleton-title {
+        height: 20px;
+        margin-bottom: 12px;
+        width: 60%;
+    }
+</style>
+
+<script>
+// Toast notification system
+window.Toast = {
+    container: null,
+
+    init() {
+        // Use existing container from base.html
+        this.container = document.getElementById('toast-container');
+        if (!this.container) {
+            console.error('[Toast] Container not found in DOM');
+            return false;
+        }
+        return true;
+    },
+
+    show(message, type = 'info', duration = 5000) {
+        if (!this.container && !this.init()) {
+            console.error('[Toast] Cannot show toast - container not found');
+            return null;
+        }
+
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type} toast-enter`;
+
+        // Icons for different toast types
+        const icons = {
+            success: '<svg class="toast-icon" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>',
+            error: '<svg class="toast-icon" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>',
+            warning: '<svg class="toast-icon" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>',
+            info: '<svg class="toast-icon" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>'
+        };
+
+        toast.innerHTML = `
+            ${icons[type] || icons.info}
+            <span class="toast-message">${message}</span>
+            <span class="toast-close" data-action="Toast.close">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                </svg>
+            </span>
+        `;
+
+        this.container.appendChild(toast);
+
+        // Trigger animation
+        setTimeout(() => {
+            toast.classList.remove('toast-enter');
+        }, 10);
+
+        // Auto-remove after duration
+        if (duration > 0) {
+            setTimeout(() => {
+                this.close(toast.querySelector('.toast-close'));
+            }, duration);
+        }
+
+        return toast;
+    },
+
+    close(closeBtn) {
+        const toast = closeBtn.closest('.toast');
+        toast.classList.add('toast-exit');
+        setTimeout(() => {
+            toast.remove();
+        }, 300);
+    },
+
+    success(message, duration) {
+        return this.show(message, 'success', duration);
+    },
+
+    error(message, duration) {
+        return this.show(message, 'error', duration);
+    },
+
+    warning(message, duration) {
+        return this.show(message, 'warning', duration);
+    },
+
+    info(message, duration) {
+        return this.show(message, 'info', duration);
+    }
+};
+
+// Loading state helper
+window.LoadingState = {
+    // Add loading state to button
+    addToButton(button) {
+        button.classList.add('btn-loading');
+        button.disabled = true;
+        button.dataset.originalText = button.textContent;
+    },
+
+    // Remove loading state from button
+    removeFromButton(button) {
+        button.classList.remove('btn-loading');
+        button.disabled = false;
+        if (button.dataset.originalText) {
+            button.textContent = button.dataset.originalText;
+        }
+    },
+
+    // Add loading overlay to element
+    addOverlay(element) {
+        const overlay = document.createElement('div');
+        overlay.className = 'loading-overlay';
+        overlay.innerHTML = '<div class="loading-spinner"></div>';
+        element.style.position = 'relative';
+        element.appendChild(overlay);
+        return overlay;
+    },
+
+    // Remove loading overlay
+    removeOverlay(element) {
+        const overlay = element.querySelector('.loading-overlay');
+        if (overlay) {
+            overlay.remove();
+        }
+    },
+
+    // Add skeleton loader
+    addSkeleton(element, lines = 3) {
+        element.innerHTML = '';
+        const skeleton = document.createElement('div');
+        skeleton.innerHTML = `
+            <div class="skeleton skeleton-title"></div>
+            ${Array(lines).fill(0).map(() => '<div class="skeleton skeleton-text"></div>').join('')}
+        `;
+        element.appendChild(skeleton);
+    },
+
+    // Remove skeleton loader
+    removeSkeleton(element) {
+        const skeleton = element.querySelector('.skeleton');
+        if (skeleton && skeleton.parentElement) {
+            skeleton.parentElement.remove();
+        }
+    }
+};
+
+// Initialize on DOM ready
+document.addEventListener('DOMContentLoaded', () => {
+    Toast.init();
+});
+
+// Helper function to replace alert() calls
+window.showNotification = function(message, type = 'info') {
+    Toast[type](message);
+};
+
+// Override default alert (optional, for backward compatibility)
+window.originalAlert = window.alert;
+window.alert = function(message) {
+    Toast.info(message);
+};
+</script>

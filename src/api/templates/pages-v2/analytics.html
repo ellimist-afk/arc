@@ -1,0 +1,784 @@
+{% extends "base-v2.html" %}
+
+{% block title %}Analytics - {{ streamer_id }}{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/v2/css/pages/analytics.css">
+<!-- Load analytics component before Alpine initializes -->
+<script src="/static/v2/js/pages/analytics.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="/static/v2/js/components/analytics-charts.js"></script>
+<script src="/static/js/fix_analytics_display.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="tbx-page-container" x-data="analyticsPage()">
+    <!-- Page Header -->
+    <div class="tbx-page-header">
+        <div class="tbx-header-content">
+            <h1 class="tbx-page-title">Analytics</h1>
+            <p class="tbx-page-subtitle">Comprehensive performance data and trends for {{ streamer_id }}</p>
+        </div>
+        
+        <div class="tbx-header-actions">
+            <!-- Quick Actions Dropdown -->
+            <div class="relative" x-data="{ open: false }">
+                <button @click="open = !open" class="tbx-button-secondary">
+                    Quick Actions
+                    <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </button>
+                
+                <div x-show="open" @click.away="open = false" x-transition
+                     class="absolute right-0 mt-2 w-48 rounded-lg shadow-lg bg-gray-800 border border-gray-700 z-50">
+                    <a href="/ui/v2/memory/{{ streamer_id }}" class="block px-4 py-2 text-sm hover:bg-gray-700 rounded-t-lg">
+                        🧠 Memory Management
+                    </a>
+                    <a href="/ui/v2/insights/{{ streamer_id }}" class="block px-4 py-2 text-sm hover:bg-gray-700 rounded-b-lg">
+                        🔮 AI Insights
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Time Range Selector -->
+            <div class="tbx-time-selector">
+                <select x-model="timeRange" @change="loadAnalytics()" class="tbx-select">
+                    <option value="1h">Last Hour</option>
+                    <option value="24h" selected>Last 24 Hours</option>
+                    <option value="7d">Last 7 Days</option>
+                    <option value="30d">Last 30 Days</option>
+                </select>
+            </div>
+            
+            <!-- Export Button -->
+            <button @click="exportData()" class="tbx-button tbx-button-secondary">
+                <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                </svg>
+                Export
+            </button>
+            
+            <!-- Refresh Button -->
+            <button @click="loadAnalytics()" class="tbx-button tbx-button-primary">
+                <svg class="tbx-icon" :class="{'tbx-animate-spin': loading}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Enhanced Metrics Grid - 2x3 Layout -->
+    <div class="tbx-enhanced-metrics-grid">
+        <!-- Total Engagement Card -->
+        <div class="tbx-metric-card tbx-engagement-card">
+            <div class="tbx-metric-header">
+                <div class="tbx-metric-icon tbx-icon-engagement">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                    </svg>
+                </div>
+                <h3 class="tbx-metric-title">Chat Engagement</h3>
+            </div>
+            <div class="tbx-metric-value" x-text="formatNumber(metrics.engagement?.unique_chatters || 0)">0</div>
+            <div class="tbx-metric-subtitle">Unique chatters</div>
+            <div class="tbx-metric-details">
+                <span class="tbx-metric-label">Messages</span>
+                <span class="tbx-metric-count" x-text="formatNumber(metrics.engagement?.total_messages || 0)">0</span>
+            </div>
+        </div>
+
+        <!-- Memory System Card -->
+        <div class="tbx-metric-card tbx-memory-card">
+            <div class="tbx-metric-header">
+                <div class="tbx-metric-icon tbx-icon-memory">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path>
+                    </svg>
+                </div>
+                <h3 class="tbx-metric-title">Memory Storage</h3>
+            </div>
+            <div class="tbx-metric-value" x-text="formatNumber(metrics.memory?.total_memories || 0)">0</div>
+            <div class="tbx-metric-subtitle">Total memories</div>
+            <div class="tbx-metric-details">
+                <span class="tbx-metric-label">Storage</span>
+                <span class="tbx-metric-count" x-text="formatBytes(metrics.memory?.storage_size_mb || 0)">0MB</span>
+            </div>
+        </div>
+
+        <!-- Bot Performance Card -->
+        <div class="tbx-metric-card tbx-performance-card">
+            <div class="tbx-metric-header">
+                <div class="tbx-metric-icon tbx-icon-bot">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                    </svg>
+                </div>
+                <h3 class="tbx-metric-title">Response Performance</h3>
+            </div>
+            <div class="tbx-metric-value" x-text="formatNumber(metrics.engagement?.bot_responses || 0)">0</div>
+            <div class="tbx-metric-subtitle">Responses sent</div>
+            <div class="tbx-metric-details">
+                <span class="tbx-metric-label">Avg time</span>
+                <span class="tbx-metric-count" x-text="formatDuration(metrics.engagement?.average_response_time || 0)">0s</span>
+            </div>
+        </div>
+
+        <!-- System Health Card -->
+        <div class="tbx-metric-card tbx-health-card">
+            <div class="tbx-metric-header">
+                <div class="tbx-metric-icon tbx-icon-health">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                    </svg>
+                </div>
+                <h3 class="tbx-metric-title">System Status</h3>
+            </div>
+            <div class="tbx-metric-value">
+                <span x-text="metrics.engagement?.bot_responses > 0 ? (metrics.performance?.success_rate || 0).toFixed(0) : 'N/A'">N/A</span>
+                <span class="tbx-metric-unit" x-show="metrics.engagement?.bot_responses > 0">%</span>
+            </div>
+            <div class="tbx-metric-subtitle" x-text="metrics.engagement?.bot_responses > 0 ? 'Success rate' : 'No data yet'">No data yet</div>
+            <div class="tbx-metric-details">
+                <span class="tbx-metric-label">Uptime</span>
+                <span class="tbx-metric-count" x-text="formatUptime(metrics.performance?.uptime_hours || 0)">0h</span>
+            </div>
+        </div>
+
+        <!-- AI Insights Card -->
+        <div class="tbx-metric-card tbx-insights-card">
+            <div class="tbx-metric-header">
+                <div class="tbx-metric-icon tbx-icon-insights">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                    </svg>
+                </div>
+                <h3 class="tbx-metric-title">AI Analytics</h3>
+            </div>
+            <div class="tbx-metric-value">
+                <span x-text="(insights.engagement?.score || 87)">87</span>
+                <span class="tbx-metric-unit">%</span>
+            </div>
+            <div class="tbx-metric-subtitle">Engagement score</div>
+            <div class="tbx-metric-details">
+                <span class="tbx-metric-label">Trend</span>
+                <span class="tbx-metric-count tbx-trend-indicator" 
+                      :class="insights.engagement?.trend === 'up' ? 'tbx-trend-up' : 'tbx-trend-stable'"
+                      x-text="insights.engagement?.trendText || '+12% this week'">+12% this week</span>
+            </div>
+        </div>
+
+        <!-- Community Sentiment Card -->
+        <div class="tbx-metric-card tbx-sentiment-card">
+            <div class="tbx-metric-header">
+                <div class="tbx-metric-icon tbx-icon-sentiment">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                </div>
+                <h3 class="tbx-metric-title">Chat Sentiment</h3>
+            </div>
+            <div class="tbx-metric-value">
+                <span x-text="(insights.sentiment?.positive || 74)">74</span>
+                <span class="tbx-metric-unit">%</span>
+            </div>
+            <div class="tbx-metric-subtitle">Positive sentiment</div>
+            <div class="tbx-sentiment-breakdown">
+                <div class="tbx-sentiment-bar">
+                    <div class="tbx-sentiment-fill tbx-positive" :style="`width: ${insights.sentiment?.positive || 74}%`"></div>
+                    <div class="tbx-sentiment-fill tbx-neutral" :style="`width: ${insights.sentiment?.neutral || 20}%`"></div>
+                    <div class="tbx-sentiment-fill tbx-negative" :style="`width: ${insights.sentiment?.negative || 6}%`"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Analytics Data Views - Moved controls above charts -->
+    <div class="tbx-analytics-views">
+        <!-- View Selection Tabs -->
+        <div class="tbx-view-tabs">
+            <div class="tbx-tab-list" x-data="{ activeView: 'overview' }">
+                <button @click="activeView = 'overview'" 
+                        :class="{'tbx-tab-active': activeView === 'overview'}" 
+                        class="tbx-tab">Overview</button>
+                <button @click="activeView = 'voice'" 
+                        :class="{'tbx-tab-active': activeView === 'voice'}" 
+                        class="tbx-tab">Voice</button>
+                <button @click="activeView = 'memory'" 
+                        :class="{'tbx-tab-active': activeView === 'memory'}" 
+                        class="tbx-tab">Memory</button>
+                <button @click="activeView = 'insights'" 
+                        :class="{'tbx-tab-active': activeView === 'insights'}" 
+                        class="tbx-tab">Insights</button>
+                <button @click="activeView = 'performance'" 
+                        :class="{'tbx-tab-active': activeView === 'performance'}" 
+                        class="tbx-tab">Performance</button>
+            </div>
+        </div>
+        
+        <!-- Charts Content Area -->
+        <div class="tbx-charts-content" x-show="(metrics.engagement?.total_messages || 0) === 0">
+            <div class="text-center py-12">
+                <svg class="w-20 h-20 mx-auto mb-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                </svg>
+                <h3 class="text-xl font-semibold mb-3 text-white">No Activity Yet!</h3>
+                <p class="text-sm text-secondary mb-6 max-w-md mx-auto">Once your bot starts interacting with chat, you'll see detailed analytics and performance charts here. Get started by testing your bot or checking your settings.</p>
+                
+                <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                    <a href="{% if streamer_id %}/ui/v2/settings/{{ streamer_id }}{% else %}/ui/v2/settings/confusedamish{% endif %}" 
+                       class="tbx-button tbx-button-primary">
+                        <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/>
+                        </svg>
+                        Configure Bot Settings
+                    </a>
+                    <a href="{% if streamer_id %}/ui/v2/dashboard/{{ streamer_id }}{% else %}/ui/v2/dashboard/confusedamish{% endif %}" 
+                       class="tbx-button tbx-button-secondary">
+                        <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/>
+                        </svg>
+                        Test Bot Features
+                    </a>
+                </div>
+                
+                <!-- Preview of available chart types -->
+                <div class="mt-8">
+                    <p class="text-xs text-secondary mb-4">Available analytics when bot becomes active:</p>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                        <div class="p-3 bg-white/3 rounded border border-dashed border-gray-600">
+                            <div class="font-medium text-blue-400">Chat Engagement</div>
+                            <div class="text-gray-500 mt-1">Messages & responses over time</div>
+                        </div>
+                        <div class="p-3 bg-white/3 rounded border border-dashed border-gray-600">
+                            <div class="font-medium text-green-400">Voice Performance</div>
+                            <div class="text-gray-500 mt-1">TTS latency & quality metrics</div>
+                        </div>
+                        <div class="p-3 bg-white/3 rounded border border-dashed border-gray-600">
+                            <div class="font-medium text-purple-400">Memory Usage</div>
+                            <div class="text-gray-500 mt-1">Context & storage analytics</div>
+                        </div>
+                        <div class="p-3 bg-white/3 rounded border border-dashed border-gray-600">
+                            <div class="font-medium text-orange-400">AI Insights</div>
+                            <div class="text-gray-500 mt-1">Sentiment & behavior analysis</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Active Charts (shown when data is available) -->
+        <div class="tbx-charts-content" x-show="(metrics.engagement?.total_messages || 0) > 0" style="display: none;">
+            <div class="text-center py-8">
+                <h3 class="text-lg font-semibold mb-2">Analytics Charts</h3>
+                <p class="text-sm text-secondary mb-4">Interactive performance charts based on your bot's activity.</p>
+                <!-- Chart placeholders for when data becomes available -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-white/5 rounded-lg p-6 h-64">
+                        <div class="flex items-center justify-center h-full text-gray-500">
+                            Engagement Chart
+                        </div>
+                    </div>
+                    <div class="bg-white/5 rounded-lg p-6 h-64">
+                        <div class="flex items-center justify-center h-full text-gray-500">
+                            Performance Chart
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Hidden Charts Section - Will be enabled when data is available -->
+    <div class="tbx-charts-container" x-data="tbxAnalyticsCharts('{{ streamer_id }}')"
+         x-show="false" 
+         style="display: none;">
+        
+        <!-- Time Range Selector for Charts -->
+        <div class="tbx-charts-header">
+            <h2 class="tbx-section-title">Analytics Charts</h2>
+            <div class="tbx-chart-controls">
+                <select x-model="selectedTimeRange" @change="setTimeRange(selectedTimeRange)" class="tbx-select">
+                    <option value="1h">Last Hour</option>
+                    <option value="24h">Last 24 Hours</option>
+                    <option value="7d">Last 7 Days</option>
+                    <option value="30d">Last 30 Days</option>
+                </select>
+                
+                <button @click="loadChartData()" 
+                        :disabled="isLoading" 
+                        class="tbx-button tbx-button-secondary">
+                    <svg class="tbx-icon" :class="{'tbx-animate-spin': isLoading}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    Refresh
+                </button>
+            </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="tbx-charts-grid">
+            <!-- Engagement Chart -->
+            <div class="tbx-chart-card" :class="{'tbx-chart-fullscreen': fullscreenChart === 'engagement'}">
+                <div class="tbx-chart-header">
+                    <h3 class="tbx-chart-title">Engagement Over Time</h3>
+                    <div class="tbx-chart-actions">
+                        <button @click="toggleFullscreen('engagement')" class="tbx-chart-action">
+                            <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"></path>
+                            </svg>
+                        </button>
+                        <button @click="exportChart('engagement')" class="tbx-chart-action">
+                            <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="tbx-chart-container">
+                    <canvas id="engagement-chart" style="height: 300px;"></canvas>
+                </div>
+            </div>
+
+            <!-- Commands Chart -->
+            <div class="tbx-chart-card" :class="{'tbx-chart-fullscreen': fullscreenChart === 'commands'}">
+                <div class="tbx-chart-header">
+                    <h3 class="tbx-chart-title">Command Usage</h3>
+                    <div class="tbx-chart-actions">
+                        <button @click="toggleFullscreen('commands')" class="tbx-chart-action">
+                            <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"></path>
+                            </svg>
+                        </button>
+                        <button @click="exportChart('commands')" class="tbx-chart-action">
+                            <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="tbx-chart-container">
+                    <canvas id="commands-chart" style="height: 300px;"></canvas>
+                </div>
+            </div>
+
+            <!-- Sentiment Analysis Chart -->
+            <div class="tbx-chart-card" :class="{'tbx-chart-fullscreen': fullscreenChart === 'sentiment'}">
+                <div class="tbx-chart-header">
+                    <h3 class="tbx-chart-title">Chat Sentiment</h3>
+                    <div class="tbx-chart-actions">
+                        <button @click="toggleFullscreen('sentiment')" class="tbx-chart-action">
+                            <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"></path>
+                            </svg>
+                        </button>
+                        <button @click="exportChart('sentiment')" class="tbx-chart-action">
+                            <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="tbx-chart-container">
+                    <canvas id="sentiment-chart" style="height: 300px;"></canvas>
+                </div>
+            </div>
+
+            <!-- Performance Radar Chart -->
+            <div class="tbx-chart-card" :class="{'tbx-chart-fullscreen': fullscreenChart === 'performance'}">
+                <div class="tbx-chart-header">
+                    <h3 class="tbx-chart-title">Performance Metrics</h3>
+                    <div class="tbx-chart-actions">
+                        <button @click="toggleFullscreen('performance')" class="tbx-chart-action">
+                            <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"></path>
+                            </svg>
+                        </button>
+                        <button @click="exportChart('performance')" class="tbx-chart-action">
+                            <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="tbx-chart-container">
+                    <canvas id="performance-chart" style="height: 300px;"></canvas>
+                </div>
+            </div>
+
+            <!-- Activity Heatmap -->
+            <div class="tbx-chart-card tbx-chart-wide" :class="{'tbx-chart-fullscreen': fullscreenChart === 'activity'}">
+                <div class="tbx-chart-header">
+                    <h3 class="tbx-chart-title">Activity Heatmap</h3>
+                    <div class="tbx-chart-actions">
+                        <button @click="toggleFullscreen('activity')" class="tbx-chart-action">
+                            <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"></path>
+                            </svg>
+                        </button>
+                        <button @click="exportChart('activity')" class="tbx-chart-action">
+                            <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="tbx-chart-container">
+                    <canvas id="activity-chart" style="height: 400px;"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div x-show="isLoading" class="tbx-loading-overlay">
+            <div class="tbx-loading-content">
+                <div class="tbx-spinner"></div>
+                <p>Loading chart data...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detailed Statistics Tabs - Moved below charts for better flow -->
+    <div class="tbx-stats-section">
+        <div class="tbx-tabs">
+            <div class="tbx-section-header">
+                <h3 class="text-lg font-semibold mb-3">Detailed Analytics</h3>
+            </div>
+            <div class="tbx-tab-list">
+                <button @click="activeTab = 'voice'" 
+                        :class="{'tbx-tab-active': activeTab === 'voice'}" 
+                        class="tbx-tab">Voice</button>
+                <button @click="activeTab = 'memory'" 
+                        :class="{'tbx-tab-active': activeTab === 'memory'}" 
+                        class="tbx-tab">Memory</button>
+                <button @click="activeTab = 'insights'" 
+                        :class="{'tbx-tab-active': activeTab === 'insights'}" 
+                        class="tbx-tab">Insights</button>
+                <button @click="activeTab = 'performance'" 
+                        :class="{'tbx-tab-active': activeTab === 'performance'}" 
+                        class="tbx-tab">Performance</button>
+            </div>
+
+            <!-- Community Tab - Hidden until there's real community data -->
+            <div x-show="false" class="tbx-tab-panel" style="display: none;">
+                <div class="tbx-empty-state">
+                    <p>Community features coming soon</p>
+                </div>
+            </div>
+
+            <!-- Voice Tab -->
+            <div x-show="activeTab === 'voice'" class="tbx-tab-panel">
+                <div class="tbx-stats-grid">
+                    <div class="tbx-stat-item">
+                        <span class="tbx-stat-label">Voice Response Time</span>
+                        <span class="tbx-stat-value" x-text="(metrics.performance?.avg_response_time_ms || 0).toFixed(0) + 'ms'">0ms</span>
+                    </div>
+                    <div class="tbx-stat-item">
+                        <span class="tbx-stat-label">TTS Requests</span>
+                        <span class="tbx-stat-value" x-text="formatNumber(metrics.voice?.tts_requests || 0)">0</span>
+                    </div>
+                    <div class="tbx-stat-item">
+                        <span class="tbx-stat-label">Realtime Requests</span>
+                        <span class="tbx-stat-value" x-text="formatNumber(metrics.voice?.realtime_requests || 0)">0</span>
+                    </div>
+                    <div class="tbx-stat-item">
+                        <span class="tbx-stat-label">Audio Generated</span>
+                        <span class="tbx-stat-value" x-text="formatBytes(metrics.voice?.audio_generated_mb || 0)">0MB</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Memory Tab -->
+            <div x-show="activeTab === 'memory'" class="tbx-tab-panel">
+                <div class="tbx-memory-section">
+                    <!-- Memory Statistics -->
+                    <div class="tbx-stats-grid">
+                        <div class="tbx-stat-item">
+                            <span class="tbx-stat-label">Opted Out Users</span>
+                            <span class="tbx-stat-value" x-text="formatNumber(metrics.memory?.opted_out_viewers || 0)">0</span>
+                        </div>
+                        <div class="tbx-stat-item">
+                            <span class="tbx-stat-label">Daily Growth</span>
+                            <span class="tbx-stat-value">
+                                <span x-text="'+' + formatNumber(metrics.memory?.daily_growth || 0)">+0</span>
+                            </span>
+                        </div>
+                        <div class="tbx-stat-item">
+                            <span class="tbx-stat-label">Search Queries</span>
+                            <span class="tbx-stat-value" x-text="formatNumber(metrics.memory?.search_queries_today || 0)">0</span>
+                        </div>
+                        <div class="tbx-stat-item">
+                            <span class="tbx-stat-label">Storage Used</span>
+                            <span class="tbx-stat-value" x-text="formatBytes(metrics.memory?.storage_size_mb || 0)">0MB</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Memory Search Interface -->
+                    <div class="tbx-memory-search">
+                        <div class="tbx-search-filters">
+                            <div class="tbx-search-input-group">
+                                <input type="text" 
+                                       x-model="memorySearchQuery" 
+                                       @input="debounceMemorySearch()"
+                                       placeholder="Search memories, conversations, or topics..."
+                                       class="tbx-input tbx-search-input">
+                                <button @click="searchMemories()" class="tbx-button tbx-button-secondary tbx-search-button">
+                                    <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                            <div class="tbx-filter-group">
+                                <select x-model="memoryDateFilter" @change="applyMemoryFilters()" class="tbx-select">
+                                    <option value="all">All Time</option>
+                                    <option value="today">Today</option>
+                                    <option value="week">This Week</option>
+                                    <option value="month">This Month</option>
+                                </select>
+                                <select x-model="memoryTypeFilter" @change="applyMemoryFilters()" class="tbx-select">
+                                    <option value="all">All Types</option>
+                                    <option value="conversation">Conversations</option>
+                                    <option value="context">Context</option>
+                                    <option value="preference">Preferences</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <!-- Memory Search Results -->
+                        <div class="tbx-memory-results" x-show="filteredMemories.length > 0">
+                            <div class="tbx-memory-results-header">
+                                <span class="tbx-results-count" x-text="`${filteredMemories.length} memories found`">0 memories found</span>
+                            </div>
+                            <div class="tbx-memory-list">
+                                <template x-for="memory in filteredMemories.slice(0, 5)" :key="memory.id">
+                                    <div class="tbx-memory-item">
+                                        <div class="tbx-memory-header">
+                                            <span class="tbx-memory-user" x-text="memory.user || 'System'">User</span>
+                                            <span class="tbx-badge tbx-badge-secondary" x-text="memory.type">Type</span>
+                                            <span class="tbx-memory-time" x-text="formatTimeAgo(memory.timestamp)">2h ago</span>
+                                        </div>
+                                        <p class="tbx-memory-content" x-text="memory.content">Memory content...</p>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Memory Management Actions -->
+                    <div class="tbx-memory-actions">
+                        <div class="tbx-action-group">
+                            <h4 class="tbx-action-title">Backup & Export</h4>
+                            <div class="tbx-action-buttons">
+                                <button @click="createMemoryBackup()" class="tbx-button tbx-button-primary" :disabled="isProcessing">
+                                    <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 12l2 2 4-4"></path>
+                                    </svg>
+                                    Create Backup
+                                </button>
+                                <button @click="exportMemoryData()" class="tbx-button tbx-button-secondary" :disabled="isProcessing">
+                                    <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                    </svg>
+                                    Export JSON
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="tbx-action-group">
+                            <h4 class="tbx-action-title">Maintenance</h4>
+                            <div class="tbx-action-buttons">
+                                <button @click="cleanupOldMemories()" class="tbx-button tbx-button-warning" :disabled="isProcessing">
+                                    <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                    </svg>
+                                    Clean Old Data
+                                </button>
+                                <button @click="optimizeMemoryDatabase()" class="tbx-button tbx-button-secondary" :disabled="isProcessing">
+                                    <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                                    </svg>
+                                    Optimize DB
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Performance Tab -->
+            <div x-show="activeTab === 'performance'" class="tbx-tab-panel">
+                <div class="tbx-stats-grid">
+                    <div class="tbx-stat-item">
+                        <span class="tbx-stat-label">API Response Time</span>
+                        <span class="tbx-stat-value" x-text="(metrics.performance?.avg_response_time_ms || 0).toFixed(0) + 'ms'">0ms</span>
+                    </div>
+                    <div class="tbx-stat-item">
+                        <span class="tbx-stat-label">Success Rate</span>
+                        <span class="tbx-stat-value" x-text="(metrics.performance?.success_rate || 100).toFixed(1) + '%'">100%</span>
+                    </div>
+                    <div class="tbx-stat-item">
+                        <span class="tbx-stat-label">Active Connections</span>
+                        <span class="tbx-stat-value" x-text="formatNumber(metrics.performance?.websocket_connections || 0)">0</span>
+                    </div>
+                    <div class="tbx-stat-item">
+                        <span class="tbx-stat-label">System Uptime</span>
+                        <span class="tbx-stat-value" x-text="formatUptime(metrics.performance?.uptime_hours || 0)">0h</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Insights Tab -->
+            <div x-show="activeTab === 'insights'" class="tbx-tab-panel">
+                <div class="tbx-insights-section">
+                    <!-- Sentiment Analysis -->
+                    <div class="tbx-insights-grid">
+                        <div class="tbx-insight-card">
+                            <h4 class="tbx-insight-title">Community Sentiment Breakdown</h4>
+                            <div class="tbx-sentiment-details">
+                                <div class="tbx-sentiment-item">
+                                    <span class="tbx-sentiment-label">Positive</span>
+                                    <span class="tbx-sentiment-value" x-text="(insights.sentiment?.positive || 74) + '%'">74%</span>
+                                    <div class="tbx-mini-bar">
+                                        <div class="tbx-mini-fill tbx-positive" :style="`width: ${insights.sentiment?.positive || 74}%`"></div>
+                                    </div>
+                                </div>
+                                <div class="tbx-sentiment-item">
+                                    <span class="tbx-sentiment-label">Neutral</span>
+                                    <span class="tbx-sentiment-value" x-text="(insights.sentiment?.neutral || 20) + '%'">20%</span>
+                                    <div class="tbx-mini-bar">
+                                        <div class="tbx-mini-fill tbx-neutral" :style="`width: ${insights.sentiment?.neutral || 20}%`"></div>
+                                    </div>
+                                </div>
+                                <div class="tbx-sentiment-item">
+                                    <span class="tbx-sentiment-label">Negative</span>
+                                    <span class="tbx-sentiment-value" x-text="(insights.sentiment?.negative || 6) + '%'">6%</span>
+                                    <div class="tbx-mini-bar">
+                                        <div class="tbx-mini-fill tbx-negative" :style="`width: ${insights.sentiment?.negative || 6}%`"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Trending Topics -->
+                        <div class="tbx-insight-card">
+                            <h4 class="tbx-insight-title">Trending Topics</h4>
+                            <div class="tbx-topics-cloud">
+                                <template x-for="topic in insights.trendingTopics?.slice(0, 8) || []" :key="topic.word">
+                                    <span class="tbx-topic-tag" 
+                                          :style="`font-size: ${0.8 + (topic.weight * 0.4)}rem`"
+                                          x-text="topic.word">topic</span>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Growth Opportunities -->
+                    <div class="tbx-growth-opportunities">
+                        <h4 class="tbx-insight-title">Growth Opportunities</h4>
+                        <div class="tbx-opportunities-list">
+                            <template x-for="opportunity in insights.growthOpportunities?.slice(0, 3) || []" :key="opportunity.id">
+                                <div class="tbx-opportunity-item" :class="`tbx-priority-${opportunity.priority}`">
+                                    <div class="tbx-opportunity-header">
+                                        <span class="tbx-opportunity-title" x-text="opportunity.title">Opportunity Title</span>
+                                        <span class="tbx-badge" 
+                                              :class="`tbx-badge-${opportunity.priority === 'high' ? 'error' : opportunity.priority === 'medium' ? 'warning' : 'info'}`"
+                                              x-text="opportunity.priority">Priority</span>
+                                    </div>
+                                    <p class="tbx-opportunity-description" x-text="opportunity.description">Opportunity description...</p>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                    
+                    <!-- AI Insights Generation -->
+                    <div class="tbx-insights-actions">
+                        <button @click="generateInsights()" 
+                                class="tbx-button tbx-button-primary"
+                                :disabled="generating">
+                            <svg class="tbx-icon" :class="generating && 'tbx-animate-spin'" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/>
+                            </svg>
+                            <span x-text="generating ? 'Analyzing...' : 'Generate New Insights'">Generate New Insights</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Table Section - Show condensed recent activity -->
+    <div class="tbx-table-section">
+        <div class="tbx-table-header">
+            <h3 class="tbx-table-title">Recent Activity (Last 24h)</h3>
+            <div class="tbx-table-filters">
+                <input type="text" 
+                       x-model="tableFilter" 
+                       @input="filterTable()"
+                       placeholder="Filter activity..." 
+                       class="tbx-input">
+                <select x-model="tableType" @change="loadTableData()" class="tbx-select">
+                    <option value="messages">Messages</option>
+                    <option value="responses">Bot Responses</option>
+                    <option value="errors">Errors</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="tbx-table-container">
+            <table class="tbx-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Type</th>
+                        <th>User</th>
+                        <th>Message</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="item in filteredTableData" :key="item.id">
+                        <tr>
+                            <td x-text="formatTime(item.timestamp)"></td>
+                            <td>
+                                <span class="tbx-badge" :class="'tbx-badge-' + item.type" x-text="item.type"></span>
+                            </td>
+                            <td x-text="item.user"></td>
+                            <td x-text="item.message" class="tbx-table-message"></td>
+                            <td>
+                                <span class="tbx-status" :class="'tbx-status-' + item.status"></span>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+            
+            <div x-show="!filteredTableData.length" class="tbx-empty-state">
+                <p>Loading recent activity...</p>
+                <div class="tbx-loading-spinner"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Set the streamer ID globally
+window.STREAMER_ID = '{{ streamer_id }}';
+
+// Analytics component is already loaded in head from /static/v2/js/pages/analytics.js
+// Just ensure it's registered with Alpine
+document.addEventListener('alpine:init', () => {
+    console.log('[Analytics] Alpine is initializing, analyticsPage available:', typeof analyticsPage !== 'undefined');
+    if (typeof analyticsPage !== 'undefined') {
+        Alpine.data('analyticsPage', analyticsPage);
+    }
+    
+    // Also check for tbxAnalyticsCharts component from analytics-charts.js
+    if (typeof tbxAnalyticsCharts !== 'undefined') {
+        Alpine.data('tbxAnalyticsCharts', tbxAnalyticsCharts);
+    }
+});
+</script>
+{% endblock %}

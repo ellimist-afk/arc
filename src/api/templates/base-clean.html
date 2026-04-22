@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}TalkBot{% endblock %}</title>
+    
+    <!-- Clean Design System -->
+    <link rel="stylesheet" href="/static/css/clean-design-system.css">
+    <link rel="stylesheet" href="/static/css/clean-sliders.css">
+    
+    <!-- Alpine.js for interactivity -->
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    
+    <!-- Chart.js for data visualization -->
+    {% block charts %}{% endblock %}
+    
+    <!-- Additional styles -->
+    {% block styles %}{% endblock %}
+    
+    <!-- Page-specific scripts (before Alpine) -->
+    {% block scripts_head %}{% endblock %}
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="nav" x-data="{ currentPath: window.location.pathname }">
+        <div class="container nav-container">
+            <div class="nav-brand">
+                <a href="/dashboard" style="color: inherit; text-decoration: none;">TalkBot</a>
+            </div>
+            <div class="nav-menu">
+                <a href="/dashboard" 
+                   class="nav-link" 
+                   :class="currentPath.includes('/dashboard') && 'active'">
+                   Dashboard
+                </a>
+                <a href="/settings/{{ streamer_id | default('default') }}" 
+                   class="nav-link"
+                   :class="currentPath.includes('/settings') && 'active'">
+                   Settings
+                </a>
+                <a href="/analytics/{{ streamer_id | default('default') }}" 
+                   class="nav-link"
+                   :class="currentPath.includes('/analytics') && 'active'">
+                   Analytics
+                </a>
+                <a href="/memory/{{ streamer_id | default('default') }}" 
+                   class="nav-link"
+                   :class="currentPath.includes('/memory') && 'active'">
+                   Memory
+                </a>
+                <a href="/visualizer/{{ streamer_id | default('default') }}" 
+                   class="nav-link"
+                   :class="currentPath.includes('/visualizer') && 'active'">
+                   Visualizer
+                </a>
+            </div>
+            
+            <!-- Connection Status -->
+            <div class="flex items-center gap-2 text-sm">
+                <div class="flex items-center gap-2" x-data="connectionStatus()">
+                    <div class="spinner" 
+                         x-show="status === 'connecting'"
+                         style="width: 16px; height: 16px; border-width: 2px;"></div>
+                    <div x-show="status === 'connected'" 
+                         class="w-2 h-2 rounded-full" 
+                         style="width: 8px; height: 8px; background: var(--color-success);"></div>
+                    <div x-show="status === 'error'" 
+                         class="w-2 h-2 rounded-full" 
+                         style="width: 8px; height: 8px; background: var(--color-error);"></div>
+                    <span x-text="statusText" class="text-muted"></span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container" style="padding-top: var(--space-8); padding-bottom: var(--space-8);">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Toast Container -->
+    <div id="toast-container" 
+         class="fixed" 
+         style="top: 20px; right: 20px; z-index: 1000;">
+    </div>
+
+    <!-- Core JavaScript -->
+    <script>
+        // Connection Status Component
+        function connectionStatus() {
+            return {
+                status: 'connected',
+                statusText: 'Connected',
+                
+                init() {
+                    // Set initial status
+                    this.updateStatus('connected');
+                    
+                    // WebSocket connection (if needed)
+                    if (typeof WebSocket !== 'undefined') {
+                        this.connectWebSocket();
+                    }
+                },
+                
+                connectWebSocket() {
+                    // Optional WebSocket connection for real-time updates
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+                    
+                    ws.onopen = () => this.updateStatus('connected');
+                    ws.onclose = () => this.updateStatus('connecting');
+                    ws.onerror = () => this.updateStatus('error');
+                },
+                
+                updateStatus(newStatus) {
+                    this.status = newStatus;
+                    this.statusText = {
+                        'connecting': 'Connecting...',
+                        'connected': 'Connected',
+                        'error': 'Connection Error'
+                    }[newStatus];
+                }
+            }
+        }
+
+        // Toast Notification System
+        class Toast {
+            static show(message, type = 'info', duration = 3000) {
+                const container = document.getElementById('toast-container');
+                const toast = document.createElement('div');
+                
+                // Set classes based on type
+                const typeClasses = {
+                    'success': 'alert-success',
+                    'error': 'alert-error',
+                    'warning': 'alert-warning',
+                    'info': 'alert-info'
+                };
+                
+                toast.className = `alert ${typeClasses[type]} mb-2`;
+                toast.style.minWidth = '300px';
+                toast.style.animation = 'slideIn 0.3s ease-out';
+                toast.textContent = message;
+                
+                container.appendChild(toast);
+                
+                // Auto-remove
+                setTimeout(() => {
+                    toast.style.animation = 'slideOut 0.3s ease-in';
+                    setTimeout(() => toast.remove(), 300);
+                }, duration);
+            }
+        }
+
+        // Add animations
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+            }
+            
+            @keyframes slideOut {
+                from {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+                to {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Make Toast globally available
+        window.Toast = Toast;
+    </script>
+
+    <!-- Page-specific scripts -->
+    {% block scripts %}{% endblock %}
+</body>
+</html>

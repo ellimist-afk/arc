@@ -1,0 +1,957 @@
+{% extends "base-v2.html" %}
+
+{% block title %}Personality Management - {{ streamer_id }}{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/v2/css/pages/settings.css">
+<style>
+.personality-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    margin-bottom: 2rem;
+}
+
+.preset-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.preset-card {
+    background: var(--surface-elevated);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.preset-card:hover {
+    border-color: var(--accent-muted);
+    transform: translateY(-2px);
+}
+
+.preset-card.active {
+    border-color: var(--accent);
+    background: var(--accent-muted);
+}
+
+.personality-preview {
+    background: var(--surface-elevated);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.trait-sliders {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.trait-slider {
+    background: var(--surface-muted);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+}
+
+.slider-input {
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    background: var(--surface-elevated);
+    outline: none;
+    -webkit-appearance: none;
+}
+
+.slider-input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid var(--surface-primary);
+}
+
+.slider-input::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid var(--surface-primary);
+}
+
+.analytics-charts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-top: 2rem;
+}
+
+.chart-container {
+    background: var(--surface-elevated);
+    border-radius: var(--radius-lg);
+    padding: 1rem;
+    height: 250px;
+}
+
+.ab-test-panel {
+    background: var(--surface-elevated);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    margin-top: 2rem;
+}
+
+.test-variants {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.variant-card {
+    background: var(--surface-muted);
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    border: 2px solid transparent;
+}
+
+.variant-card.active {
+    border-color: var(--accent);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tbx-page-container" x-data="personalityManagementPage('{{ streamer_id }}')">
+    <!-- Page Header -->
+    <div class="tbx-page-header">
+        <div class="tbx-header-content">
+            <h1 class="tbx-page-title">Personality Management</h1>
+            <p class="tbx-page-subtitle">Advanced personality configuration and testing for {{ streamer_id }}</p>
+        </div>
+        
+        <div class="tbx-header-actions">
+            <!-- Current Personality Status -->
+            <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-accent/20">
+                <div class="text-2xl" x-text="currentPersonality.emoji">🤖</div>
+                <span class="text-sm font-medium text-accent" x-text="currentPersonality.name">Default</span>
+            </div>
+            
+            <!-- Save Button -->
+            <button @click="savePersonality()" 
+                    class="tbx-button tbx-button-primary" 
+                    :disabled="!hasChanges || isSaving">
+                <svg x-show="!isSaving" class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"></path>
+                </svg>
+                <div x-show="isSaving" class="animate-spin rounded-full h-4 w-4 border-2 border-gray-700 border-t-white"></div>
+                <span x-text="isSaving ? 'Saving...' : 'Save Changes'">Save Changes</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    <div x-show="isLoading" class="flex items-center justify-center py-12">
+        <div class="text-center">
+            <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-gray-700 border-t-accent"></div>
+            <p class="mt-4 text-secondary">Loading personality data...</p>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div x-show="!isLoading" x-transition class="space-y-6">
+        
+        <!-- Personality Presets -->
+        <div class="tbx-card">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold">Personality Presets</h2>
+                <button @click="showCreatePreset = true" class="tbx-button tbx-button-secondary">
+                    <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                    </svg>
+                    Create Preset
+                </button>
+            </div>
+            
+            <div class="preset-grid">
+                <template x-for="preset in presets" :key="preset.id">
+                    <div class="preset-card" 
+                         :class="{ 'active': currentPersonality.id === preset.id }"
+                         @click="selectPreset(preset)">
+                        <div class="text-center mb-3">
+                            <div class="text-4xl mb-2" x-text="preset.emoji">🤖</div>
+                            <h3 class="font-semibold" x-text="preset.name">Preset Name</h3>
+                            <p class="text-sm text-secondary mt-1" x-text="preset.description">Description</p>
+                        </div>
+                        
+                        <div class="space-y-2">
+                            <template x-for="[trait, value] in Object.entries(preset.traits)" :key="trait">
+                                <div class="flex justify-between text-xs">
+                                    <span class="capitalize" x-text="trait.replace('_', ' ')"></span>
+                                    <span class="text-secondary" x-text="Math.round(value * 100) + '%'"></span>
+                                </div>
+                            </template>
+                        </div>
+                        
+                        <div class="flex gap-2 mt-3">
+                            <button @click.stop="testPersonality(preset)" 
+                                    class="flex-1 tbx-button tbx-button-sm tbx-button-secondary">
+                                Test
+                            </button>
+                            <button x-show="preset.custom" 
+                                    @click.stop="editPreset(preset)" 
+                                    class="flex-1 tbx-button tbx-button-sm tbx-button-secondary">
+                                Edit
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Custom Personality Builder -->
+        <div class="personality-grid">
+            <div class="tbx-card">
+                <h2 class="text-lg font-semibold mb-4">Custom Personality Builder</h2>
+                
+                <div class="trait-sliders">
+                    <template x-for="[trait, config] in Object.entries(traitConfig)" :key="trait">
+                        <div class="trait-slider">
+                            <div class="flex items-center justify-between mb-3">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-lg" x-text="config.icon"></span>
+                                    <label class="font-medium" x-text="config.label"></label>
+                                </div>
+                                <span class="text-sm text-secondary" x-text="Math.round(customTraits[trait] * 100) + '%'"></span>
+                            </div>
+                            
+                            <input type="range" 
+                                   x-model.number="customTraits[trait]" 
+                                   @input="updatePreview()"
+                                   min="0" 
+                                   max="1" 
+                                   step="0.01" 
+                                   class="slider-input">
+                            
+                            <p class="text-xs text-muted mt-2" x-text="config.description"></p>
+                        </div>
+                    </template>
+                </div>
+                
+                <div class="flex gap-3 mt-6">
+                    <button @click="previewPersonality()" class="tbx-button tbx-button-secondary">
+                        <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                        </svg>
+                        Preview
+                    </button>
+                    <button @click="saveAsPreset()" class="tbx-button tbx-button-secondary">
+                        <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12"></path>
+                        </svg>
+                        Save as Preset
+                    </button>
+                </div>
+            </div>
+            
+            <div class="tbx-card">
+                <h2 class="text-lg font-semibold mb-4">Personality Preview</h2>
+                
+                <div class="personality-preview">
+                    <div class="text-center mb-4">
+                        <div class="text-5xl mb-3" x-text="previewPersonality.emoji">🤖</div>
+                        <h3 class="text-xl font-bold" x-text="previewPersonality.name">Custom Personality</h3>
+                        <p class="text-secondary" x-text="previewPersonality.description">A unique personality configuration</p>
+                    </div>
+                    
+                    <div class="space-y-3">
+                        <template x-for="[trait, value] in Object.entries(previewPersonality.traits)" :key="trait">
+                            <div>
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="font-medium capitalize" x-text="trait.replace('_', ' ')"></span>
+                                    <span class="text-secondary" x-text="Math.round(value * 100) + '%'"></span>
+                                </div>
+                                <div class="h-2 bg-gray-700 rounded-full overflow-hidden">
+                                    <div class="h-full bg-gradient-to-r transition-all duration-300"
+                                         :style="`width: ${value * 100}%; background-color: ${traitConfig[trait]?.color || '#6366f1'}`"></div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                    
+                    <!-- Sample Responses -->
+                    <div class="mt-6 space-y-3">
+                        <h4 class="font-semibold text-sm">Sample Responses:</h4>
+                        <template x-for="sample in sampleResponses" :key="sample.id">
+                            <div class="p-3 bg-white/5 rounded-lg">
+                                <div class="text-xs text-muted mb-1" x-text="sample.context">Context</div>
+                                <div class="text-sm" x-text="sample.response">Sample response</div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Personality Analytics -->
+        <div class="tbx-card">
+            <h2 class="text-lg font-semibold mb-4">Personality Analytics</h2>
+            
+            <div class="analytics-charts">
+                <div class="chart-container">
+                    <h3 class="font-medium mb-3">Response Effectiveness</h3>
+                    <canvas id="effectivenessChart" width="300" height="200"></canvas>
+                </div>
+                
+                <div class="chart-container">
+                    <h3 class="font-medium mb-3">Trait Usage Over Time</h3>
+                    <canvas id="traitUsageChart" width="300" height="200"></canvas>
+                </div>
+                
+                <div class="chart-container">
+                    <h3 class="font-medium mb-3">Audience Engagement</h3>
+                    <canvas id="engagementChart" width="300" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- A/B Testing Panel -->
+        <div class="ab-test-panel" x-show="showABTesting">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold">A/B Testing</h2>
+                <button @click="startNewTest()" class="tbx-button tbx-button-primary">
+                    <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                    </svg>
+                    Start New Test
+                </button>
+            </div>
+            
+            <div x-show="currentTest" class="space-y-4">
+                <div class="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                    <div>
+                        <h3 class="font-medium" x-text="currentTest.name">Test Name</h3>
+                        <p class="text-sm text-secondary" x-text="currentTest.description">Test description</p>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-sm font-medium" x-text="currentTest.status">Active</div>
+                        <div class="text-xs text-muted" x-text="`${currentTest.duration}% complete`">50% complete</div>
+                    </div>
+                </div>
+                
+                <div class="test-variants">
+                    <template x-for="variant in currentTest.variants" :key="variant.id">
+                        <div class="variant-card" :class="{ 'active': variant.isWinning }">
+                            <div class="flex items-center justify-between mb-3">
+                                <h4 class="font-medium" x-text="variant.name">Variant A</h4>
+                                <span class="tbx-badge" 
+                                      :class="{ 'tbx-badge-success': variant.isWinning, 'tbx-badge-secondary': !variant.isWinning }"
+                                      x-text="variant.isWinning ? 'Winning' : 'Testing'">Testing</span>
+                            </div>
+                            
+                            <div class="space-y-2 text-sm">
+                                <div class="flex justify-between">
+                                    <span>Engagement Rate</span>
+                                    <span x-text="variant.metrics.engagement + '%'">75%</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span>Response Quality</span>
+                                    <span x-text="variant.metrics.quality + '/10'">8.5/10</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span>User Satisfaction</span>
+                                    <span x-text="variant.metrics.satisfaction + '%'">82%</span>
+                                </div>
+                            </div>
+                            
+                            <button @click="applyVariant(variant)" 
+                                    class="w-full tbx-button tbx-button-sm tbx-button-secondary mt-3">
+                                Apply This Variant
+                            </button>
+                        </div>
+                    </template>
+                </div>
+                
+                <div class="flex gap-3">
+                    <button @click="pauseTest()" class="tbx-button tbx-button-secondary">Pause Test</button>
+                    <button @click="endTest()" class="tbx-button tbx-button-warning">End Test</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Import/Export Section -->
+        <div class="tbx-card">
+            <h2 class="text-lg font-semibold mb-4">Import & Export</h2>
+            
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <h3 class="font-medium mb-3">Export Configurations</h3>
+                    <div class="space-y-2">
+                        <button @click="exportPersonality('current')" class="w-full tbx-button tbx-button-secondary">
+                            Export Current Personality
+                        </button>
+                        <button @click="exportPersonality('all')" class="w-full tbx-button tbx-button-secondary">
+                            Export All Presets
+                        </button>
+                    </div>
+                </div>
+                
+                <div>
+                    <h3 class="font-medium mb-3">Import Configurations</h3>
+                    <div class="space-y-2">
+                        <input type="file" @change="importPersonality($event)" accept=".json" class="hidden" id="importFile">
+                        <label for="importFile" class="w-full tbx-button tbx-button-secondary cursor-pointer inline-block text-center">
+                            Import Personality
+                        </label>
+                        <button @click="loadCommunityPresets()" class="w-full tbx-button tbx-button-secondary">
+                            Community Presets
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Preset Modal -->
+    <div x-show="showCreatePreset" 
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md" @click.away="showCreatePreset = false">
+            <h3 class="text-lg font-semibold mb-4">Create New Preset</h3>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="tbx-label">Preset Name</label>
+                    <input type="text" x-model="newPreset.name" class="tbx-input" placeholder="My Custom Preset">
+                </div>
+                
+                <div>
+                    <label class="tbx-label">Description</label>
+                    <textarea x-model="newPreset.description" class="tbx-input" rows="3" placeholder="Describe this personality..."></textarea>
+                </div>
+                
+                <div>
+                    <label class="tbx-label">Emoji</label>
+                    <input type="text" x-model="newPreset.emoji" class="tbx-input" placeholder="🤖" maxlength="2">
+                </div>
+            </div>
+            
+            <div class="flex gap-3 mt-6">
+                <button @click="showCreatePreset = false" class="flex-1 tbx-button tbx-button-secondary">
+                    Cancel
+                </button>
+                <button @click="createPreset()" class="flex-1 tbx-button tbx-button-primary">
+                    Create
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function personalityManagementPage(streamerId) {
+    return {
+        // State
+        streamerId: streamerId,
+        isLoading: true,
+        isSaving: false,
+        hasChanges: false,
+        
+        currentPersonality: {
+            id: 'default',
+            name: 'Default',
+            emoji: '🤖',
+            description: 'Standard bot personality',
+            traits: {}
+        },
+        
+        presets: [
+            {
+                id: 'chill',
+                name: 'Chill',
+                emoji: '😎',
+                description: 'Relaxed and laid-back personality',
+                custom: false,
+                traits: { warmth: 0.7, energy: 0.3, humor: 0.5, sass: 0.2, verbosity: 0.4 }
+            },
+            {
+                id: 'cozy',
+                name: 'Cozy',
+                emoji: '☕',
+                description: 'Warm and comforting presence',
+                custom: false,
+                traits: { warmth: 0.9, energy: 0.4, humor: 0.6, sass: 0.1, verbosity: 0.6 }
+            },
+            {
+                id: 'roast',
+                name: 'Roast',
+                emoji: '🔥',
+                description: 'Playfully sarcastic and witty',
+                custom: false,
+                traits: { warmth: 0.4, energy: 0.7, humor: 0.8, sass: 0.9, verbosity: 0.5 }
+            },
+            {
+                id: 'hype',
+                name: 'Hype',
+                emoji: '⚡',
+                description: 'High energy and excitement',
+                custom: false,
+                traits: { warmth: 0.8, energy: 0.95, humor: 0.7, sass: 0.3, verbosity: 0.7 }
+            }
+        ],
+        
+        customTraits: {
+            warmth: 0.5,
+            energy: 0.5,
+            humor: 0.5,
+            sass: 0.5,
+            verbosity: 0.5
+        },
+        
+        traitConfig: {
+            warmth: { 
+                label: 'Warmth', 
+                color: '#ef4444', 
+                description: 'How friendly and welcoming the bot appears',
+                icon: '❤️'
+            },
+            energy: { 
+                label: 'Energy', 
+                color: '#f59e0b', 
+                description: 'The enthusiasm and excitement level',
+                icon: '⚡'
+            },
+            humor: { 
+                label: 'Humor', 
+                color: '#10b981', 
+                description: 'How often the bot tries to be funny',
+                icon: '😄'
+            },
+            sass: { 
+                label: 'Sass', 
+                color: '#8b5cf6', 
+                description: 'Level of playful attitude and wit',
+                icon: '💅'
+            },
+            verbosity: { 
+                label: 'Verbosity', 
+                color: '#06b6d4', 
+                description: 'How much the bot talks in responses',
+                icon: '💬'
+            }
+        },
+        
+        previewPersonality: {
+            name: 'Custom Personality',
+            emoji: '⭐',
+            description: 'A unique personality configuration',
+            traits: {}
+        },
+        
+        sampleResponses: [
+            {
+                id: 1,
+                context: 'User asks about the weather',
+                response: 'The weather looks pretty nice today! Perfect for staying indoors and gaming!'
+            }
+        ],
+        
+        // A/B Testing
+        showABTesting: false,
+        currentTest: null,
+        
+        // Modal states
+        showCreatePreset: false,
+        newPreset: {
+            name: '',
+            description: '',
+            emoji: '🤖'
+        },
+        
+        // Lifecycle
+        async init() {
+            await this.loadPersonalityData();
+            this.initCharts();
+            this.updatePreview();
+            this.isLoading = false;
+        },
+        
+        // Data Loading
+        async loadPersonalityData() {
+            try {
+                const api = window.talkbotAPI;
+                const [settings, analytics, tests] = await Promise.all([
+                    api.getSettings(this.streamerId),
+                    api.getPersonalityAnalytics(this.streamerId),
+                    api.getABTests(this.streamerId)
+                ]);
+                
+                if (settings.personality) {
+                    this.currentPersonality = {
+                        id: settings.personality.active_preset || 'custom',
+                        name: settings.personality.active_preset || 'Custom',
+                        emoji: this.getPresetEmoji(settings.personality.active_preset),
+                        description: this.getPresetDescription(settings.personality.active_preset),
+                        traits: settings.personality.traits || {}
+                    };
+                    
+                    this.customTraits = { ...settings.personality.traits };
+                }
+                
+                // Load custom presets
+                if (settings.personality?.custom_presets) {
+                    this.presets.push(...settings.personality.custom_presets);
+                }
+                
+                // Load A/B test data
+                if (tests.active_test) {
+                    this.currentTest = tests.active_test;
+                    this.showABTesting = true;
+                }
+            } catch (error) {
+                console.error('Failed to load personality data:', error);
+                this.handleError(error);
+            }
+        },
+        
+        // Personality Management
+        selectPreset(preset) {
+            this.currentPersonality = { ...preset };
+            this.customTraits = { ...preset.traits };
+            this.updatePreview();
+            this.hasChanges = true;
+        },
+        
+        updatePreview() {
+            this.previewPersonality = {
+                name: this.currentPersonality.name,
+                emoji: this.currentPersonality.emoji,
+                description: this.currentPersonality.description,
+                traits: { ...this.customTraits }
+            };
+            
+            this.generateSampleResponses();
+            this.hasChanges = true;
+        },
+        
+        async generateSampleResponses() {
+            try {
+                const samples = await window.talkbotAPI.generatePersonalitySamples(
+                    this.streamerId, 
+                    this.customTraits
+                );
+                this.sampleResponses = samples;
+            } catch (error) {
+                console.error('Failed to generate samples:', error);
+                // Keep default samples
+            }
+        },
+        
+        async savePersonality() {
+            this.isSaving = true;
+            
+            try {
+                const personalityData = {
+                    active_preset: this.currentPersonality.id === 'custom' ? null : this.currentPersonality.id,
+                    traits: this.customTraits,
+                    custom_name: this.currentPersonality.name,
+                    custom_emoji: this.currentPersonality.emoji,
+                    custom_description: this.currentPersonality.description
+                };
+                
+                await window.talkbotAPI.updatePersonality(this.streamerId, personalityData);
+                this.hasChanges = false;
+                showToast('Personality saved successfully', 'success');
+            } catch (error) {
+                console.error('Failed to save personality:', error);
+                showToast('Failed to save personality', 'error');
+            } finally {
+                this.isSaving = false;
+            }
+        },
+        
+        async createPreset() {
+            if (!this.newPreset.name.trim()) {
+                showToast('Please enter a preset name', 'error');
+                return;
+            }
+            
+            try {
+                const preset = {
+                    id: 'custom_' + Date.now(),
+                    name: this.newPreset.name,
+                    emoji: this.newPreset.emoji || '🤖',
+                    description: this.newPreset.description || '',
+                    custom: true,
+                    traits: { ...this.customTraits }
+                };
+                
+                await window.talkbotAPI.createPersonalityPreset(this.streamerId, preset);
+                this.presets.push(preset);
+                
+                // Reset modal
+                this.newPreset = { name: '', description: '', emoji: '🤖' };
+                this.showCreatePreset = false;
+                
+                showToast('Preset created successfully', 'success');
+            } catch (error) {
+                console.error('Failed to create preset:', error);
+                showToast('Failed to create preset', 'error');
+            }
+        },
+        
+        async testPersonality(personality) {
+            try {
+                await window.talkbotAPI.testPersonality(this.streamerId, personality.traits);
+                showToast('Test message sent with this personality', 'info');
+            } catch (error) {
+                console.error('Failed to test personality:', error);
+                showToast('Failed to test personality', 'error');
+            }
+        },
+        
+        async previewPersonality() {
+            try {
+                const preview = await window.talkbotAPI.previewPersonality(this.streamerId, this.customTraits);
+                showToast('Personality preview generated', 'success');
+                // Show preview in modal or expand section
+            } catch (error) {
+                console.error('Failed to preview personality:', error);
+                showToast('Failed to preview personality', 'error');
+            }
+        },
+        
+        async saveAsPreset() {
+            this.newPreset = {
+                name: '',
+                description: 'Custom personality configuration',
+                emoji: '⭐'
+            };
+            this.showCreatePreset = true;
+        },
+        
+        // A/B Testing
+        async startNewTest() {
+            try {
+                const test = await window.talkbotAPI.startPersonalityABTest(this.streamerId, {
+                    name: 'Personality Comparison',
+                    variants: [
+                        { name: 'Current', traits: this.customTraits },
+                        { name: 'Alternative', traits: this.generateAlternativeTraits() }
+                    ],
+                    duration: 7 // days
+                });
+                
+                this.currentTest = test;
+                this.showABTesting = true;
+                showToast('A/B test started', 'success');
+            } catch (error) {
+                console.error('Failed to start A/B test:', error);
+                showToast('Failed to start A/B test', 'error');
+            }
+        },
+        
+        generateAlternativeTraits() {
+            const alternative = { ...this.customTraits };
+            
+            // Randomly adjust traits by ±20%
+            Object.keys(alternative).forEach(trait => {
+                const adjustment = (Math.random() - 0.5) * 0.4; // ±20%
+                alternative[trait] = Math.max(0, Math.min(1, alternative[trait] + adjustment));
+            });
+            
+            return alternative;
+        },
+        
+        async applyVariant(variant) {
+            this.customTraits = { ...variant.traits };
+            this.updatePreview();
+            await this.savePersonality();
+            showToast(`Applied ${variant.name} variant`, 'success');
+        },
+        
+        async endTest() {
+            if (!confirm('Are you sure you want to end this A/B test?')) return;
+            
+            try {
+                await window.talkbotAPI.endABTest(this.streamerId, this.currentTest.id);
+                this.currentTest = null;
+                this.showABTesting = false;
+                showToast('A/B test ended', 'success');
+            } catch (error) {
+                console.error('Failed to end A/B test:', error);
+                showToast('Failed to end A/B test', 'error');
+            }
+        },
+        
+        // Import/Export
+        async exportPersonality(type) {
+            try {
+                let data;
+                if (type === 'current') {
+                    data = {
+                        personality: this.currentPersonality,
+                        traits: this.customTraits
+                    };
+                } else {
+                    data = {
+                        presets: this.presets.filter(p => p.custom),
+                        current: this.currentPersonality,
+                        traits: this.customTraits
+                    };
+                }
+                
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `personality-${type}-${this.streamerId}-${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                
+                showToast('Personality configuration exported', 'success');
+            } catch (error) {
+                console.error('Failed to export personality:', error);
+                showToast('Failed to export personality', 'error');
+            }
+        },
+        
+        async importPersonality(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            try {
+                const text = await file.text();
+                const data = JSON.parse(text);
+                
+                if (data.personality) {
+                    this.currentPersonality = data.personality;
+                    this.customTraits = data.traits || data.personality.traits || {};
+                    this.updatePreview();
+                }
+                
+                if (data.presets) {
+                    // Add imported presets
+                    for (const preset of data.presets) {
+                        if (!this.presets.find(p => p.id === preset.id)) {
+                            this.presets.push({ ...preset, custom: true });
+                        }
+                    }
+                }
+                
+                showToast('Personality configuration imported', 'success');
+            } catch (error) {
+                console.error('Failed to import personality:', error);
+                showToast('Failed to import personality file', 'error');
+            }
+            
+            // Reset file input
+            event.target.value = '';
+        },
+        
+        async loadCommunityPresets() {
+            try {
+                const presets = await window.talkbotAPI.getCommunityPresets();
+                // Show modal with community presets to choose from
+                showToast('Community presets loaded', 'success');
+            } catch (error) {
+                console.error('Failed to load community presets:', error);
+                showToast('Failed to load community presets', 'error');
+            }
+        },
+        
+        // Chart Initialization
+        initCharts() {
+            // Initialize charts with Chart.js or similar
+            this.initEffectivenessChart();
+            this.initTraitUsageChart();
+            this.initEngagementChart();
+        },
+        
+        initEffectivenessChart() {
+            const canvas = document.getElementById('effectivenessChart');
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                // Chart implementation would go here
+                ctx.fillStyle = '#10b981';
+                ctx.fillRect(10, 10, 100, 50);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '12px Arial';
+                ctx.fillText('Response Effectiveness', 20, 35);
+            }
+        },
+        
+        initTraitUsageChart() {
+            const canvas = document.getElementById('traitUsageChart');
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#6366f1';
+                ctx.fillRect(10, 10, 100, 50);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '12px Arial';
+                ctx.fillText('Trait Usage Over Time', 20, 35);
+            }
+        },
+        
+        initEngagementChart() {
+            const canvas = document.getElementById('engagementChart');
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#f59e0b';
+                ctx.fillRect(10, 10, 100, 50);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '12px Arial';
+                ctx.fillText('Audience Engagement', 20, 35);
+            }
+        },
+        
+        // Utility Functions
+        getPresetEmoji(preset) {
+            const emojis = {
+                'chill': '😎',
+                'cozy': '☕',
+                'roast': '🔥',
+                'hype': '⚡',
+                'wise': '🧙',
+                'chaos': '😈'
+            };
+            return emojis[preset?.toLowerCase()] || '🤖';
+        },
+        
+        getPresetDescription(preset) {
+            const descriptions = {
+                'chill': 'Relaxed and laid-back personality',
+                'cozy': 'Warm and comforting presence',
+                'roast': 'Playfully sarcastic and witty',
+                'hype': 'High energy and excitement',
+                'wise': 'Thoughtful and knowledgeable',
+                'chaos': 'Unpredictable and entertaining'
+            };
+            return descriptions[preset?.toLowerCase()] || 'Custom personality configuration';
+        },
+        
+        handleError(error) {
+            console.error('Personality management error:', error);
+            showToast('An error occurred. Please try again.', 'error');
+        }
+    }
+}
+</script>
+
+<script>
+// Initialize the personality management page
+document.addEventListener('alpine:init', () => {
+    // Page will be initialized via x-data directive
+});
+</script>
+{% endblock %}

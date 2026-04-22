@@ -1,0 +1,648 @@
+/* Personality Settings UX Fixes
+   Addresses visual glitches, interaction issues, and layout problems
+   Version: 2025-01-25 */
+
+/* ============================================
+   1. SLIDER VISUAL FIXES
+   ============================================ */
+
+/* Fix slider alignment and ensure proper layering */
+.tbx-slider-container {
+    position: relative;
+    margin: 1.5rem 0;
+    padding: 0.5rem 0;
+    min-height: 48px;
+}
+
+/* Ensure slider track is properly positioned */
+.tbx-slider-track {
+    position: relative;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: visible; /* Allow thumb to extend outside */
+    margin: 20px 0; /* Space for thumb */
+}
+
+/* Fix progress fill positioning */
+.tbx-slider-progress-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.2s ease-out, background-color 0.3s ease;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* Ensure slider input is properly positioned */
+.tbx-slider-input {
+    position: absolute;
+    top: -6px; /* Center on track */
+    left: 0;
+    width: 100%;
+    height: 20px;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 3;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+/* Style the visible slider thumb */
+.tbx-slider-input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: white;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+    position: relative;
+    z-index: 2;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.tbx-slider-input::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: white;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+    border: none;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Hover states for better feedback */
+.tbx-slider-input:hover::-webkit-slider-thumb {
+    transform: scale(1.15);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+}
+
+.tbx-slider-input:hover::-moz-range-thumb {
+    transform: scale(1.15);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+}
+
+/* Active/dragging state */
+.tbx-slider-input:active::-webkit-slider-thumb {
+    transform: scale(1.25);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.tbx-slider-input:active::-moz-range-thumb {
+    transform: scale(1.25);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+/* Focus state for accessibility */
+.tbx-slider-input:focus + .tbx-slider-track {
+    box-shadow: 0 0 0 3px rgba(232, 107, 215, 0.3);
+}
+
+/* Fix trait header alignment */
+.tbx-trait-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    min-height: 28px;
+}
+
+.tbx-trait-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+}
+
+.tbx-trait-value {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #e86bd7;
+    min-width: 48px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Ensure trait descriptions don't cause layout shifts */
+.tbx-trait-description {
+    margin-top: 0.75rem;
+    line-height: 1.5;
+    min-height: 1.5em;
+}
+
+/* ============================================
+   2. PRESET BUTTON FIXES
+   ============================================ */
+
+/* Fix preset card active states */
+.tbx-preset-card {
+    position: relative;
+    transition: all 0.2s ease;
+    min-height: 140px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    gap: 0.5rem;
+    padding: 1.25rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+/* Ensure active state is visible */
+.tbx-preset-card.tbx-preset-active {
+    transform: translateY(-2px);
+    border-color: #e86bd7 !important;
+    background: rgba(232, 107, 215, 0.1) !important;
+    box-shadow: 0 4px 12px rgba(232, 107, 215, 0.3) !important;
+}
+
+/* Fix active indicator positioning */
+.tbx-preset-active-indicator {
+    position: absolute !important;
+    top: 8px !important;
+    right: 8px !important;
+    width: 24px;
+    height: 24px;
+    background: #e86bd7;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: scaleIn 0.2s ease;
+}
+
+@keyframes scaleIn {
+    from { transform: scale(0); }
+    to { transform: scale(1); }
+}
+
+/* Fix custom preset card styling */
+.tbx-custom-preset-card {
+    position: relative;
+    transition: all 0.2s ease;
+}
+
+.tbx-custom-preset-button {
+    min-height: 140px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1.25rem;
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    text-align: center;
+}
+
+/* Fix preset icon sizing */
+.tbx-preset-icon {
+    font-size: 2rem;
+    line-height: 1;
+    margin-bottom: 0.25rem;
+}
+
+/* Ensure preset names are readable */
+.tbx-preset-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+}
+
+/* Fix preset description overflow */
+.tbx-preset-desc {
+    font-size: 0.75rem;
+    line-height: 1.3;
+    opacity: 0.8;
+    max-width: 150px;
+    overflow-wrap: break-word;
+}
+
+/* ============================================
+   3. DROPDOWN FIXES
+   ============================================ */
+
+/* Fix dropdown styling */
+.tbx-preset-dropdown {
+    position: relative;
+    margin-top: 1.5rem;
+    background: rgba(30, 30, 40, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.tbx-dropdown-trigger {
+    width: 100%;
+    padding: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    color: white;
+    transition: background 0.2s ease;
+}
+
+.tbx-dropdown-trigger:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* Fix dropdown content visibility */
+.tbx-dropdown-content {
+    max-height: 400px;
+    overflow-y: auto;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Fix preset list items */
+.tbx-preset-list-item {
+    padding: 0.75rem 1rem;
+    transition: background 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    width: 100%;
+    text-align: left;
+}
+
+.tbx-preset-list-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.tbx-preset-list-active {
+    background: rgba(232, 107, 215, 0.15) !important;
+    color: #e86bd7;
+}
+
+/* ============================================
+   4. SAVE STATUS & FEEDBACK
+   ============================================ */
+
+/* Fix save status visibility */
+.tbx-save-status {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    pointer-events: none;
+}
+
+.tbx-status-item {
+    pointer-events: auto;
+    padding: 0.75rem 1.25rem;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    animation: slideInRight 0.3s ease;
+}
+
+@keyframes slideInRight {
+    from { 
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to { 
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.tbx-status-success {
+    background: #22c55e;
+    color: white;
+}
+
+.tbx-status-error {
+    background: #ef4444;
+    color: white;
+}
+
+.tbx-status-saving {
+    background: #f59e0b;
+    color: white;
+}
+
+/* ============================================
+   5. LOADING STATES
+   ============================================ */
+
+/* Fix loading overlay */
+.tbx-loading-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+    gap: 1rem;
+}
+
+.tbx-spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid rgba(255, 255, 255, 0.2);
+    border-top-color: #e86bd7;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ============================================
+   6. RESPONSIVE FIXES
+   ============================================ */
+
+/* Mobile layout fixes */
+@media (max-width: 768px) {
+    /* Fix preset grid on mobile */
+    .tbx-preset-grid-primary {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+        max-width: 100%;
+    }
+    
+    .tbx-preset-card,
+    .tbx-custom-preset-button {
+        min-height: 120px;
+        padding: 1rem;
+    }
+    
+    .tbx-preset-icon {
+        font-size: 1.5rem;
+    }
+    
+    .tbx-preset-name {
+        font-size: 0.85rem;
+    }
+    
+    .tbx-preset-desc {
+        font-size: 0.7rem;
+    }
+    
+    /* Fix save status on mobile */
+    .tbx-save-status {
+        bottom: 1rem;
+        right: 1rem;
+        left: 1rem;
+    }
+    
+    .tbx-status-item {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Single column on very small screens */
+    .tbx-preset-grid-primary {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+    
+    /* Adjust navigation */
+    .tbx-settings-nav {
+        padding: 0 1rem;
+        gap: 0.5rem;
+    }
+    
+    .tbx-nav-item {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.85rem;
+    }
+    
+    .tbx-nav-icon {
+        width: 16px;
+        height: 16px;
+    }
+}
+
+/* ============================================
+   7. OVERLAY & MODAL FIXES
+   ============================================ */
+
+/* Remove any blocking overlays */
+[x-cloak] {
+    display: none !important;
+}
+
+/* Hide problematic circular overlays that block Advanced Settings */
+div[style*="position: absolute"][style*="border-radius: 50%"],
+div[style*="position: fixed"][style*="border-radius: 50%"],
+*::before[style*="border-radius: 50%"],
+*::after[style*="border-radius: 50%"] {
+    display: none !important;
+    pointer-events: none !important;
+}
+
+/* Hide large circular background decorations */
+*[style*="width: 600px"][style*="height: 600px"],
+*[style*="width: 700px"][style*="height: 700px"],
+*[style*="width: 800px"][style*="height: 800px"] {
+    display: none !important;
+    z-index: -1 !important;
+}
+
+/* Remove circular gradient backgrounds that create overlays */
+*[style*="background: radial-gradient"][style*="circle"],
+*[style*="background-image: radial-gradient"][style*="ellipse"] {
+    background: transparent !important;
+    background-image: none !important;
+}
+
+/* Ensure content is interactive */
+.tbx-page-container {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+}
+
+.tbx-settings-content {
+    position: relative;
+    z-index: 2;
+    pointer-events: auto;
+}
+
+/* Advanced Settings specific fixes */
+#advanced-section,
+.advanced-tab-content,
+[x-show*="advanced"] {
+    position: relative !important;
+    z-index: 999 !important;
+    pointer-events: auto !important;
+    background: var(--tbx-surface-base) !important;
+}
+
+/* Fix any stray fixed elements */
+.fixed.inset-0:empty {
+    display: none !important;
+}
+
+/* Hide any pseudo-elements creating large circles */
+*::before,
+*::after {
+    max-width: 100px !important;
+    max-height: 100px !important;
+}
+
+/* Override any large circular decorations */
+*[class*="circle"][style*="width"][style*="height"] {
+    display: none !important;
+}
+
+/* ============================================
+   8. PERSONALITY ACTIONS
+   ============================================ */
+
+/* Fix action button alignment */
+.tbx-personality-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tbx-personality-actions .tbx-button {
+    min-width: 140px;
+}
+
+/* ============================================
+   9. ACCESSIBILITY IMPROVEMENTS
+   ============================================ */
+
+/* Better focus indicators */
+.tbx-preset-card:focus-visible,
+.tbx-custom-preset-button:focus-visible,
+.tbx-preset-list-item:focus-visible {
+    outline: 2px solid #e86bd7;
+    outline-offset: 2px;
+}
+
+.tbx-button:focus-visible {
+    outline: 2px solid #e86bd7;
+    outline-offset: 2px;
+}
+
+/* Screen reader only content */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+/* ============================================
+   10. ANIMATION IMPROVEMENTS
+   ============================================ */
+
+/* Smooth all transitions */
+* {
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ============================================
+   11. COLOR CONSISTENCY
+   ============================================ */
+
+/* Ensure consistent brand colors */
+:root {
+    --tbx-brand-primary: #e86bd7;
+    --tbx-brand-primary-hover: #d451c3;
+    --tbx-brand-secondary: #a855f7;
+}
+
+/* ============================================
+   12. ADVANCED SETTINGS PROTECTION
+   ============================================ */
+
+/* Ensure Advanced Settings tab is never blocked */
+.model-selection-container,
+.voice-ai-config,
+.advanced-settings-content {
+    position: relative !important;
+    z-index: 1000 !important;
+    background: var(--tbx-surface-base, rgba(20, 20, 30, 0.95)) !important;
+    pointer-events: auto !important;
+}
+
+/* Force visibility of all interactive elements in Advanced section */
+#advanced-section *,
+.advanced-tab-content *,
+[x-show*="advanced"] * {
+    pointer-events: auto !important;
+    position: relative !important;
+    z-index: inherit !important;
+}
+
+/* Remove any pseudo-element overlays specifically on Advanced content */
+#advanced-section::before,
+#advanced-section::after,
+.advanced-tab-content::before,
+.advanced-tab-content::after {
+    display: none !important;
+}
+
+/* ============================================
+   13. CUSTOM SCROLLBAR
+   ============================================ */
+
+/* Style scrollbars in dropdown */
+.tbx-dropdown-content::-webkit-scrollbar,
+.tbx-preset-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.tbx-dropdown-content::-webkit-scrollbar-track,
+.tbx-preset-list::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+}
+
+.tbx-dropdown-content::-webkit-scrollbar-thumb,
+.tbx-preset-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+}
+
+.tbx-dropdown-content::-webkit-scrollbar-thumb:hover,
+.tbx-preset-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+}

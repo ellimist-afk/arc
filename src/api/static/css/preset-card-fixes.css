@@ -1,0 +1,262 @@
+/* Personality Preset Card Text Overflow Fixes - V3 Robust Solution */
+
+/* Enhanced preset buttons - Clean design matching navigation */
+.tbx-preset-btn {
+  background: linear-gradient(135deg, rgba(32, 32, 38, 0.8) 0%, rgba(38, 38, 45, 0.9) 100%);
+  border: 1px solid rgba(145, 70, 255, 0.2);
+  border-radius: 12px;
+  padding: 1rem 0.5rem !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden; /* Hide overflow for clean edges */
+  min-height: 95px !important;
+  min-width: 95px !important;
+  max-width: 120px !important;
+  box-sizing: border-box;
+  width: 100%;
+  color: #E8E8EA;
+}
+
+.tbx-preset-btn .emoji {
+  font-size: 1.75rem !important;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-bottom: 0.125rem;
+}
+
+/* ROBUST text handling - works for all preset names */
+.tbx-preset-btn .text-sm,
+.tbx-preset-btn span:not(.emoji):not(.absolute) {
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+  text-align: center;
+  line-height: 1.15;
+  width: 100%;
+  padding: 0 0.25rem;
+  color: inherit;
+  
+  /* Smart text overflow handling */
+  display: block;
+  white-space: nowrap; /* Keep single line for short text */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* For longer preset names, allow minimal wrapping */
+.tbx-preset-btn span[class*="text-"]:has-text("Chaos Goblin"),
+.tbx-preset-btn span[class*="text-"]:has-text("Existential") {
+  white-space: normal !important;
+  word-break: break-word;
+  line-height: 1.1;
+  font-size: 0.8rem !important;
+}
+
+/* Enhanced hover states */
+.tbx-preset-btn:hover {
+  border-color: var(--tbx-brand-primary);
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: var(--tbx-shadow-lg), 0 8px 32px rgba(232, 107, 215, 0.2);
+}
+
+.tbx-preset-btn:hover .text-sm,
+.tbx-preset-btn:hover span:not(.emoji):not(.absolute) {
+  white-space: normal; /* Show full text on hover */
+  overflow: visible;
+  text-overflow: initial;
+}
+
+/* Clean active state without lines - matching navigation style */
+.tbx-preset-btn.active {
+  background: linear-gradient(135deg, #9146FF 0%, rgba(145, 70, 255, 0.8) 100%);
+  border-color: #9146FF;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 
+    0 4px 16px rgba(145, 70, 255, 0.4),
+    0 2px 8px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  font-weight: 600 !important;
+  position: relative; /* Ensure proper stacking context */
+}
+
+/* Remove any problematic pseudo-elements that create incorrect highlights */
+.tbx-preset-btn.active::before,
+.tbx-preset-btn.active::after,
+.tbx-preset-btn::before,
+.tbx-preset-btn::after,
+button.tbx-preset-btn::before,
+button.tbx-preset-btn::after,
+button.tbx-preset-btn.active::before,
+button.tbx-preset-btn.active::after {
+  display: none !important; /* Remove any pseudo-element highlights */
+  content: none !important; /* Ensure no content is generated */
+  position: static !important; /* Reset positioning */
+  width: auto !important;
+  height: auto !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+}
+
+/* Ensure the active state uses the full button area */
+.tbx-preset-btn.active {
+  /* Full button highlight - no partial coverage */
+  background-clip: padding-box !important;
+  background-origin: padding-box !important;
+  background-size: 100% 100% !important;
+  background-position: center center !important;
+}
+
+/* Grid layout - responsive columns */
+.grid.grid-cols-2.sm\:grid-cols-3.md\:grid-cols-4.lg\:grid-cols-4.xl\:grid-cols-5.\32xl\:grid-cols-7 {
+  gap: 0.75rem !important;
+}
+
+/* Large screens - 5 columns */
+@media (min-width: 1280px) {
+  .tbx-preset-btn {
+    min-width: 110px !important;
+    max-width: 130px !important;
+    padding: 1.25rem 0.75rem !important;
+  }
+  
+  .tbx-preset-btn .text-sm,
+  .tbx-preset-btn span:not(.emoji):not(.absolute) {
+    font-size: 0.95rem !important;
+  }
+}
+
+/* 2XL screens - 7 columns, tighter layout */
+@media (min-width: 1536px) {
+  .grid.\32xl\:grid-cols-7 .tbx-preset-btn {
+    min-width: 95px !important;
+    max-width: 110px !important;
+    padding: 1rem 0.5rem !important;
+  }
+  
+  .grid.\32xl\:grid-cols-7 .tbx-preset-btn .text-sm,
+  .grid.\32xl\:grid-cols-7 .tbx-preset-btn span:not(.emoji):not(.absolute) {
+    font-size: 0.85rem !important;
+  }
+}
+
+/* Desktop - 4 columns */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .tbx-preset-btn {
+    min-width: 100px !important;
+    max-width: 140px !important;
+    padding: 1.25rem 0.75rem !important;
+  }
+}
+
+/* Tablet - 3 columns */
+@media (min-width: 640px) and (max-width: 767px) {
+  .tbx-preset-btn {
+    min-width: 95px !important;
+    max-width: 120px !important;
+    padding: 1rem 0.625rem !important;
+    min-height: 90px !important;
+  }
+  
+  .tbx-preset-btn .emoji {
+    font-size: 1.5rem !important;
+  }
+  
+  .tbx-preset-btn .text-sm,
+  .tbx-preset-btn span:not(.emoji):not(.absolute) {
+    font-size: 0.82rem !important;
+  }
+}
+
+/* Mobile - 2 columns */
+@media (max-width: 639px) {
+  .tbx-preset-btn {
+    min-width: calc(50vw - 1.5rem) !important;
+    max-width: calc(50vw - 1rem) !important;
+    padding: 0.875rem 0.5rem !important;
+    min-height: 85px !important;
+  }
+  
+  .tbx-preset-btn .emoji {
+    font-size: 1.4rem !important;
+    margin-bottom: 0.25rem;
+  }
+  
+  .tbx-preset-btn .text-sm,
+  .tbx-preset-btn span:not(.emoji):not(.absolute) {
+    font-size: 0.78rem !important;
+  }
+}
+
+/* Small mobile screens */
+@media (max-width: 400px) {
+  .tbx-preset-btn {
+    padding: 0.75rem 0.375rem !important;
+    min-height: 80px !important;
+  }
+  
+  .tbx-preset-btn .emoji {
+    font-size: 1.25rem !important;
+  }
+  
+  .tbx-preset-btn .text-sm,
+  .tbx-preset-btn span:not(.emoji):not(.absolute) {
+    font-size: 0.72rem !important;
+    font-weight: 600 !important;
+  }
+}
+
+/* Custom preset button checkmark positioning */
+.tbx-preset-btn .absolute {
+  position: absolute !important;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* Focus states for accessibility */
+.tbx-preset-btn:focus {
+  outline: 2px solid var(--tbx-brand-primary);
+  outline-offset: 2px;
+}
+
+.tbx-preset-btn:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Disabled state */
+.tbx-preset-btn:disabled,
+.tbx-preset-btn.opacity-50 {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tbx-preset-btn:disabled:hover,
+.tbx-preset-btn.opacity-50:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+/* Ensure proper vertical alignment */
+.tbx-preset-btn span {
+  display: block;
+  width: 100%;
+}
+
+/* Title attribute tooltip enhancement */
+.tbx-preset-btn[title] {
+  position: relative;
+}
+
+/* Prevent layout shift when active */
+.tbx-preset-btn.active .text-sm,
+.tbx-preset-btn.active span:not(.emoji):not(.absolute) {
+  font-weight: 600 !important;
+}

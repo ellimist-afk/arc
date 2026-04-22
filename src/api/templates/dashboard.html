@@ -1,0 +1,1552 @@
+{% extends "base-v2.html" %}
+
+{% block title %}TalkBot Dashboard - {{ streamer_id }}{% endblock %}
+
+{% block head %}
+<script src="{{ url_for('static', path='js/dashboard-realtime.js') }}"></script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6"
+     x-data="dashboardPage()"
+     hx-ext="ws"
+     hx-ws="connect:/ws/{{ streamer_id }}">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8 gap-4">
+        <div class="flex-1 min-w-0">
+            <h1 class="text-3xl font-bold text-primary truncate">Live Controls</h1>
+            <p class="text-secondary mt-1 truncate">Welcome back, {{ streamer_id }}</p>
+        </div>
+
+        <!-- Connection Status - Temporarily disabled due to recursion -->
+        <div class="connection-status-container connected">
+            <div class="connection-status-dot connected"></div>
+            <span class="connection-status-text">Connected</span>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="card p-6">
+            <h3 class="text-lg font-semibold mb-4">Bot Control</h3>
+            <div class="space-y-3">
+                <button class="btn w-full flex items-center justify-center gap-2"
+                        :class="botStatus.running ? 'btn-secondary' : 'btn-primary'"
+                        @click="startBot()"
+                        :disabled="botStatus.running">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/>
+                    </svg>
+                    Start Bot
+                </button>
+
+                <button class="btn w-full flex items-center justify-center gap-2"
+                        :class="botStatus.running ? 'btn-primary' : 'btn-secondary'"
+                        @click="stopBot()"
+                        :disabled="!botStatus.running">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd"/>
+                    </svg>
+                    Stop Bot
+                </button>
+
+            </div>
+        </div>
+
+        <!-- Bot Status -->
+        <div class="card p-6">
+            <h3 class="text-lg font-semibold mb-4">Status</h3>
+            <div class="space-y-3">
+                <div class="flex justify-between items-center">
+                    <span class="text-secondary">State</span>
+                    <div class="bot-status-indicator"
+                         :class="botStatus.running ? 'running' : 'stopped'">
+                        <div class="bot-status-dot"
+                             :class="botStatus.running ? 'running' : 'stopped'"></div>
+                        <span class="bot-status-text"
+                              x-text="botStatus.running ? 'Running' : 'Stopped'">
+                            Stopped
+                        </span>
+                    </div>
+                </div>
+
+                <div class="flex justify-between">
+                    <span class="text-secondary">Uptime</span>
+                    <span class="text-primary" x-text="formatUptime(botStatus.uptime)">0m</span>
+                </div>
+
+                <div class="flex justify-between">
+                    <span class="text-secondary">Messages</span>
+                    <span class="text-info" x-text="botStatus.messages || 0">0</span>
+                </div>
+
+                <div class="flex justify-between">
+                    <span class="text-secondary">Responses</span>
+                    <span class="text-warning" x-text="botStatus.responses || 0">0</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Emergency Controls -->
+    {% include 'components/quick-actions.html' %}
+
+
+    <!-- Dynamic Configuration Panel -->
+    <div class="card p-6">
+        <h3 class="text-lg font-semibold mb-4">🔧 Live Configuration</h3>
+        <p class="text-sm text-secondary mb-4">Update settings instantly without restart</p>
+
+        <!-- Dead Air Threshold Slider -->
+        <div class="control-group mb-6 p-4 rounded-lg border border-white/10 bg-white/5">
+            <label class="block text-sm font-medium text-primary mb-3">Dead Air Response Time</label>
+            <div class="audio-slider-container dead-air-slider">
+                <input type="range" 
+                       id="dead-air-threshold"
+                       min="30" 
+                       max="1800" 
+                       step="30" 
+                       x-model="deadAirThreshold"
+                       @input="updateDeadAirDisplay($event.target.value)"
+                       class="range-slider audio-slider"
+                       data-format="{value}s">
+                <div class="slider-progress-fill"></div>
+                <div class="slider-value-bubble"></div>
+                <div class="slider-labels">
+                    <span class="slider-label-left">30s</span>
+                    <span class="slider-label-center" x-text="deadAirThreshold >= 900 ? 'Off (15 min)' : deadAirThreshold + ' seconds'">900 seconds</span>
+                    <span class="slider-label-right">30 min</span>
+                </div>
+                <p class="text-xs text-gray-500 mt-2">Set to 15 min or higher to effectively disable. Your stream has natural quiet moments!</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+            <!-- Settings Navigation -->
+            <div class="space-y-3">
+                <h4 class="text-sm font-medium text-primary flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                    </svg>
+                    Dashboard
+                </h4>
+                <a href="/ui/v2/settings/{{ streamer_id }}" 
+                   class="group flex items-center gap-3 p-3 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition-all duration-200">
+                    <div class="flex-shrink-0 w-8 h-8 rounded-lg bg-primary-600 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+                        </svg>
+                    </div>
+                    <div class="flex-1">
+                        <div class="text-sm font-medium text-white group-hover:text-purple-200 transition-colors">Personality Settings</div>
+                        <div class="text-xs text-gray-400">Voice, traits & behaviors</div>
+                    </div>
+                    <svg class="w-4 h-4 text-gray-400 group-hover:text-purple-300 transition-colors" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
+                    </svg>
+                </a>
+            </div>
+        </div>
+
+        <!-- Configuration Status -->
+        <div class="mt-4 pt-4 border-t border-white/10">
+            <div class="flex items-center justify-between">
+                <span class="text-sm text-secondary">Last Update:</span>
+                <span class="text-sm text-primary" x-text="configStatus.lastUpdate || 'Never'">Never</span>
+            </div>
+            <div class="flex items-center justify-between" x-show="configStatus.pending">
+                <span class="text-sm text-warning">Applying changes...</span>
+                <div class="loading-spinner"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Model Selection Card -->
+    <div class="card p-6">
+        <h2 class="text-xl font-semibold mb-4">AI Model Selection</h2>
+        <p class="text-gray-400 text-sm mb-6">Choose your AI model for bot responses</p>
+
+        <!-- Compact Model Grid -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <!-- Cloud Models -->
+            <label class="model-card" :class="{ 'active': model === 'gpt-4o-mini', 'disabled': realtimeEnabled }">
+                <input type="radio" name="model" value="gpt-4o-mini" x-model="model" @change="updateModel('gpt-4o-mini')" class="sr-only" :disabled="realtimeEnabled">
+                <div class="model-header">
+                    <span class="model-type-badge cloud">CLOUD</span>
+                    <span class="model-speed text-green-400">~200ms</span>
+                </div>
+                <div class="model-name">GPT-4o Mini</div>
+                <div class="model-desc" x-text="realtimeEnabled ? 'Realtime (0ms)' : 'Lightning-fast responses, budget-friendly choice'">Lightning-fast responses, budget-friendly choice</div>
+            </label>
+
+            <label class="model-card" :class="{ 'active': model === 'gpt-4o', 'disabled': realtimeEnabled }">
+                <input type="radio" name="model" value="gpt-4o" x-model="model" @change="updateModel('gpt-4o')" class="sr-only" :disabled="realtimeEnabled">
+                <div class="model-header">
+                    <span class="model-type-badge cloud">CLOUD</span>
+                    <span class="model-speed text-yellow-400">~500ms</span>
+                </div>
+                <div class="model-name">GPT-4o</div>
+                <div class="model-desc" x-text="realtimeEnabled ? 'Realtime (0ms)' : 'Top-tier intelligence with enhanced reasoning'">Top-tier intelligence with enhanced reasoning</div>
+            </label>
+
+            <!-- Local Fast Models -->
+            <label class="model-card" :class="{ 'active': model === 'gemma2:2b', 'disabled': !ollamaAvailable || realtimeEnabled }">
+                <input type="radio" name="model" value="gemma2:2b" x-model="model" @change="updateModel('gemma2:2b')" class="sr-only" :disabled="!ollamaAvailable || realtimeEnabled">
+                <div class="model-header">
+                    <span class="model-type-badge local">LOCAL</span>
+                    <span class="model-speed text-green-400">~50ms</span>
+                </div>
+                <div class="model-name">Gemma 2B</div>
+                <div class="model-desc" x-text="realtimeEnabled ? 'Realtime (0ms)' : (ollamaAvailable ? 'Blazing local performance, privacy-first' : 'Requires Ollama')">Blazing local performance, privacy-first</div>
+            </label>
+
+            <label class="model-card" :class="{ 'active': model === 'qwen2.5:0.5b', 'disabled': !ollamaAvailable || realtimeEnabled }">
+                <input type="radio" name="model" value="qwen2.5:0.5b" x-model="model" @change="updateModel('qwen2.5:0.5b')" class="sr-only" :disabled="!ollamaAvailable || realtimeEnabled">
+                <div class="model-header">
+                    <span class="model-type-badge local">LOCAL</span>
+                    <span class="model-speed text-green-400">~30ms</span>
+                </div>
+                <div class="model-name">Qwen 0.5B</div>
+                <div class="model-desc" x-text="realtimeEnabled ? 'Realtime (0ms)' : (ollamaAvailable ? 'Tiny but mighty, perfect for simple tasks' : 'Requires Ollama')">Tiny but mighty, perfect for simple tasks</div>
+            </label>
+
+            <label class="model-card" :class="{ 'active': model === 'llama3.2:1b', 'disabled': !ollamaAvailable || realtimeEnabled }">
+                <input type="radio" name="model" value="llama3.2:1b" x-model="model" @change="updateModel('llama3.2:1b')" class="sr-only" :disabled="!ollamaAvailable || realtimeEnabled">
+                <div class="model-header">
+                    <span class="model-type-badge local">LOCAL</span>
+                    <span class="model-speed text-green-400">~40ms</span>
+                </div>
+                <div class="model-name">Llama 1B</div>
+                <div class="model-desc" x-text="realtimeEnabled ? 'Realtime (0ms)' : (ollamaAvailable ? 'Smart efficiency meets local processing' : 'Requires Ollama')">Smart efficiency meets local processing</div>
+            </label>
+
+            <label class="model-card" :class="{ 'active': model === 'phi3:mini', 'disabled': !ollamaAvailable || realtimeEnabled }">
+                <input type="radio" name="model" value="phi3:mini" x-model="model" @change="updateModel('phi3:mini')" class="sr-only" :disabled="!ollamaAvailable || realtimeEnabled">
+                <div class="model-header">
+                    <span class="model-type-badge local">LOCAL</span>
+                    <span class="model-speed text-green-400">~60ms</span>
+                </div>
+                <div class="model-name">Phi-3 Mini</div>
+                <div class="model-desc" x-text="realtimeEnabled ? 'Realtime (0ms)' : (ollamaAvailable ? 'Microsoft\'s compact powerhouse' : 'Requires Ollama')">Microsoft's compact powerhouse</div>
+            </label>
+
+            <!-- Balanced Models -->
+            <label class="model-card" :class="{ 'active': model === 'mistral:7b', 'disabled': !ollamaAvailable || realtimeEnabled }">
+                <input type="radio" name="model" value="mistral:7b" x-model="model" @change="updateModel('mistral:7b')" class="sr-only" :disabled="!ollamaAvailable || realtimeEnabled">
+                <div class="model-header">
+                    <span class="model-type-badge local">LOCAL</span>
+                    <span class="model-speed text-yellow-400">~150ms</span>
+                </div>
+                <div class="model-name">Mistral 7B</div>
+                <div class="model-desc" x-text="realtimeEnabled ? 'Realtime (0ms)' : (ollamaAvailable ? 'Perfect balance of speed and intelligence' : 'Requires Ollama')">Perfect balance of speed and intelligence</div>
+            </label>
+
+            <label class="model-card" :class="{ 'active': model === 'gemma2:9b', 'disabled': !ollamaAvailable || realtimeEnabled }">
+                <input type="radio" name="model" value="gemma2:9b" x-model="model" @change="updateModel('gemma2:9b')" class="sr-only" :disabled="!ollamaAvailable || realtimeEnabled">
+                <div class="model-header">
+                    <span class="model-type-badge local">LOCAL</span>
+                    <span class="model-speed text-yellow-400">~200ms</span>
+                </div>
+                <div class="model-name">Gemma 9B</div>
+                <div class="model-desc" x-text="realtimeEnabled ? 'Realtime (0ms)' : (ollamaAvailable ? 'Premium local AI with superior reasoning' : 'Requires Ollama')">Premium local AI with superior reasoning</div>
+            </label>
+        </div>
+
+        <!-- Realtime Mode Toggle -->
+        <div class="mt-6 p-4 rounded-xl border border-orange-500/20 bg-orange-500/5">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="text-orange-400 text-xl">🚀</div>
+                    <div>
+                        <h4 class="font-medium text-orange-400">Turbo Mode (0ms)</h4>
+                        <p class="text-sm text-gray-400">OpenAI Realtime API for ultra-low latency conversations. Use !turbo in chat to toggle.</p>
+                    </div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" x-model="realtimeEnabled" @change="updateRealtimeMode()" class="sr-only">
+                    <!-- Toggle Background -->
+                    <div class="relative w-11 h-6 rounded-full transition-colors duration-300 ease-in-out"
+                         :style="realtimeEnabled ? 'background-color: rgb(249 115 22)' : 'background-color: rgb(75 85 99)'">
+                        <!-- Toggle Circle -->
+                        <div class="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform duration-300 ease-in-out"
+                             :style="realtimeEnabled ? 'transform: translateX(20px)' : 'transform: translateX(0)'">
+                        </div>
+                    </div>
+                </label>
+            </div>
+            <div x-show="realtimeEnabled" x-transition class="mt-3 text-xs text-orange-300">
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 bg-orange-400 rounded-full animate-pulse"></span>
+                    <span>Voice-to-voice streaming • Sub-second responses • Natural interruptions</span>
+                </div>
+                <div class="mt-2 text-xs text-gray-400">
+                    <span class="inline-flex items-center gap-1">
+                        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                        </svg>
+                        Voice responses use <strong>gpt-4o-realtime-preview</strong> for instant 0ms latency when realtime mode is active
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ollama Setup Info -->
+        <div x-show="!ollamaAvailable" x-transition class="mt-4 p-4 rounded-xl border border-blue-500/20 bg-blue-500/5">
+            <div class="flex items-start gap-3">
+                <div class="text-blue-400 mt-0.5">ℹ️</div>
+                <div>
+                    <h4 class="font-medium text-blue-400 mb-2">Get Local Models</h4>
+                    <p class="text-sm text-gray-400 mb-3">Install Ollama for free, private local models</p>
+                    <div class="flex gap-2">
+                        <a href="https://ollama.ai/" target="_blank" class="btn-secondary text-xs px-3 py-2">Install Ollama</a>
+                        <button class="btn-secondary text-xs px-3 py-2" @click="checkOllama()">Check Status</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Memory Bank Interface -->
+    <div class="card p-6 mt-6">
+        <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center gap-3">
+                <h2 class="text-2xl font-semibold text-primary flex items-center gap-2">
+                    <span class="memory-type-icon">🧠</span>
+                    Memory Bank
+                </h2>
+                <div class="memory-count-badge" x-text="memoryStats.totalMemories || 0">0</div>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-sm text-secondary">Health:</span>
+                <span class="text-sm font-medium"
+                      :class="getMemoryHealthColor()"
+                      x-text="getMemoryHealthText()">Checking...</span>
+            </div>
+        </div>
+
+        <!-- Memory Stats Overview -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="memory-stat-card p-4 rounded-lg border border-white/10 bg-white/5 text-center">
+                <div class="text-2xl font-bold text-blue-400" x-text="memoryStats.totalMemories || 0">0</div>
+                <div class="text-sm text-secondary">Total Memories</div>
+            </div>
+            <div class="memory-stat-card p-4 rounded-lg border border-white/10 bg-white/5 text-center">
+                <div class="text-2xl font-bold text-green-400" x-text="memoryStats.recentCount || 0">0</div>
+                <div class="text-sm text-secondary">Recent</div>
+            </div>
+            <div class="memory-stat-card p-4 rounded-lg border border-white/10 bg-white/5 text-center">
+                <div class="text-2xl font-bold text-purple-400" x-text="memoryStats.storageMb || 0">0</div>
+                <div class="text-sm text-secondary">Storage (MB)</div>
+            </div>
+            <div class="memory-stat-card p-4 rounded-lg border border-white/10 bg-white/5 text-center">
+                <div class="text-2xl font-bold text-orange-400" x-text="Object.keys(memoryStats.typeBreakdown || {}).length">0</div>
+                <div class="text-sm text-secondary">Categories</div>
+            </div>
+        </div>
+
+        <!-- Memory Search and Controls -->
+        <div class="mb-6">
+            <div class="memory-search-filters mb-4">
+                <!-- Search Input -->
+                <div class="flex-1 min-w-0 max-w-md">
+                    <input type="text" 
+                           x-model="memorySearch"
+                           @input="filterMemories()"
+                           placeholder="Search memories..."
+                           class="memory-search-input w-full px-4 py-2 rounded-lg border border-white/20 bg-black/30 text-white placeholder-gray-400 focus:outline-none focus:border-accent">
+                </div>
+                
+                <!-- Filter by Type -->
+                <select x-model="memoryFilter" 
+                        @change="filterMemories()"
+                        class="px-3 py-2 rounded-lg border border-white/20 bg-black/30 text-white focus:outline-none focus:border-accent">
+                    <option value="">All Types</option>
+                    <option value="short_term">Short Term</option>
+                    <option value="semantic">Semantic</option>
+                    <option value="episodic">Episodic</option>
+                    <option value="user">User Specific</option>
+                    <option value="interaction">Interactions</option>
+                    <option value="fact">Facts</option>
+                    <option value="preference">Preferences</option>
+                    <option value="event">Events</option>
+                </select>
+
+                <!-- Clear Filters -->
+                <button @click="clearMemoryFilters()" 
+                        class="btn btn-secondary">
+                    Clear Filters
+                </button>
+
+                <!-- Refresh Button -->
+                <button @click="refreshMemoryStats()" 
+                        class="btn btn-primary">
+                    <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+                    </svg>
+                    Refresh
+                </button>
+            </div>
+
+            <!-- Applied Filters Display -->
+            <div x-show="memorySearch || memoryFilter" class="flex flex-wrap gap-2 mb-4">
+                <div x-show="memorySearch" class="memory-filter-tag">
+                    <span>Search: </span>
+                    <span x-text="memorySearch"></span>
+                    <button @click="memorySearch = ''; filterMemories()" class="memory-filter-remove ml-1">×</button>
+                </div>
+                <div x-show="memoryFilter" class="memory-filter-tag">
+                    <span>Type: </span>
+                    <span x-text="memoryFilter"></span>
+                    <button @click="memoryFilter = ''; filterMemories()" class="memory-filter-remove ml-1">×</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Memory Actions -->
+        <div class="memory-management-grid mb-6">
+            <button @click="exportMemories()" 
+                    class="btn btn-secondary p-3 rounded-lg text-sm font-medium transition-all duration-200">
+                <svg class="w-4 h-4 mb-1 mx-auto" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                </svg>
+                Export Memories
+            </button>
+            
+            <button @click="optimizeMemories()" 
+                    class="btn btn-secondary p-3 rounded-lg text-sm font-medium">
+                <svg class="w-4 h-4 mb-1 mx-auto" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/>
+                </svg>
+                Optimize
+            </button>
+            
+            <button @click="clearMemories()" 
+                    class="btn btn-danger p-3 rounded-lg text-sm font-medium">
+                <svg class="w-4 h-4 mb-1 mx-auto" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" clip-rule="evenodd"/>
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 012 0v4a1 1 0 11-2 0V7zm4 0a1 1 0 112 0v4a1 1 0 11-2 0V7z" clip-rule="evenodd"/>
+                </svg>
+                Clear All
+            </button>
+        </div>
+
+        <!-- Memory Display Area -->
+        <div class="border-t border-white/10 pt-6">
+            <!-- Loading State -->
+            <div x-show="false" class="memory-results-container">
+                <div class="space-y-4">
+                    <div class="memory-skeleton memory-skeleton-header"></div>
+                    <div class="memory-skeleton memory-skeleton-content"></div>
+                    <div class="memory-skeleton memory-skeleton-content"></div>
+                    <div class="memory-skeleton memory-skeleton-content"></div>
+                </div>
+            </div>
+
+            <!-- Empty State -->
+            <div x-show="!memoryStats.recentMemories || memoryStats.recentMemories.length === 0" 
+                 class="memory-empty-state">
+                <div class="text-6xl mb-4">🧠</div>
+                <h3 class="text-xl font-semibold text-primary mb-2">No Memories Found</h3>
+                <p class="text-secondary mb-4">The memory bank will populate as chat activity creates new memories about viewers and conversations.</p>
+                <button @click="refreshMemoryStats()" 
+                        class="btn btn-secondary">
+                    Check for Memories
+                </button>
+            </div>
+
+            <!-- Memory List -->
+            <div x-show="memoryStats.recentMemories && memoryStats.recentMemories.length > 0" 
+                 class="memory-results-container space-y-4">
+                
+                <template x-for="memory in (showAllMemories ? (filteredMemories.length > 0 ? filteredMemories : memoryStats.recentMemories) : (filteredMemories.length > 0 ? filteredMemories.slice(0, 5) : memoryStats.recentMemories.slice(0, 5)))" :key="memory.id || Math.random()">
+                    <div class="memory-card p-4 rounded-lg border transition-all duration-200"
+                         :class="getMemoryTypeClass(memory.type || memory.memory_type)">
+                        
+                        <div class="flex items-start justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <!-- Memory Type Indicator -->
+                                <span class="w-3 h-3 rounded-full"
+                                      :class="getMemoryDotClass(memory.type || memory.memory_type)"></span>
+                                
+                                <!-- Memory Type Badge -->
+                                <span class="px-2 py-1 rounded-full text-xs font-medium"
+                                      :class="getMemoryTypeLabel(memory.type || memory.memory_type)"
+                                      x-text="(memory.type || memory.memory_type || 'general').replace('_', ' ').toUpperCase()">
+                                    TYPE
+                                </span>
+                                
+                                <!-- User Avatar (if memory has user) -->
+                                <div x-show="memory.user || memory.viewer_name" 
+                                     class="memory-user-avatar"
+                                     :title="memory.user || memory.viewer_name">
+                                    <span x-text="(memory.user || memory.viewer_name || '?')[0].toUpperCase()">?</span>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-2 text-xs text-secondary">
+                                <!-- Relevance Score (if available) -->
+                                <span x-show="memory.relevance_score" 
+                                      class="relevance-score px-2 py-1 bg-accent/20 text-accent rounded-full">
+                                    <span x-text="Math.round((memory.relevance_score || 0) * 100) + '%'">0%</span>
+                                </span>
+                                
+                                <!-- Timestamp -->
+                                <span x-text="formatMemoryTime(memory.timestamp || memory.created_at)">
+                                    unknown
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Memory Content -->
+                        <div class="mb-3">
+                            <p class="text-primary line-clamp-3 mb-2" x-text="memory.content || 'No content'">
+                                Loading content...
+                            </p>
+                            
+                            <!-- Memory Context (if available) -->
+                            <div x-show="memory.context" class="text-sm text-secondary">
+                                <span class="memory-context-highlight" x-text="memory.context"></span>
+                            </div>
+                        </div>
+
+                        <!-- Memory Metadata -->
+                        <div class="flex items-center justify-between text-xs">
+                            <div class="flex items-center gap-3">
+                                <!-- Importance Level -->
+                                <span x-show="memory.importance" class="text-secondary">
+                                    Importance: <span class="text-warning" x-text="Math.round((memory.importance || 0.5) * 100) + '%'">50%</span>
+                                </span>
+                                
+                                <!-- Memory Size Estimate -->
+                                <span class="text-secondary" x-text="'~' + Math.round((memory.content || '').length / 10) + ' tokens'">
+                                    ~0 tokens
+                                </span>
+                            </div>
+
+                            <!-- Memory Actions -->
+                            <div class="flex items-center gap-1">
+                                <button @click="expandedMemory = expandedMemory === memory.id ? null : memory.id" 
+                                        class="text-accent hover:text-accent-light p-1 rounded"
+                                        :title="expandedMemory === memory.id ? 'Collapse' : 'Expand'">
+                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Expanded Memory Details -->
+                        <div x-show="expandedMemory === memory.id" 
+                             x-collapse
+                             class="mt-4 pt-4 border-t border-white/10">
+                            <div class="space-y-2 text-sm">
+                                <div x-show="memory.metadata">
+                                    <span class="text-secondary">Metadata:</span>
+                                    <pre class="text-xs bg-black/20 p-2 rounded mt-1 overflow-auto" x-text="JSON.stringify(memory.metadata || {}, null, 2)"></pre>
+                                </div>
+                                <div x-show="memory.user || memory.viewer_name">
+                                    <span class="text-secondary">Associated User:</span>
+                                    <span class="text-primary" x-text="memory.user || memory.viewer_name"></span>
+                                </div>
+                                <div x-show="memory.id">
+                                    <span class="text-secondary">Memory ID:</span>
+                                    <span class="text-xs text-gray-400 font-mono" x-text="memory.id"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Show More/Less Button -->
+                <div x-show="memoryStats.recentMemories && memoryStats.recentMemories.length > 5" 
+                     class="text-center pt-4">
+                    <button @click="showAllMemories = !showAllMemories" 
+                            class="btn btn-secondary">
+                        <span x-show="!showAllMemories">Show All Memories</span>
+                        <span x-show="showAllMemories">Show Less</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Memory Type Breakdown (if data available) -->
+        <div x-show="Object.keys(memoryStats.typeBreakdown || {}).length > 0" 
+             class="mt-6 pt-6 border-t border-white/10">
+            <h3 class="text-lg font-semibold mb-4">Memory Distribution</h3>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <template x-for="[type, count] in Object.entries(memoryStats.typeBreakdown || {})" :key="type">
+                    <div class="p-3 rounded-lg border border-white/10 bg-white/5 text-center">
+                        <div class="text-lg font-bold text-primary" x-text="count">0</div>
+                        <div class="text-xs text-secondary capitalize" x-text="type.replace('_', ' ')">type</div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function dashboardPage() {
+    return {
+        // Connection state
+        wsConnected: false,
+        wsConnecting: true,  // Start in connecting state
+        wsReconnectAttempts: 0,
+
+        // Bot state
+        botStatus: {
+            running: false,
+            uptime: 0,
+            messages: 0,
+            responses: 0
+        },
+
+        // Settings
+        settings: {
+            voice_enabled: true
+        },
+
+        currentPersonality: 'default',
+        personalities: [],
+        
+        // Model selection
+        model: 'gpt-4o-mini',
+        realtimeEnabled: false,
+        ollamaAvailable: false,
+
+        // Dead air settings
+        deadAirThreshold: 900,
+
+        // Metrics
+        metrics: {
+            chatActivity: 0,
+            botResponses: 0,
+            voiceCommands: 0,
+            activeUsers: 0
+        },
+
+        // Memory Stats
+        memoryStats: {
+            totalMemories: 0,
+            recentCount: 0,
+            storageMb: 0,
+            typeBreakdown: {},
+            recentMemories: []
+        },
+
+        // Recent activity
+        recentActivity: [
+            {
+                id: 1,
+                type: 'response',
+                message: 'Bot responded to user question',
+                time: '2 minutes ago'
+            },
+            {
+                id: 2,
+                type: 'command',
+                message: 'Voice command processed',
+                time: '5 minutes ago'
+            }
+        ],
+
+        // System health
+        systemHealth: {
+            memory: 45,
+            apiLatency: 250
+        },
+
+        // Mute status
+        isMuted: false,
+
+        // Configuration status
+        configStatus: 'ready', // 'ready', 'updating', 'error'
+
+        init() {
+            // Initialize dashboard
+            this.loadDashboardData();
+            this.loadPersonalities();
+            this.refreshMemoryStats();
+            this.checkOllama();
+            this.loadModelSettings();
+            this.loadDeadAirSettings();
+
+            // Set up periodic updates
+            timerManager.setInterval(() => {
+                this.loadDashboardData();
+                this.refreshMemoryStats();
+            }, 30000); // Update every 30 seconds
+
+            // WebSocket event handlers
+            document.addEventListener('htmx:wsAfterMessage', (evt) => {
+                this.handleWebSocketMessage(evt.detail);
+            });
+
+            // WebSocket connection established
+            document.addEventListener('htmx:wsOpen', (evt) => {
+                this.wsConnected = true;
+                this.wsConnecting = false;
+                this.wsReconnectAttempts = 0;
+                console.log('WebSocket connected');
+            });
+
+            // WebSocket connection closed
+            document.addEventListener('htmx:wsClose', (evt) => {
+                this.wsConnected = false;
+                this.wsConnecting = true;  // Will try to reconnect
+                this.wsReconnectAttempts++;
+                console.log('WebSocket disconnected, attempting reconnect...');
+            });
+
+            // WebSocket error
+            document.addEventListener('htmx:wsError', (evt) => {
+                this.wsConnected = false;
+                this.wsConnecting = true;
+                console.error('WebSocket error:', evt.detail);
+            });
+        },
+
+        async loadDashboardData() {
+            try {
+                // Load bot status
+                const statusResponse = await fetch(`/api/v2/bots/{{ streamer_id }}/status`).catch(error => {
+                    console.error('[Dashboard] Network error fetching bot status:', error);
+                    return { ok: false };
+                });
+                if (statusResponse.ok) {
+                    const data = await statusResponse.json();
+                    console.log('[Dashboard] Bot status response:', data);
+                    
+                    // Map the response to match expected structure
+                    // Handle both v2 bot_control format and v1 bot_management format
+                    const isRunning = data.state === 'running' || 
+                                    data.status === 'running' || 
+                                    data.is_active === true ||
+                                    false;
+                    
+                    this.botStatus = {
+                        running: isRunning,
+                        uptime: data.uptime_seconds || data.uptime || 0,
+                        messages: data.stats?.messages_processed || data.message_count || 0,
+                        responses: data.stats?.voice_responses || data.stats?.responses || 0
+                    };
+                    
+                    console.log('[Dashboard] Processed bot status:', this.botStatus);
+                } else {
+                    console.warn('[Dashboard] Failed to load bot status, status code:', statusResponse.status);
+                    // Set default offline status
+                    this.botStatus = {
+                        running: false,
+                        uptime: 0,
+                        messages: 0,
+                        responses: 0
+                    };
+                }
+
+                // Load metrics
+                const metricsResponse = await fetch(`/api/v2/analytics/{{ streamer_id }}/metrics`);
+                if (metricsResponse.ok) {
+                    const data = await metricsResponse.json();
+                    this.metrics = data.metrics || this.metrics;
+                }
+
+                // Load system health
+                const healthResponse = await fetch('/api/v2/monitoring/health');
+                if (healthResponse.ok) {
+                    const data = await healthResponse.json();
+                    this.systemHealth.memory = data.resources?.memory_percent || 0;
+                    this.systemHealth.apiLatency = Math.random() * 500 + 100; // Mock data
+                }
+
+            } catch (error) {
+                console.error('Failed to load dashboard data:', error);
+            }
+        },
+
+        async loadPersonalities() {
+            try {
+                // Load available personality presets
+                const presetsResponse = await fetch('/api/v2/personality-v2/presets');
+                if (presetsResponse.ok) {
+                    const presets = await presetsResponse.json();
+                    this.personalities = presets.map(preset => ({
+                        name: preset.name,
+                        display_name: preset.display_name
+                    }));
+                }
+
+                // Load current personality
+                const currentResponse = await fetch(`/api/v2/personality-v2/current/{{ streamer_id }}`);
+                if (currentResponse.ok) {
+                    const current = await currentResponse.json();
+                    this.currentPersonality = current.current_preset || 'default';
+                }
+            } catch (error) {
+                console.error('Failed to load personalities:', error);
+                // Fallback to basic presets if API fails
+                this.personalities = [
+                    { name: 'supportive', display_name: 'Supportive' },
+                    { name: 'roast', display_name: 'Roast' },
+                    { name: 'hype', display_name: 'Hype' },
+                    { name: 'chill', display_name: 'Chill' }
+                ];
+            }
+        },
+
+        async startBot() {
+            try {
+                const response = await fetch(`/api/v2/bots/{{ streamer_id }}/start`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        auto_start: true,
+                        enable_tts: true,
+                        enable_voice: false
+                    })
+                });
+
+                if (response.ok) {
+                    showToast('Bot started successfully', 'success');
+                    this.botStatus.running = true;
+                    // Reload dashboard data to get fresh status
+                    timerManager.setTimeout(() => this.loadDashboardData(), 500);
+                } else {
+                    const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+                    throw new Error(errorData.detail || 'Failed to start bot');
+                }
+            } catch (error) {
+                showToast('Failed to start bot: ' + error.message, 'error');
+                // Reload status in case of error
+                this.loadDashboardData();
+            }
+        },
+
+        async stopBot() {
+            try {
+                const response = await fetch(`/api/v2/bots/{{ streamer_id }}/stop`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    showToast('Bot stopped successfully', 'success');
+                    this.botStatus.running = false;
+                    // Reload dashboard data to get fresh status
+                    timerManager.setTimeout(() => this.loadDashboardData(), 500);
+                } else {
+                    const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+                    throw new Error(errorData.detail || 'Failed to stop bot');
+                }
+            } catch (error) {
+                showToast('Failed to stop bot: ' + error.message, 'error');
+                // Reload status in case of error
+                this.loadDashboardData();
+            }
+        },
+
+
+        async updatePersonality() {
+            try {
+                const response = await fetch(`/api/v2/personality-v2/preset`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        streamer_id: '{{ streamer_id }}',
+                        preset_name: this.currentPersonality
+                    })
+                });
+
+                if (response.ok) {
+                    showToast(`Personality updated to ${this.currentPersonality}`, 'success');
+                } else {
+                    throw new Error('Failed to update personality');
+                }
+            } catch (error) {
+                showToast('Failed to update personality: ' + error.message, 'error');
+            }
+        },
+
+        async updateSettings() {
+            try {
+                const response = await fetch(`/api/v2/settings/{{ streamer_id }}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(this.settings)
+                });
+
+                if (response.ok) {
+                    showToast('Settings updated', 'success');
+                } else {
+                    throw new Error('Failed to update settings');
+                }
+            } catch (error) {
+                showToast('Failed to update settings: ' + error.message, 'error');
+            }
+        },
+
+        formatUptime(seconds) {
+            if (!seconds || seconds < 60) {
+                return Math.floor(seconds || 0) + 's';
+            }
+
+            const minutes = Math.floor(seconds / 60);
+            if (minutes < 60) {
+                return minutes + 'm';
+            }
+
+            const hours = Math.floor(minutes / 60);
+            const remainingMinutes = minutes % 60;
+            return hours + 'h ' + remainingMinutes + 'm';
+        },
+
+        handleWebSocketMessage(message) {
+            // Handle real-time updates from WebSocket
+            if (message.type === 'bot_status') {
+                this.botStatus = { ...this.botStatus, ...message.data };
+            } else if (message.type === 'new_activity') {
+                this.recentActivity.unshift(message.data);
+                if (this.recentActivity.length > 10) {
+                    this.recentActivity = this.recentActivity.slice(0, 10);
+                }
+            } else if (message.type === 'metrics_update') {
+                this.metrics = { ...this.metrics, ...message.data };
+            } else if (message.type === 'config_update_response') {
+                // Handle configuration update response
+                this.configStatus = message.success ? 'success' : 'error';
+
+                if (message.success) {
+                    showToast('Configuration updated successfully', 'success');
+                } else {
+                    showToast('Configuration update failed', 'error');
+                }
+
+                // Reset status after 3 seconds
+                timerManager.setTimeout(() => this.configStatus = 'ready', 3000);
+            } else if (message.type === 'config_change') {
+                // Handle broadcast of config changes from other sources
+                showToast(`Configuration changed: ${message.data.key}`, 'info');
+            }
+
+            // Update connection status
+            this.wsConnected = true;
+        },
+
+        async refreshMemoryStats() {
+            try {
+                const response = await fetch(`/api/v2/memory/stats?streamer_id={{ streamer_id }}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    this.memoryStats = {
+                        totalMemories: data.total_memories || 0,
+                        recentCount: data.recent_count || 0,
+                        storageMb: parseFloat(data.storage_size_mb || 0).toFixed(1),
+                        typeBreakdown: data.type_breakdown || {},
+                        recentMemories: data.recent_memories || []
+                    };
+                } else {
+                    console.warn('Failed to fetch memory stats');
+                }
+            } catch (error) {
+                console.error('Error fetching memory stats:', error);
+            }
+        },
+
+        async clearMemories() {
+            if (!confirm('Are you sure you want to clear all memories? This action cannot be undone.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/v2/memory/{{ streamer_id }}/clear`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    showToast('Memories cleared successfully', 'success');
+                    await this.refreshMemoryStats();
+                } else {
+                    throw new Error('Failed to clear memories');
+                }
+            } catch (error) {
+                showToast('Failed to clear memories: ' + error.message, 'error');
+            }
+        },
+
+        // Quick Actions
+        async toggleMute() {
+            try {
+                const endpoint = this.isMuted ? '/api/v2/bots/unmute' : '/api/v2/bots/mute';
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ streamer_id: '{{ streamer_id }}' })
+                });
+
+                if (response.ok) {
+                    this.isMuted = !this.isMuted;
+                    showToast(this.isMuted ? 'Bot muted' : 'Bot unmuted', 'success');
+                } else {
+                    throw new Error('Failed to toggle mute');
+                }
+            } catch (error) {
+                showToast(`Failed to toggle mute: ${error.message}`, 'error');
+            }
+        },
+        
+        // Model selection methods
+        async updateModel(newModel) {
+            try {
+                const response = await fetch('/api/v2/settings/model', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        model: newModel,
+                        streamer_id: '{{ streamer_id }}'
+                    })
+                });
+                
+                if (response.ok) {
+                    this.model = newModel;
+                    showToast(`Switched to ${newModel}`, 'success');
+                } else {
+                    throw new Error('Failed to update model');
+                }
+            } catch (error) {
+                showToast(`Failed to update model: ${error.message}`, 'error');
+            }
+        },
+        
+        async updateRealtimeMode() {
+            try {
+                const response = await fetch('/api/v2/settings/realtime', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        enabled: this.realtimeEnabled,
+                        streamer_id: '{{ streamer_id }}'
+                    })
+                });
+                
+                if (response.ok) {
+                    showToast(this.realtimeEnabled ? 'Realtime mode enabled' : 'Realtime mode disabled', 'success');
+                } else {
+                    throw new Error('Failed to toggle realtime mode');
+                }
+            } catch (error) {
+                this.realtimeEnabled = !this.realtimeEnabled; // Revert
+                showToast(`Failed to toggle realtime mode: ${error.message}`, 'error');
+            }
+        },
+        
+        async checkOllama() {
+            try {
+                // Use backend endpoint to check Ollama status (avoids CORS issues)
+                const response = await fetch('/api/v2/ollama/status');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.ollamaAvailable = data.available || false;
+                    if (this.ollamaAvailable) {
+                        console.log('Ollama is available');
+                    } else {
+                        console.log('Ollama is not available');
+                    }
+                } else {
+                    this.ollamaAvailable = false;
+                }
+            } catch (error) {
+                this.ollamaAvailable = false;
+                console.error('Failed to check Ollama status:', error);
+            }
+        },
+        
+        async loadModelSettings() {
+            try {
+                const response = await fetch(`/api/v2/settings/{{ streamer_id }}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    this.model = data.model || 'gpt-4o-mini';
+                    this.realtimeEnabled = data.realtime_enabled || false;
+                    // Also check for Ollama availability in the response
+                    if (data.ollama_available !== undefined) {
+                        this.ollamaAvailable = data.ollama_available;
+                    }
+                    console.log('[Dashboard] Loaded model settings:', data);
+                }
+            } catch (error) {
+                console.error('Failed to load model settings:', error);
+            }
+        },
+
+        async loadDeadAirSettings() {
+            try {
+                const response = await fetch('/api/v2/settings/');
+                if (response.ok) {
+                    const settings = await response.json();
+                    this.deadAirThreshold = settings.deadair?.threshold || 900;
+                }
+            } catch (error) {
+                console.error('Failed to load dead air settings:', error);
+            }
+        },
+
+        updateDeadAirDisplay(value) {
+            this.deadAirThreshold = parseInt(value);
+            this.updateDeadAirThreshold();
+        },
+
+        async updateDeadAirThreshold() {
+            try {
+                const response = await fetch('/api/v2/settings/deadair', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        enabled: this.deadAirThreshold < 900,
+                        threshold: this.deadAirThreshold
+                    })
+                });
+
+                if (response.ok) {
+                    const status = this.deadAirThreshold >= 900 ? 'disabled' : 'enabled';
+                    showToast(`Dead air monitoring ${status}`, 'success');
+                } else {
+                    showToast('Failed to update dead air settings', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to update dead air threshold:', error);
+                showToast('Network error', 'error');
+            }
+        },
+
+
+        // Enhanced Memory Functions
+        memorySearch: '',
+        memoryFilter: '',
+        expandedMemory: null,
+        showAllMemories: false,
+        filteredMemories: [],
+
+        filterMemories() {
+            let memories = this.memoryStats.recentMemories || [];
+
+            // Filter by type
+            if (this.memoryFilter) {
+                memories = memories.filter(memory => memory.type === this.memoryFilter);
+            }
+
+            // Filter by search term
+            if (this.memorySearch) {
+                const search = this.memorySearch.toLowerCase();
+                memories = memories.filter(memory =>
+                    memory.content?.toLowerCase().includes(search) ||
+                    memory.context?.toLowerCase().includes(search) ||
+                    memory.type?.toLowerCase().includes(search)
+                );
+            }
+
+            this.filteredMemories = memories;
+        },
+
+        clearMemoryFilters() {
+            this.memorySearch = '';
+            this.memoryFilter = '';
+            this.filterMemories();
+        },
+
+        getMemoryHealthColor() {
+            const totalMB = this.memoryStats.storageMb || 0;
+            if (totalMB < 50) return 'bg-green-400';
+            if (totalMB < 100) return 'bg-yellow-400';
+            return 'bg-red-400';
+        },
+
+        getMemoryHealthText() {
+            const totalMB = this.memoryStats.storageMb || 0;
+            if (totalMB < 50) return 'Healthy';
+            if (totalMB < 100) return 'Growing';
+            return 'Full';
+        },
+
+        getMemoryTypeClass(type) {
+            const baseClasses = 'bg-white/5 border-white/10 hover:border-white/20 cursor-pointer';
+            switch(type) {
+                case 'short_term': return baseClasses + ' hover:border-blue-500/30';
+                case 'semantic': return baseClasses + ' hover:border-green-500/30';
+                case 'episodic': return baseClasses + ' hover:border-purple-500/30';
+                case 'user': return baseClasses + ' hover:border-orange-500/30';
+                default: return baseClasses;
+            }
+        },
+
+        getMemoryDotClass(type) {
+            switch(type) {
+                case 'short_term': return 'bg-blue-400';
+                case 'semantic': return 'bg-green-400';
+                case 'episodic': return 'bg-purple-400';
+                case 'user': return 'bg-orange-400';
+                default: return 'bg-gray-400';
+            }
+        },
+
+        getMemoryTypeLabel(type) {
+            const baseClasses = 'text-xs font-medium';
+            switch(type) {
+                case 'short_term': return baseClasses + ' bg-blue-500/20 text-blue-300';
+                case 'semantic': return baseClasses + ' bg-green-500/20 text-green-300';
+                case 'episodic': return baseClasses + ' bg-purple-500/20 text-purple-300';
+                case 'user': return baseClasses + ' bg-orange-500/20 text-orange-300';
+                default: return baseClasses + ' bg-gray-500/20 text-gray-300';
+            }
+        },
+
+        formatMemoryTime(timestamp) {
+            if (!timestamp) return 'Unknown';
+
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffSec = Math.floor(diffMs / 1000);
+            const diffMin = Math.floor(diffSec / 60);
+            const diffHour = Math.floor(diffMin / 60);
+            const diffDay = Math.floor(diffHour / 24);
+
+            if (diffSec < 60) return 'just now';
+            if (diffMin < 60) return `${diffMin}m ago`;
+            if (diffHour < 24) return `${diffHour}h ago`;
+            if (diffDay < 7) return `${diffDay}d ago`;
+
+            return date.toLocaleDateString();
+        },
+
+        async optimizeMemories() {
+            try {
+                showToast('Optimizing memory bank...', 'info');
+                const response = await fetch(`/api/v2/memory/{{ streamer_id }}/optimize`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    showToast(`Optimized: ${result.removed} old memories removed`, 'success');
+                    await this.refreshMemoryStats();
+                } else {
+                    throw new Error('Optimization failed');
+                }
+            } catch (error) {
+                console.error('Memory optimization failed:', error);
+                showToast('Memory optimization failed', 'error');
+            }
+        },
+
+        async exportMemories() {
+            try {
+                const response = await fetch(`/api/v2/memory/{{ streamer_id }}/export`);
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = `memories_{{ streamer_id }}_${new Date().toISOString().split('T')[0]}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    showToast('Memories exported successfully', 'success');
+                }
+            } catch (error) {
+                console.error('Memory export failed:', error);
+                showToast('Memory export failed', 'error');
+            }
+        },
+
+        async refreshMemoryStats() {
+            try {
+                const response = await fetch(`/api/v2/memory/{{ streamer_id }}/stats`);
+                if (response.ok) {
+                    const data = await response.json();
+                    this.memoryStats = {
+                        totalMemories: data.total_items || 0,
+                        recentCount: data.recent_count || 0,
+                        storageMb: parseFloat(data.storage_mb || 0),
+                        typeBreakdown: data.banks || {},
+                        recentMemories: data.recent_memories || []
+                    };
+
+                    // Update filtered memories
+                    this.filterMemories();
+                } else {
+                    console.warn('Failed to fetch memory stats');
+                }
+            } catch (error) {
+                console.error('Error fetching memory stats:', error);
+            }
+        },
+
+        // Memory stats are initialized in the main init() method above
+    };
+}
+</script>
+
+<style>
+.config-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #f3f4f6;
+    border-radius: 50%;
+    border-top-color: #3b82f6;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.config-status-updating {
+    color: #3b82f6;
+}
+
+.config-status-success {
+    color: #10b981;
+}
+
+.config-status-error {
+    color: #ef4444;
+}
+
+/* Model Card Styles */
+.model-card {
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    min-height: 120px;
+}
+
+.model-card:hover {
+    border-color: var(--accent);
+    background: rgba(124, 58, 237, 0.1);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.2);
+}
+
+.model-card.active {
+    border-color: var(--accent);
+    background: rgba(124, 58, 237, 0.15);
+    box-shadow: 0 0 20px rgba(124, 58, 237, 0.3);
+}
+
+.model-card.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.model-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.model-speed {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.model-name {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.model-desc {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    line-height: 1.3;
+    flex-grow: 1;
+}
+
+.model-type-badge {
+    font-size: 0.625rem;
+    font-weight: 600;
+    padding: 0.125rem 0.375rem;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.model-type-badge.cloud {
+    background: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.model-type-badge.local {
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+/* Connection Status Styles now in components/connection-status.html */
+
+/* Button State Improvements */
+.btn {
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.btn:not(:disabled):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+.btn.btn-primary:not(:disabled) {
+    background: #9333ea;
+    border: 1px solid rgba(147, 51, 234, 0.8);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.btn.btn-primary:not(:disabled):hover {
+    background: #7e22ce;
+    border-color: #6b21a8;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.4);
+}
+
+.btn.btn-secondary:not(:disabled) {
+    background: #18181b;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #f4f4f5;
+}
+
+.btn.btn-secondary:not(:disabled):hover {
+    background: #27272a;
+    border-color: rgba(255, 255, 255, 0.2);
+    color: #f4f4f5;
+}
+
+.btn.btn-secondary:disabled {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.3);
+}
+
+/* Bot Status Indicator Styles */
+.bot-status-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 1rem;
+    transition: all 0.3s ease;
+}
+
+.bot-status-indicator.running {
+    background: rgba(34, 197, 94, 0.15);
+    border: 1px solid rgba(34, 197, 94, 0.4);
+}
+
+.bot-status-indicator.stopped {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.bot-status-dot {
+    width: 0.375rem;
+    height: 0.375rem;
+    border-radius: 50%;
+}
+
+.bot-status-dot.running {
+    background: #22c55e;
+    box-shadow: 0 0 6px rgba(34, 197, 94, 0.8);
+    animation: pulse 2s infinite;
+}
+
+.bot-status-dot.stopped {
+    background: #ef4444;
+    box-shadow: 0 0 6px rgba(239, 68, 68, 0.8);
+}
+
+.bot-status-text {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.bot-status-indicator.running .bot-status-text {
+    color: #22c55e;
+}
+
+.bot-status-indicator.stopped .bot-status-text {
+    color: #ef4444;
+}
+
+/* Dead Air Slider Styles */
+.slider {
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.1);
+    outline: none;
+    border-radius: 15px;
+}
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+</style>
+
+<!-- Unified Slider System - Consistent interactions for all sliders -->
+<script src="/static/js/unified-sliders.js"></script>
+{% endblock %}

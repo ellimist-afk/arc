@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en" data-scope="tbx-v2">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>{% block title %}TalkBot{% endblock %}</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="AI-powered streaming assistant for Twitch with real-time chat interaction and voice synthesis">
+    <meta name="theme-color" content="#9146FF">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TalkBot">
+    <meta name="msapplication-TileColor" content="#9146FF">
+    <meta name="msapplication-config" content="/static/browserconfig.xml">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/static/manifest.json">
+    
+    <!-- PWA Icons -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16x16.png">
+    <link rel="mask-icon" href="/static/icons/safari-pinned-tab.svg" color="#9146FF">
+    
+    <!-- Preload Critical Resources -->
+    <link rel="preload" href="/static/v2/css/mobile-first.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="preload" href="/static/v2/js/mobile-navigation.js" as="script">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- API Client and WebSocket Manager -->
+    <script src="/static/v2/js/api-client.js"></script>
+    <script src="/static/v2/js/websocket-manager.js"></script>
+    <script src="/static/js/websocket-init.js"></script>
+    
+    <!-- Enhanced Navigation -->
+    <script src="/static/js/navigation-enhanced.js"></script>
+    
+    <!-- Mobile Navigation System -->
+    <script src="/static/v2/js/mobile-navigation.js"></script>
+    
+    <!-- Alpine.js Stores (load before Alpine) -->
+    <script src="/static/v2/js/stores/app-store.js"></script>
+    
+    <!-- Alpine.js Components (load before Alpine) -->
+    <script src="/static/v2/js/components/personality-sliders.js"></script>
+    
+    <!-- Alpine.js for reactivity (load after stores, use defer) -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <!-- HTMX for server communication -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10/dist/ext/ws.js"></script>
+    
+    <!-- Chart.js for analytics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Design System Tokens -->
+    <link rel="stylesheet" href="/static/v2/css/design-tokens.css">
+    <link rel="stylesheet" href="/static/v2/css/base.css">
+    
+    <!-- Enhanced Navigation Design -->
+    <link rel="stylesheet" href="/static/css/navigation-enhanced.css">
+    <link rel="stylesheet" href="/static/css/navigation-effects.css">
+    
+    <!-- Twitch Theme (New Dark Monochrome) -->
+    <link rel="stylesheet" href="/static/v2/css/theme-twitch.css">
+    
+    <!-- Navigation Fix -->
+    <style>
+        /* Force navigation to show */
+        .tbx-header {
+            background: #1A1A20 !important;
+            border-bottom: 2px solid #9146FF !important;
+            min-height: 72px !important;
+            display: block !important;
+            visibility: visible !important;
+        }
+        
+        /* Ensure navigation links are always visible */
+        .tbx-header nav > div {
+            display: flex !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+        
+        .tbx-header .nav-link {
+            display: inline-block !important;
+            color: #E0E0E0 !important;
+            background: rgba(255, 255, 255, 0.05) !important;
+            border: 1px solid rgba(145, 70, 255, 0.2) !important;
+            padding: 8px 16px !important;
+            border-radius: 8px !important;
+            text-decoration: none !important;
+            text-decoration-line: none !important;
+            text-decoration-style: none !important;
+            transition: all 0.2s ease !important;
+            position: relative !important;
+            overflow: hidden !important;
+        }
+        
+        /* Absolutely prevent any line decoration */
+        .nav-link, .nav-link *, 
+        a.nav-link, a.nav-link *,
+        .nav-link span, a.nav-link span {
+            text-decoration: none !important;
+            text-decoration-line: none !important;
+            text-decoration-style: none !important;
+            border: none !important;
+        }
+        
+        .tbx-header .nav-link:hover {
+            background: rgba(145, 70, 255, 0.2) !important;
+            border-color: #9146FF !important;
+            color: #FFFFFF !important;
+            transform: translateY(-1px) !important;
+        }
+        
+        /* Active page styling - distinct purple highlight */
+        .tbx-header .nav-link.active {
+            background: linear-gradient(135deg, rgba(145, 70, 255, 0.3), rgba(145, 70, 255, 0.2)) !important;
+            border-color: #9146FF !important;
+            color: #FFFFFF !important;
+            font-weight: 600 !important;
+            box-shadow: 0 2px 8px rgba(145, 70, 255, 0.3) !important;
+        }
+        
+        /* Removed bottom indicator - was causing visual issues */
+        
+        /* Active state for mobile dropdown items */
+        .tbx-dropdown-item.mobile-nav-link.active {
+            background: rgba(145, 70, 255, 0.2) !important;
+            color: #9146FF !important;
+            font-weight: 600 !important;
+            padding-left: 20px !important;
+            border-left: 3px solid #9146FF !important;
+        }
+        
+        /* Hide mobile menu on larger screens */
+        @media (min-width: 768px) {
+            .md\:hidden {
+                display: none !important;
+            }
+        }
+        
+        /* Show mobile menu only on small screens */
+        @media (max-width: 767px) {
+            .tbx-header nav > div:first-child {
+                display: none !important;
+            }
+            .md\:hidden {
+                display: block !important;
+            }
+        }
+    </style>
+    
+    <!-- Page-specific styles -->
+    {% block head %}{% endblock %}
+    
+    <style>
+        /* Base v2 styles - These will be overridden by theme-twitch.css when .theme-v2 class is present */
+        :root {
+            /* Core colors - Default values, overridden by theme */
+            --tbx-bg-primary: #0f0f14;
+            --tbx-bg-secondary: #1c1c26;
+            --tbx-bg-tertiary: #16161d;
+            --tbx-border-default: rgba(232, 107, 215, 0.1);
+            --tbx-border-hover: rgba(232, 107, 215, 0.3);
+            --tbx-accent: #e86bd7;
+            --tbx-accent-hover: #d14bc4;
+            
+            /* Text colors */
+            --tbx-text-primary: #ffffff;
+            --tbx-text-secondary: #b0b3b8;
+            --tbx-text-muted: #6b6f76;
+            
+            /* Status colors */
+            --tbx-success: #00d26a;
+            --tbx-warning: #ffb020;
+            --tbx-error: #ff4757;
+            --tbx-info: #3b82f6;
+            
+            /* Spacing */
+            --tbx-spacing-xs: 0.25rem;
+            --tbx-spacing-sm: 0.5rem;
+            --tbx-spacing-md: 1rem;
+            --tbx-spacing-lg: 1.5rem;
+            --tbx-spacing-xl: 2rem;
+            
+            /* Border radius */
+            --tbx-radius-sm: 6px;
+            --tbx-radius-md: 12px;
+            --tbx-radius-lg: 16px;
+            
+            /* Transitions */
+            --tbx-transition-fast: 0.15s ease;
+            --tbx-transition-normal: 0.2s ease;
+            --tbx-transition-slow: 0.3s ease;
+        }
+        
+        body {
+            background: var(--tbx-bg-primary);
+            color: var(--tbx-text-primary);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            line-height: 1.6;
+        }
+        
+        /* Card component */
+        .tbx-card {
+            background: linear-gradient(135deg, var(--tbx-bg-secondary) 0%, var(--tbx-bg-tertiary) 100%);
+            border: 1px solid var(--tbx-border-default);
+            border-radius: var(--tbx-radius-md);
+            padding: var(--tbx-spacing-lg);
+            transition: all var(--tbx-transition-normal);
+        }
+        
+        .tbx-card:hover {
+            border-color: var(--tbx-border-hover);
+            box-shadow: 0 10px 30px rgba(232, 107, 215, 0.1);
+        }
+        
+        /* Button styles */
+        .tbx-button {
+            padding: var(--tbx-spacing-sm) var(--tbx-spacing-md);
+            border-radius: var(--tbx-radius-sm);
+            font-weight: 500;
+            transition: all var(--tbx-transition-fast);
+            cursor: pointer;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--tbx-spacing-sm);
+        }
+        
+        .tbx-button-primary {
+            background: var(--tbx-accent);
+            color: white;
+        }
+        
+        .tbx-button-primary:hover {
+            background: var(--tbx-accent-hover);
+            transform: translateY(-1px);
+        }
+        
+        .tbx-button-secondary {
+            background: transparent;
+            color: var(--tbx-text-secondary);
+            border: 1px solid var(--tbx-border-default);
+        }
+        
+        .tbx-button-secondary:hover {
+            border-color: var(--tbx-border-hover);
+            color: var(--tbx-text-primary);
+        }
+        
+        .tbx-button-danger {
+            background: var(--tbx-error);
+            color: white;
+        }
+        
+        .tbx-button-danger:hover {
+            background: #e63946;
+        }
+        
+        /* Badge styles */
+        .tbx-badge {
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            display: inline-block;
+        }
+        
+        .tbx-badge-success {
+            background: rgba(0, 210, 106, 0.2);
+            color: var(--tbx-success);
+        }
+        
+        .tbx-badge-warning {
+            background: rgba(255, 176, 32, 0.2);
+            color: var(--tbx-warning);
+        }
+        
+        .tbx-badge-error {
+            background: rgba(255, 71, 87, 0.2);
+            color: var(--tbx-error);
+        }
+        
+        .tbx-badge-info {
+            background: rgba(59, 130, 246, 0.2);
+            color: var(--tbx-info);
+        }
+        
+        /* Loading states */
+        .tbx-loading {
+            position: relative;
+            pointer-events: none;
+            opacity: 0.6;
+        }
+        
+        .tbx-loading::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            margin: -10px 0 0 -10px;
+            border: 2px solid var(--tbx-accent);
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: tbx-spin 0.6s linear infinite;
+        }
+        
+        @keyframes tbx-spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Grid system */
+        .tbx-dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: var(--tbx-spacing-lg);
+        }
+        
+        /* Metric display */
+        .tbx-metric {
+            text-align: center;
+            padding: var(--tbx-spacing-md);
+        }
+        
+        .tbx-metric-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--tbx-accent);
+            display: block;
+        }
+        
+        .tbx-metric-label {
+            font-size: 0.875rem;
+            color: var(--tbx-text-secondary);
+            display: block;
+            margin-top: var(--tbx-spacing-xs);
+        }
+        
+        /* Status indicators */
+        .tbx-status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        
+        .tbx-status-online {
+            background: var(--tbx-success);
+        }
+        
+        .tbx-status-offline {
+            background: var(--tbx-error);
+        }
+        
+        .tbx-status-connecting {
+            background: var(--tbx-warning);
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body class="min-h-screen theme-v2">
+    <!-- Navigation Header - Mobile First -->
+    <header class="tbx-header-mobile lg:tbx-header" x-data="mobileNavigation">
+        <!-- Mobile Top Bar -->
+        <div class="mobile-top-bar lg:hidden">
+            <button 
+                @click="toggleMobileMenu()" 
+                class="hamburger-menu" 
+                aria-label="Open navigation menu"
+                :aria-expanded="mobileMenuOpen">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+            
+            <a href="{% if streamer_id %}/ui/v2/dashboard/{{ streamer_id }}{% else %}/ui/v2/dashboard{% endif %}" class="logo">
+                TalkBot
+            </a>
+            
+            <div class="status-indicator" 
+                 :class="{ 'connected': true }"
+                 title="Connected"></div>
+        </div>
+        
+        <!-- Mobile Navigation Drawer -->
+        <nav class="mobile-nav-drawer lg:hidden" 
+             x-show="mobileMenuOpen" 
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="transform -translate-x-full"
+             x-transition:enter-end="transform translate-x-0"
+             x-transition:leave="transition ease-in duration-200"
+             x-transition:leave-start="transform translate-x-0"
+             x-transition:leave-end="transform -translate-x-full"
+             x-cloak>
+            
+            <div class="nav-items">
+                <a href="{% if streamer_id %}/ui/v2/dashboard/{{ streamer_id }}{% else %}/ui/v2/dashboard{% endif %}" 
+                   class="nav-item" 
+                   @click="closeMenu()">
+                    <span class="nav-item-icon">📊</span>
+                    Dashboard
+                </a>
+                <a href="{% if streamer_id %}/ui/v2/analytics/{{ streamer_id }}{% else %}/ui/v2/analytics/confusedamish{% endif %}" 
+                   class="nav-item" 
+                   @click="closeMenu()">
+                    <span class="nav-item-icon">📈</span>
+                    Analytics
+                </a>
+                <a href="{% if streamer_id %}/ui/v2/insights/{{ streamer_id }}{% else %}/ui/v2/insights/confusedamish{% endif %}" 
+                   class="nav-item" 
+                   @click="closeMenu()">
+                    <span class="nav-item-icon">💡</span>
+                    Insights
+                </a>
+                <a href="{% if streamer_id %}/ui/v2/monitoring/{{ streamer_id }}{% else %}/ui/v2/monitoring{% endif %}" 
+                   class="nav-item" 
+                   @click="closeMenu()">
+                    <span class="nav-item-icon">🔍</span>
+                    Monitoring
+                </a>
+                <a href="{% if streamer_id %}/ui/v2/production/{{ streamer_id }}{% else %}/ui/v2/production{% endif %}" 
+                   class="nav-item" 
+                   @click="closeMenu()">
+                    <span class="nav-item-icon">🚀</span>
+                    Production
+                </a>
+                <a href="{% if streamer_id %}/ui/v2/settings/{{ streamer_id }}{% else %}/ui/v2/settings/confusedamish{% endif %}" 
+                   class="nav-item" 
+                   @click="closeMenu()">
+                    <span class="nav-item-icon">⚙️</span>
+                    Settings
+                </a>
+            </div>
+        </nav>
+        
+        <!-- Desktop Navigation (hidden on mobile) -->
+        <div class="hidden lg:block">
+            <div class="container mx-auto px-6 py-4">
+                <nav class="flex items-center justify-between">
+                    <div class="flex items-center gap-6">
+                        <!-- Logo/Brand -->
+                        <a href="{% if streamer_id %}/ui/v2/dashboard/{{ streamer_id }}{% else %}/ui/v2/dashboard{% endif %}" class="flex items-center gap-2">
+                            <span class="tbx-logo text-xl font-bold">
+                                TalkBot
+                            </span>
+                        </a>
+                        
+                        <!-- Main Navigation -->
+                        <div class="flex items-center gap-4">
+                            <a href="{% if streamer_id %}/ui/v2/dashboard/{{ streamer_id }}{% else %}/ui/v2/dashboard{% endif %}" class="nav-link">Dashboard</a>
+                            <a href="{% if streamer_id %}/ui/v2/analytics/{{ streamer_id }}{% else %}/ui/v2/analytics/confusedamish{% endif %}" class="nav-link">Analytics</a>
+                            <a href="{% if streamer_id %}/ui/v2/insights/{{ streamer_id }}{% else %}/ui/v2/insights/confusedamish{% endif %}" class="nav-link">Insights</a>
+                            <a href="{% if streamer_id %}/ui/v2/monitoring/{{ streamer_id }}{% else %}/ui/v2/monitoring{% endif %}" class="nav-link">Monitoring</a>
+                            <a href="{% if streamer_id %}/ui/v2/production/{{ streamer_id }}{% else %}/ui/v2/production{% endif %}" class="nav-link">Production</a>
+                            <a href="{% if streamer_id %}/ui/v2/settings/{{ streamer_id }}{% else %}/ui/v2/settings/confusedamish{% endif %}" class="nav-link">Settings</a>
+                        </div>
+                    </div>
+                    
+                    <!-- Connection Status and User Menu -->
+                    <div class="flex items-center gap-4">
+                        <div class="flex items-center gap-2 text-sm">
+                            <div class="status-indicator connected" title="Connected"></div>
+                            <span class="text-tbx-text-secondary">Connected</span>
+                        </div>
+                    </div>
+                </nav>
+            </div>
+        </div>
+    </header>
+    
+    <!-- Bottom Navigation (Mobile Only) -->
+    <nav class="bottom-nav lg:hidden">
+        <a href="{% if streamer_id %}/ui/v2/dashboard/{{ streamer_id }}{% else %}/ui/v2/dashboard{% endif %}" 
+           class="nav-tab" 
+           :class="{ 'active': activeTab === 'dashboard' }">
+            <div class="nav-tab-icon">📊</div>
+            <span class="nav-tab-label">Dashboard</span>
+        </a>
+        <a href="{% if streamer_id %}/ui/v2/analytics/{{ streamer_id }}{% else %}/ui/v2/analytics/confusedamish{% endif %}" 
+           class="nav-tab" 
+           :class="{ 'active': activeTab === 'analytics' }">
+            <div class="nav-tab-icon">📈</div>
+            <span class="nav-tab-label">Analytics</span>
+        </a>
+        <a href="{% if streamer_id %}/ui/v2/monitoring/{{ streamer_id }}{% else %}/ui/v2/monitoring{% endif %}" 
+           class="nav-tab" 
+           :class="{ 'active': activeTab === 'monitoring' }">
+            <div class="nav-tab-icon">🔍</div>
+            <span class="nav-tab-label">Monitor</span>
+        </a>
+        <a href="{% if streamer_id %}/ui/v2/settings/{{ streamer_id }}{% else %}/ui/v2/settings/confusedamish{% endif %}" 
+           class="nav-tab" 
+           :class="{ 'active': activeTab === 'settings' }">
+            <div class="nav-tab-icon">⚙️</div>
+            <span class="nav-tab-label">Settings</span>
+        </a>
+    </nav>
+    
+    <!-- Pull-to-Refresh Indicator -->
+    <div class="pull-to-refresh-indicator lg:hidden">
+        <div class="pull-icon">↓</div>
+        <span class="pull-text">Pull to refresh</span>
+    </div>
+    
+    <!-- Main Content Area -->
+    <main class="container mx-auto px-6 py-8">
+        {% block content %}{% endblock %}
+    </main>
+    
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+    
+    <!-- Global Scripts -->
+    <script>
+        // Set global streamer ID for JavaScript components
+        window.STREAMER_ID = '{{ streamer_id or "confusedamish" }}';
+        
+        // Toast notification system
+        window.showToast = function(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type} px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 min-w-[300px] animate-slide-in`;
+            
+            const colors = {
+                'info': 'bg-blue-500/20 text-blue-400 border border-blue-500/30',
+                'success': 'bg-green-500/20 text-green-400 border border-green-500/30',
+                'error': 'bg-red-500/20 text-red-400 border border-red-500/30',
+                'warning': 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+            };
+            
+            toast.className += ` ${colors[type]}`;
+            toast.innerHTML = `
+                <span class="flex-1">${message}</span>
+                <button onclick="this.parentElement.remove()" class="hover:opacity-70">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                    </svg>
+                </button>
+            `;
+            
+            document.getElementById('toast-container').appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.add('animate-slide-out');
+                setTimeout(() => toast.remove(), 300);
+            }, 5000);
+        };
+        
+        // WebSocket connection status management
+        let ws = null;
+        const streamerId = '{{ streamer_id }}';
+        
+        function updateConnectionStatus(status) {
+            const statusEl = document.getElementById('connection-status');
+            const indicator = statusEl.querySelector('.tbx-status-indicator');
+            const text = statusEl.querySelector('span');
+            
+            indicator.className = 'tbx-status-indicator';
+            
+            switch(status) {
+                case 'connected':
+                    indicator.classList.add('tbx-status-online');
+                    text.textContent = 'Connected';
+                    text.className = 'text-sm text-green-400';
+                    break;
+                case 'disconnected':
+                    indicator.classList.add('tbx-status-offline');
+                    text.textContent = 'Disconnected';
+                    text.className = 'text-sm text-red-400';
+                    break;
+                case 'connecting':
+                    indicator.classList.add('tbx-status-connecting');
+                    text.textContent = 'Connecting...';
+                    text.className = 'text-sm text-yellow-400';
+                    break;
+            }
+        }
+        
+        // Initialize application
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('[Base] DOM loaded, waiting for Alpine...');
+            
+            // Highlight active navigation link based on current URL
+            const currentPath = window.location.pathname;
+            const navLinks = document.querySelectorAll('.nav-link, .mobile-nav-link');
+            
+            navLinks.forEach(link => {
+                // Get the href attribute
+                const href = link.getAttribute('href');
+                
+                // Check if current path matches the link
+                if (href) {
+                    // Extract the page type from the URL (dashboard, settings, analytics, insights, health)
+                    const pageMatch = href.match(/\/ui\/v2\/(\w+)/);
+                    const currentPageMatch = currentPath.match(/\/ui\/v2\/(\w+)/);
+                    
+                    if (pageMatch && currentPageMatch && pageMatch[1] === currentPageMatch[1]) {
+                        link.classList.add('active');
+                    }
+                }
+            });
+            
+            // Fix: Set connection status to connected once page loads
+            // The spinner was showing indefinitely because WebSocket connection
+            // status wasn't being updated after initial page load
+            setTimeout(() => {
+                // Only update if WebSocket hasn't already connected
+                const statusText = document.querySelector('#connection-status span');
+                if (statusText && statusText.textContent === 'Connecting...') {
+                    updateConnectionStatus('connected');
+                }
+            }, 1500);
+        });
+        
+        // Initialize Alpine components when ready
+        document.addEventListener('alpine:init', () => {
+            console.log('[Base] Alpine initializing with streamerId:', streamerId);
+            // Stores are already registered via app-store.js
+        });
+        
+        // Also handle if Alpine is already initialized
+        document.addEventListener('alpine:initialized', () => {
+            console.log('[Base] Alpine initialized, setting up data');
+            if (streamerId && window.Alpine) {
+                // Safe to use Alpine here
+                const appStore = Alpine.store('app');
+                if (appStore && appStore.init) {
+                    appStore.init(streamerId);
+                }
+            }
+        });
+    </script>
+    
+    <!-- Page-specific scripts -->
+    {% block scripts %}{% endblock %}
+    
+    <style>
+        /* Hide elements with x-cloak until Alpine loads */
+        [x-cloak] { display: none !important; }
+        
+        /* Navigation link styles */
+        .nav-link {
+            color: var(--tbx-text-secondary);
+            padding: 0.5rem 1rem;
+            border-radius: var(--tbx-radius-sm);
+            transition: all var(--tbx-transition-fast);
+        }
+        
+        .nav-link:hover {
+            color: var(--tbx-text-primary);
+            background: rgba(232, 107, 215, 0.1);
+        }
+        
+        .nav-link.active {
+            color: var(--tbx-accent);
+            background: rgba(232, 107, 215, 0.2);
+        }
+        
+        /* Toast animations */
+        @keyframes slide-in {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes slide-out {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+        
+        .animate-slide-in {
+            animation: slide-in 0.3s ease-out;
+        }
+        
+        .animate-slide-out {
+            animation: slide-out 0.3s ease-in;
+        }
+    </style>
+    
+    <!-- PWA Service Worker Registration -->
+    <script>
+        // Register service worker for PWA functionality
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', async () => {
+                try {
+                    const registration = await navigator.serviceWorker.register('/static/sw.js');
+                    console.log('[PWA] Service Worker registered:', registration.scope);
+                    
+                    // Listen for updates
+                    registration.addEventListener('updatefound', () => {
+                        const newWorker = registration.installing;
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                // New version available
+                                showUpdateNotification();
+                            }
+                        });
+                    });
+                    
+                    // Check for updates every 30 minutes
+                    setInterval(() => {
+                        registration.update();
+                    }, 30 * 60 * 1000);
+                    
+                } catch (error) {
+                    console.log('[PWA] Service Worker registration failed:', error);
+                }
+            });
+        }
+        
+        // PWA install prompt
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            console.log('[PWA] Install prompt available');
+            e.preventDefault();
+            deferredPrompt = e;
+            showInstallPrompt();
+        });
+        
+        // Handle successful installation
+        window.addEventListener('appinstalled', (evt) => {
+            console.log('[PWA] App was installed');
+            // Track installation
+            if (window.gtag) {
+                gtag('event', 'pwa_install', {
+                    'app_name': 'TalkBot',
+                    'method': 'prompt'
+                });
+            }
+        });
+        
+        function showUpdateNotification() {
+            // Show subtle update notification
+            const notification = document.createElement('div');
+            notification.innerHTML = `
+                <div style="
+                    position: fixed;
+                    bottom: 20px;
+                    right: 20px;
+                    background: var(--tbx-surface-elevated);
+                    color: var(--tbx-text-primary);
+                    padding: 12px 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+                    z-index: 9999;
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    font-size: 14px;
+                ">
+                    <span>New version available</span>
+                    <button onclick="window.location.reload()" style="
+                        background: var(--tbx-primary);
+                        color: white;
+                        border: none;
+                        padding: 6px 12px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-size: 12px;
+                    ">Update</button>
+                    <button onclick="this.parentElement.remove()" style="
+                        background: transparent;
+                        color: var(--tbx-text-secondary);
+                        border: none;
+                        padding: 6px;
+                        cursor: pointer;
+                        font-size: 16px;
+                    ">×</button>
+                </div>
+            `;
+            document.body.appendChild(notification);
+            
+            // Auto-hide after 10 seconds
+            setTimeout(() => {
+                if (notification.parentElement) {
+                    notification.remove();
+                }
+            }, 10000);
+        }
+        
+        function showInstallPrompt() {
+            // Wait a bit before showing install prompt
+            setTimeout(() => {
+                if (deferredPrompt) {
+                    const installBanner = document.createElement('div');
+                    installBanner.innerHTML = `
+                        <div style="
+                            position: fixed;
+                            top: 80px;
+                            left: 50%;
+                            transform: translateX(-50%);
+                            background: var(--tbx-primary);
+                            color: white;
+                            padding: 12px 20px;
+                            border-radius: 8px;
+                            box-shadow: 0 4px 16px rgba(145,70,255,0.3);
+                            z-index: 9999;
+                            display: flex;
+                            align-items: center;
+                            gap: 12px;
+                            font-size: 14px;
+                            max-width: 90vw;
+                        ">
+                            <span>📱 Install TalkBot for easier access</span>
+                            <button onclick="installPWA()" style="
+                                background: rgba(255,255,255,0.2);
+                                color: white;
+                                border: none;
+                                padding: 6px 12px;
+                                border-radius: 4px;
+                                cursor: pointer;
+                                font-size: 12px;
+                            ">Install</button>
+                            <button onclick="this.parentElement.remove(); deferredPrompt = null;" style="
+                                background: transparent;
+                                color: rgba(255,255,255,0.7);
+                                border: none;
+                                padding: 6px;
+                                cursor: pointer;
+                                font-size: 16px;
+                            ">×</button>
+                        </div>
+                    `;
+                    document.body.appendChild(installBanner);
+                    
+                    // Auto-hide after 15 seconds
+                    setTimeout(() => {
+                        if (installBanner.parentElement) {
+                            installBanner.remove();
+                        }
+                    }, 15000);
+                }
+            }, 5000); // Show after 5 seconds
+        }
+        
+        async function installPWA() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                console.log('[PWA] User choice:', outcome);
+                
+                if (outcome === 'accepted') {
+                    console.log('[PWA] User accepted the install prompt');
+                } else {
+                    console.log('[PWA] User dismissed the install prompt');
+                }
+                
+                deferredPrompt = null;
+                // Remove install banner
+                const banner = document.querySelector('[onclick*="installPWA"]')?.parentElement;
+                if (banner) banner.remove();
+            }
+        }
+    </script>
+</body>
+</html>

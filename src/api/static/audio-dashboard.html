@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Performance Dashboard - TalkBot</title>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #0e0e10 0%, #1f1f23 100%);
+            color: #efeff1;
+            min-height: 100vh;
+        }
+        
+        .dashboard-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .dashboard-header {
+            background: rgba(31, 31, 35, 0.8);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .dashboard-title {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .dashboard-title h1 {
+            font-size: 24px;
+            font-weight: 600;
+            background: linear-gradient(90deg, #9146ff, #772ce8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .connection-status {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+        
+        .connection-status.status-connected {
+            background: rgba(0, 255, 127, 0.2);
+            color: #00ff7f;
+            border: 1px solid rgba(0, 255, 127, 0.3);
+        }
+        
+        .connection-status.status-disconnected {
+            background: rgba(255, 99, 71, 0.2);
+            color: #ff6347;
+            border: 1px solid rgba(255, 99, 71, 0.3);
+        }
+        
+        .connection-status.status-error {
+            background: rgba(255, 0, 0, 0.2);
+            color: #ff0000;
+            border: 1px solid rgba(255, 0, 0, 0.3);
+        }
+        
+        .dashboard-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .control-group label {
+            font-size: 12px;
+            color: #adadb8;
+        }
+        
+        select, button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #efeff1;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        select:hover, button:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: #9146ff;
+        }
+        
+        button:active {
+            transform: scale(0.95);
+        }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .metric-card {
+            background: rgba(31, 31, 35, 0.8);
+            border-radius: 8px;
+            padding: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s;
+        }
+        
+        .metric-card.status-good {
+            border-color: rgba(0, 255, 127, 0.3);
+            box-shadow: 0 0 10px rgba(0, 255, 127, 0.1);
+        }
+        
+        .metric-card.status-warning {
+            border-color: rgba(255, 159, 64, 0.3);
+            box-shadow: 0 0 10px rgba(255, 159, 64, 0.1);
+        }
+        
+        .metric-card.status-critical {
+            border-color: rgba(255, 99, 132, 0.3);
+            box-shadow: 0 0 10px rgba(255, 99, 132, 0.1);
+        }
+        
+        .metric-label {
+            font-size: 12px;
+            color: #adadb8;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        
+        .metric-value {
+            font-size: 28px;
+            font-weight: 600;
+            color: #efeff1;
+        }
+        
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .chart-container {
+            background: rgba(31, 31, 35, 0.8);
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            height: 300px;
+        }
+        
+        .chart-container canvas {
+            max-height: 260px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .stats-card {
+            background: rgba(31, 31, 35, 0.8);
+            border-radius: 8px;
+            padding: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .stats-card h3 {
+            font-size: 14px;
+            color: #9146ff;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+        
+        .percentile-stat, .recovery-stat, .cache-stat {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .percentile-stat:last-child, .recovery-stat:last-child, .cache-stat:last-child {
+            border-bottom: none;
+        }
+        
+        .label {
+            color: #adadb8;
+            font-size: 12px;
+        }
+        
+        .value {
+            color: #efeff1;
+            font-weight: 500;
+            font-size: 12px;
+        }
+        
+        .health-status {
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+        
+        .health-status.health-healthy {
+            background: rgba(0, 255, 127, 0.1);
+            border: 1px solid rgba(0, 255, 127, 0.3);
+        }
+        
+        .health-status.health-degraded {
+            background: rgba(255, 159, 64, 0.1);
+            border: 1px solid rgba(255, 159, 64, 0.3);
+        }
+        
+        .health-status.health-recovering {
+            background: rgba(54, 162, 235, 0.1);
+            border: 1px solid rgba(54, 162, 235, 0.3);
+        }
+        
+        .health-status.health-failed {
+            background: rgba(255, 99, 132, 0.1);
+            border: 1px solid rgba(255, 99, 132, 0.3);
+        }
+        
+        .health-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 5px;
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .health-healthy .status-dot {
+            background: #00ff7f;
+        }
+        
+        .health-degraded .status-dot {
+            background: #ff9f40;
+        }
+        
+        .health-recovering .status-dot {
+            background: #36a2eb;
+        }
+        
+        .health-failed .status-dot {
+            background: #ff6384;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .status-text {
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .uptime {
+            font-size: 12px;
+            color: #adadb8;
+        }
+        
+        .component-status {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            font-size: 12px;
+        }
+        
+        .component-name {
+            color: #adadb8;
+        }
+        
+        .component-state {
+            font-weight: 500;
+        }
+        
+        .component-failures {
+            color: #adadb8;
+            font-size: 11px;
+        }
+        
+        .component-healthy .component-state {
+            color: #00ff7f;
+        }
+        
+        .component-degraded .component-state {
+            color: #ff9f40;
+        }
+        
+        .component-recovering .component-state {
+            color: #36a2eb;
+        }
+        
+        .component-failed .component-state {
+            color: #ff6384;
+        }
+        
+        .fallback-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        
+        .tier-name {
+            font-size: 12px;
+            color: #adadb8;
+            min-width: 60px;
+        }
+        
+        .bar-container {
+            flex: 1;
+            height: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .bar {
+            height: 100%;
+            background: linear-gradient(90deg, #9146ff, #772ce8);
+            transition: width 0.3s ease;
+        }
+        
+        .count {
+            font-size: 12px;
+            color: #efeff1;
+            min-width: 40px;
+            text-align: right;
+        }
+        
+        .alerts-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            max-width: 400px;
+            z-index: 1000;
+        }
+        
+        .alert {
+            background: rgba(31, 31, 35, 0.95);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease;
+            border-left: 3px solid;
+        }
+        
+        .alert-warning {
+            border-color: #ff9f40;
+        }
+        
+        .alert-critical {
+            border-color: #ff6384;
+        }
+        
+        .alert-time {
+            font-size: 11px;
+            color: #adadb8;
+        }
+        
+        .alert-message {
+            flex: 1;
+            font-size: 12px;
+        }
+        
+        .alert-close {
+            background: none;
+            border: none;
+            color: #adadb8;
+            font-size: 18px;
+            cursor: pointer;
+            padding: 0;
+            width: 20px;
+            height: 20px;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        .export-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        #export-format {
+            min-width: 100px;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <div class="dashboard-header">
+            <div class="dashboard-title">
+                <h1>Audio Performance Dashboard</h1>
+                <span id="ws-status" class="connection-status status-disconnected">disconnected</span>
+            </div>
+            
+            <div class="dashboard-controls">
+                <div class="control-group">
+                    <label for="time-range">Time Range:</label>
+                    <select id="time-range">
+                        <option value="1h">Last Hour</option>
+                        <option value="24h">Last 24 Hours</option>
+                        <option value="7d">Last 7 Days</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="resolution">Resolution:</label>
+                    <select id="resolution">
+                        <option value="1m">1 Minute</option>
+                        <option value="5m">5 Minutes</option>
+                        <option value="1h">1 Hour</option>
+                    </select>
+                </div>
+                
+                <button id="refresh-metrics">Refresh</button>
+                
+                <div class="export-controls">
+                    <select id="export-format">
+                        <option value="json">JSON</option>
+                        <option value="csv">CSV</option>
+                        <option value="prometheus">Prometheus</option>
+                    </select>
+                    <button id="export-metrics">Export</button>
+                </div>
+                
+                <button id="reset-metrics" style="background: rgba(255, 99, 132, 0.2); border-color: rgba(255, 99, 132, 0.3);">Reset</button>
+            </div>
+        </div>
+        
+        <!-- Key Metrics -->
+        <div class="metrics-grid">
+            <div class="metric-card" id="latency-card">
+                <div class="metric-label">Latency</div>
+                <div class="metric-value" id="metric-latency">0.0ms</div>
+            </div>
+            
+            <div class="metric-card" id="buffer-card">
+                <div class="metric-label">Buffer Fill</div>
+                <div class="metric-value" id="metric-buffer">0.0%</div>
+            </div>
+            
+            <div class="metric-card" id="streams-card">
+                <div class="metric-label">Active Streams</div>
+                <div class="metric-value" id="metric-streams">0</div>
+            </div>
+            
+            <div class="metric-card" id="errors-card">
+                <div class="metric-label">Error Rate</div>
+                <div class="metric-value" id="metric-errors">0.00%</div>
+            </div>
+        </div>
+        
+        <!-- Charts -->
+        <div class="charts-grid">
+            <div class="chart-container">
+                <canvas id="latencyChart"></canvas>
+            </div>
+            
+            <div class="chart-container">
+                <canvas id="bufferChart"></canvas>
+            </div>
+            
+            <div class="chart-container">
+                <canvas id="throughputChart"></canvas>
+            </div>
+            
+            <div class="chart-container">
+                <canvas id="resourcesChart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Detailed Stats -->
+        <div class="stats-grid">
+            <div class="stats-card">
+                <h3>Latency Percentiles</h3>
+                <div id="latency-percentiles">
+                    <div class="percentile-stat">
+                        <span class="label">Loading...</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="stats-card">
+                <h3>Buffer Percentiles</h3>
+                <div id="buffer-percentiles">
+                    <div class="percentile-stat">
+                        <span class="label">Loading...</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="stats-card">
+                <h3>Recovery Metrics</h3>
+                <div id="recovery-metrics">
+                    <div class="recovery-stat">
+                        <span class="label">Loading...</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="stats-card">
+                <h3>Cache Performance</h3>
+                <div id="cache-metrics">
+                    <div class="cache-stat">
+                        <span class="label">Loading...</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="stats-card">
+                <h3>System Health</h3>
+                <div id="health-status" class="health-status health-healthy">
+                    <div class="health-indicator">
+                        <span class="status-dot"></span>
+                        <span class="status-text">LOADING</span>
+                    </div>
+                    <div class="uptime">Uptime: ---%</div>
+                </div>
+                <div id="component-health">
+                    <div class="component-status">
+                        <span class="label">Loading...</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="stats-card">
+                <h3>Fallback Tier Usage</h3>
+                <div id="fallback-usage">
+                    <div class="fallback-bar">
+                        <span class="label">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Alerts Container -->
+    <div id="alerts-container" class="alerts-container"></div>
+    
+    <!-- Load JavaScript -->
+    <script src="/static/js/audio-monitor.js"></script>
+</body>
+</html>

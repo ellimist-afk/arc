@@ -1,0 +1,557 @@
+{% extends "layouts-v2/fullscreen-layout.html" %}
+
+{% block title %}Graph Visualizer - TalkBot{% endblock %}
+
+{% block page_styles %}
+<link rel="stylesheet" href="/static/v2/css/pages/visualizer.css">
+{% endblock %}
+
+{% block content %}
+<!-- Top Bar -->
+<div class="tbx-visualizer-topbar">
+    <div class="tbx-topbar-title">
+        <h1>Graph Visualizer</h1>
+        <span class="tbx-badge tbx-badge--info">{{ streamer_id | default('Demo') }}</span>
+    </div>
+    <div class="tbx-topbar-controls">
+        <button class="tbx-btn tbx-btn--small tbx-btn--secondary" id="reset-view">
+            <i class="fas fa-home"></i> Reset View
+        </button>
+        <button class="tbx-btn tbx-btn--small tbx-btn--secondary" id="export-graph">
+            <i class="fas fa-download"></i> Export
+        </button>
+        <button class="tbx-btn tbx-btn--small tbx-btn--primary" id="toggle-sidebar">
+            <i class="fas fa-cog"></i> Controls
+        </button>
+    </div>
+</div>
+
+<!-- Main Container -->
+<div class="tbx-visualizer-container">
+    <!-- Graph Canvas -->
+    <div class="tbx-graph-area" id="graph-container">
+        <svg id="graph-svg"></svg>
+        <div class="tbx-graph-overlay">
+            <div class="tbx-graph-info" id="graph-info">
+                <div class="tbx-info-item">
+                    <span class="tbx-info-label">Nodes:</span>
+                    <span class="tbx-info-value" id="node-count">0</span>
+                </div>
+                <div class="tbx-info-item">
+                    <span class="tbx-info-label">Links:</span>
+                    <span class="tbx-info-value" id="link-count">0</span>
+                </div>
+                <div class="tbx-info-item">
+                    <span class="tbx-info-label">Zoom:</span>
+                    <span class="tbx-info-value" id="zoom-level">100%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Control Sidebar -->
+    <div class="tbx-control-panel" id="control-panel">
+        <div class="tbx-panel-header">
+            <h3>Visualization Controls</h3>
+            <button class="tbx-panel-close" id="close-sidebar">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <div class="tbx-panel-content">
+            <!-- Layout Controls -->
+            <div class="tbx-control-section">
+                <h4>Layout</h4>
+                <div class="tbx-control-group">
+                    <button class="tbx-control-btn active" data-layout="force">Force Directed</button>
+                    <button class="tbx-control-btn" data-layout="circular">Circular</button>
+                    <button class="tbx-control-btn" data-layout="hierarchical">Hierarchical</button>
+                    <button class="tbx-control-btn" data-layout="grid">Grid</button>
+                </div>
+            </div>
+            
+            <!-- Physics Controls -->
+            <div class="tbx-control-section">
+                <h4>Physics</h4>
+                <div class="tbx-slider-group">
+                    <label class="tbx-slider-label">
+                        Link Strength
+                        <input type="range" class="tbx-slider" id="link-strength" min="0" max="2" step="0.1" value="1">
+                        <span class="tbx-slider-value">1.0</span>
+                    </label>
+                    <label class="tbx-slider-label">
+                        Charge Force
+                        <input type="range" class="tbx-slider" id="charge-force" min="-1000" max="-10" step="10" value="-300">
+                        <span class="tbx-slider-value">-300</span>
+                    </label>
+                    <label class="tbx-slider-label">
+                        Center Force
+                        <input type="range" class="tbx-slider" id="center-force" min="0" max="1" step="0.01" value="0.3">
+                        <span class="tbx-slider-value">0.3</span>
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Visual Controls -->
+            <div class="tbx-control-section">
+                <h4>Appearance</h4>
+                <div class="tbx-control-group">
+                    <label class="tbx-checkbox">
+                        <input type="checkbox" id="show-labels" checked>
+                        <span class="tbx-checkmark"></span>
+                        Show Labels
+                    </label>
+                    <label class="tbx-checkbox">
+                        <input type="checkbox" id="show-arrows" checked>
+                        <span class="tbx-checkmark"></span>
+                        Show Arrows
+                    </label>
+                    <label class="tbx-checkbox">
+                        <input type="checkbox" id="curved-links">
+                        <span class="tbx-checkmark"></span>
+                        Curved Links
+                    </label>
+                </div>
+                
+                <div class="tbx-slider-group">
+                    <label class="tbx-slider-label">
+                        Node Size
+                        <input type="range" class="tbx-slider" id="node-size" min="2" max="20" step="1" value="8">
+                        <span class="tbx-slider-value">8</span>
+                    </label>
+                    <label class="tbx-slider-label">
+                        Link Width
+                        <input type="range" class="tbx-slider" id="link-width" min="1" max="10" step="0.5" value="2">
+                        <span class="tbx-slider-value">2</span>
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Color Controls -->
+            <div class="tbx-control-section">
+                <h4>Colors</h4>
+                <div class="tbx-color-scheme">
+                    <button class="tbx-color-btn active" data-scheme="default">Default</button>
+                    <button class="tbx-color-btn" data-scheme="category">Category</button>
+                    <button class="tbx-color-btn" data-scheme="gradient">Gradient</button>
+                    <button class="tbx-color-btn" data-scheme="dark">Dark</button>
+                </div>
+            </div>
+            
+            <!-- Filter Controls -->
+            <div class="tbx-control-section">
+                <h4>Filters</h4>
+                <div class="tbx-filter-group">
+                    <label class="tbx-input-label">
+                        Search Nodes
+                        <input type="text" class="tbx-input tbx-input--small" id="node-search" placeholder="Search...">
+                    </label>
+                    <label class="tbx-slider-label">
+                        Min Connections
+                        <input type="range" class="tbx-slider" id="min-connections" min="0" max="10" step="1" value="0">
+                        <span class="tbx-slider-value">0</span>
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Data Controls -->
+            <div class="tbx-control-section">
+                <h4>Data</h4>
+                <div class="tbx-data-controls">
+                    <button class="tbx-btn tbx-btn--small tbx-btn--secondary" id="load-sample">
+                        <i class="fas fa-database"></i> Load Sample
+                    </button>
+                    <button class="tbx-btn tbx-btn--small tbx-btn--secondary" id="clear-graph">
+                        <i class="fas fa-trash"></i> Clear
+                    </button>
+                    <div class="tbx-file-input">
+                        <input type="file" id="file-input" accept=".json" style="display: none;">
+                        <button class="tbx-btn tbx-btn--small tbx-btn--primary" onclick="document.getElementById('file-input').click()">
+                            <i class="fas fa-upload"></i> Upload JSON
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Node Info Panel -->
+<div class="tbx-node-info" id="node-info" style="display: none;">
+    <div class="tbx-node-info-header">
+        <h4 id="node-info-title">Node Details</h4>
+        <button class="tbx-close-btn" onclick="hideNodeInfo()">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+    <div class="tbx-node-info-content">
+        <div class="tbx-info-row">
+            <span class="tbx-info-key">ID:</span>
+            <span class="tbx-info-value" id="node-info-id">-</span>
+        </div>
+        <div class="tbx-info-row">
+            <span class="tbx-info-key">Type:</span>
+            <span class="tbx-info-value" id="node-info-type">-</span>
+        </div>
+        <div class="tbx-info-row">
+            <span class="tbx-info-key">Connections:</span>
+            <span class="tbx-info-value" id="node-info-connections">-</span>
+        </div>
+        <div class="tbx-info-row">
+            <span class="tbx-info-key">Weight:</span>
+            <span class="tbx-info-value" id="node-info-weight">-</span>
+        </div>
+        <div id="node-info-extra"></div>
+    </div>
+</div>
+
+<!-- Loading Indicator -->
+<div class="tbx-loading-overlay" id="loading-overlay" style="display: none;">
+    <div class="tbx-loading-spinner">
+        <div class="tbx-spinner"></div>
+        <p>Loading graph data...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block page_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/d3@7.8.5/dist/d3.min.js"></script>
+<script src="/static/v2/js/pages/visualizer.js"></script>
+<script>
+// Graph Visualizer JavaScript
+document.addEventListener('DOMContentLoaded', function() {
+    const streamerId = '{{ streamer_id }}';
+    
+    // Graph state
+    let graphData = { nodes: [], links: [] };
+    let simulation = null;
+    let svg = null;
+    let g = null;
+    let zoom = null;
+    
+    // Initialize the visualizer
+    initializeVisualizer();
+    
+    function initializeVisualizer() {
+        // Setup SVG
+        const container = document.getElementById('graph-container');
+        const rect = container.getBoundingClientRect();
+        
+        svg = d3.select('#graph-svg')
+            .attr('width', rect.width)
+            .attr('height', rect.height);
+            
+        g = svg.append('g');
+        
+        // Setup zoom
+        zoom = d3.zoom()
+            .scaleExtent([0.1, 10])
+            .on('zoom', (event) => {
+                g.attr('transform', event.transform);
+                updateZoomLevel(event.transform.k);
+            });
+            
+        svg.call(zoom);
+        
+        // Setup simulation
+        simulation = d3.forceSimulation()
+            .force('link', d3.forceLink().id(d => d.id).strength(1))
+            .force('charge', d3.forceManyBody().strength(-300))
+            .force('center', d3.forceCenter(rect.width / 2, rect.height / 2))
+            .force('collision', d3.forceCollide().radius(20));
+            
+        // Load sample data
+        loadSampleData();
+        
+        // Setup controls
+        setupControls();
+        
+        // Handle window resize
+        window.addEventListener('resize', handleResize);
+    }
+    
+    function loadSampleData() {
+        // Sample graph data
+        const sampleData = {
+            nodes: [
+                { id: 'user1', type: 'user', name: 'Alice', connections: 3, weight: 1.0 },
+                { id: 'user2', type: 'user', name: 'Bob', connections: 2, weight: 0.8 },
+                { id: 'user3', type: 'user', name: 'Charlie', connections: 4, weight: 1.2 },
+                { id: 'bot', type: 'bot', name: 'TalkBot', connections: 10, weight: 2.0 },
+                { id: 'topic1', type: 'topic', name: 'Gaming', connections: 5, weight: 1.5 },
+                { id: 'topic2', type: 'topic', name: 'Music', connections: 3, weight: 1.1 },
+                { id: 'cmd1', type: 'command', name: '!help', connections: 8, weight: 1.8 },
+                { id: 'cmd2', type: 'command', name: '!stats', connections: 4, weight: 1.3 }
+            ],
+            links: [
+                { source: 'user1', target: 'bot', strength: 0.8 },
+                { source: 'user2', target: 'bot', strength: 0.6 },
+                { source: 'user3', target: 'bot', strength: 0.9 },
+                { source: 'user1', target: 'topic1', strength: 0.7 },
+                { source: 'user2', target: 'topic2', strength: 0.5 },
+                { source: 'user3', target: 'topic1', strength: 0.8 },
+                { source: 'bot', target: 'cmd1', strength: 1.0 },
+                { source: 'bot', target: 'cmd2', strength: 0.7 },
+                { source: 'user1', target: 'cmd1', strength: 0.6 },
+                { source: 'user3', target: 'cmd2', strength: 0.4 }
+            ]
+        };
+        
+        updateGraph(sampleData);
+    }
+    
+    function updateGraph(data) {
+        graphData = data;
+        
+        // Update info display
+        document.getElementById('node-count').textContent = data.nodes.length;
+        document.getElementById('link-count').textContent = data.links.length;
+        
+        // Clear previous elements
+        g.selectAll('*').remove();
+        
+        // Create links
+        const link = g.selectAll('.link')
+            .data(data.links)
+            .enter().append('line')
+            .attr('class', 'link')
+            .style('stroke', '#64748b')
+            .style('stroke-width', d => Math.sqrt(d.strength || 1) * 2)
+            .style('stroke-opacity', 0.6);
+            
+        // Create nodes
+        const node = g.selectAll('.node')
+            .data(data.nodes)
+            .enter().append('circle')
+            .attr('class', 'node')
+            .attr('r', d => Math.sqrt(d.weight || 1) * 8)
+            .style('fill', d => getNodeColor(d.type))
+            .style('stroke', '#1e293b')
+            .style('stroke-width', 2)
+            .style('cursor', 'pointer')
+            .call(d3.drag()
+                .on('start', dragstarted)
+                .on('drag', dragged)
+                .on('end', dragended))
+            .on('click', (event, d) => showNodeInfo(d))
+            .on('mouseover', function(event, d) {
+                d3.select(this).style('stroke-width', 3);
+                showTooltip(event, d);
+            })
+            .on('mouseout', function() {
+                d3.select(this).style('stroke-width', 2);
+                hideTooltip();
+            });
+            
+        // Create labels
+        const label = g.selectAll('.label')
+            .data(data.nodes)
+            .enter().append('text')
+            .attr('class', 'label')
+            .text(d => d.name || d.id)
+            .style('text-anchor', 'middle')
+            .style('dy', '.35em')
+            .style('font-size', '12px')
+            .style('fill', '#cbd5e1')
+            .style('pointer-events', 'none');
+            
+        // Update simulation
+        simulation.nodes(data.nodes);
+        simulation.force('link').links(data.links);
+        
+        simulation.on('tick', () => {
+            link
+                .attr('x1', d => d.source.x)
+                .attr('y1', d => d.source.y)
+                .attr('x2', d => d.target.x)
+                .attr('y2', d => d.target.y);
+                
+            node
+                .attr('cx', d => d.x)
+                .attr('cy', d => d.y);
+                
+            label
+                .attr('x', d => d.x)
+                .attr('y', d => d.y);
+        });
+        
+        simulation.restart();
+    }
+    
+    function getNodeColor(type) {
+        const colors = {
+            'user': '#3b82f6',
+            'bot': '#8b5cf6',
+            'topic': '#14b8a6',
+            'command': '#f59e0b',
+            'default': '#64748b'
+        };
+        return colors[type] || colors.default;
+    }
+    
+    function showNodeInfo(node) {
+        const panel = document.getElementById('node-info');
+        document.getElementById('node-info-title').textContent = node.name || node.id;
+        document.getElementById('node-info-id').textContent = node.id;
+        document.getElementById('node-info-type').textContent = node.type || 'unknown';
+        document.getElementById('node-info-connections').textContent = node.connections || 0;
+        document.getElementById('node-info-weight').textContent = (node.weight || 1).toFixed(2);
+        
+        panel.style.display = 'block';
+        panel.style.animation = 'slideInRight 0.3s ease';
+    }
+    
+    function hideNodeInfo() {
+        document.getElementById('node-info').style.display = 'none';
+    }
+    
+    function updateZoomLevel(scale) {
+        document.getElementById('zoom-level').textContent = Math.round(scale * 100) + '%';
+    }
+    
+    function setupControls() {
+        // Layout controls
+        document.querySelectorAll('[data-layout]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('[data-layout]').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                applyLayout(this.dataset.layout);
+            });
+        });
+        
+        // Slider controls
+        document.getElementById('link-strength').addEventListener('input', function() {
+            const value = parseFloat(this.value);
+            this.nextElementSibling.textContent = value.toFixed(1);
+            simulation.force('link').strength(value);
+            simulation.restart();
+        });
+        
+        document.getElementById('charge-force').addEventListener('input', function() {
+            const value = parseInt(this.value);
+            this.nextElementSibling.textContent = value;
+            simulation.force('charge').strength(value);
+            simulation.restart();
+        });
+        
+        document.getElementById('center-force').addEventListener('input', function() {
+            const value = parseFloat(this.value);
+            this.nextElementSibling.textContent = value.toFixed(2);
+            simulation.force('center').strength(value);
+            simulation.restart();
+        });
+        
+        // Control panel toggle
+        document.getElementById('toggle-sidebar').addEventListener('click', function() {
+            const panel = document.getElementById('control-panel');
+            panel.classList.toggle('active');
+        });
+        
+        document.getElementById('close-sidebar').addEventListener('click', function() {
+            document.getElementById('control-panel').classList.remove('active');
+        });
+        
+        // Other controls
+        document.getElementById('reset-view').addEventListener('click', resetView);
+        document.getElementById('load-sample').addEventListener('click', loadSampleData);
+        document.getElementById('clear-graph').addEventListener('click', clearGraph);
+        document.getElementById('file-input').addEventListener('change', handleFileUpload);
+    }
+    
+    function applyLayout(layout) {
+        switch(layout) {
+            case 'circular':
+                applyCircularLayout();
+                break;
+            case 'hierarchical':
+                applyHierarchicalLayout();
+                break;
+            case 'grid':
+                applyGridLayout();
+                break;
+            default:
+                // Force directed is default - just restart
+                simulation.restart();
+        }
+    }
+    
+    function applyCircularLayout() {
+        const radius = 200;
+        const angleStep = (2 * Math.PI) / graphData.nodes.length;
+        
+        graphData.nodes.forEach((node, i) => {
+            node.fx = Math.cos(i * angleStep) * radius + svg.attr('width') / 2;
+            node.fy = Math.sin(i * angleStep) * radius + svg.attr('height') / 2;
+        });
+        
+        simulation.restart();
+    }
+    
+    function resetView() {
+        svg.transition().duration(750).call(
+            zoom.transform,
+            d3.zoomIdentity
+        );
+    }
+    
+    function clearGraph() {
+        updateGraph({ nodes: [], links: [] });
+    }
+    
+    function handleFileUpload(event) {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    updateGraph(data);
+                    showToast('Graph loaded successfully', 'success');
+                } catch (error) {
+                    showToast('Invalid JSON file', 'error');
+                }
+            };
+            reader.readAsText(file);
+        }
+    }
+    
+    function handleResize() {
+        const container = document.getElementById('graph-container');
+        const rect = container.getBoundingClientRect();
+        
+        svg.attr('width', rect.width)
+           .attr('height', rect.height);
+           
+        simulation.force('center', d3.forceCenter(rect.width / 2, rect.height / 2));
+        simulation.restart();
+    }
+    
+    // Drag functions
+    function dragstarted(event, d) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+    }
+    
+    function dragged(event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+    }
+    
+    function dragended(event, d) {
+        if (!event.active) simulation.alphaTarget(0);
+        d.fx = null;
+        d.fy = null;
+    }
+    
+    // Tooltip functions
+    function showTooltip(event, d) {
+        // Implementation for tooltip
+    }
+    
+    function hideTooltip() {
+        // Implementation for hiding tooltip
+    }
+});
+</script>
+{% endblock %}

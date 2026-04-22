@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TalkBot Dashboard - Clean Design</title>
+    <link rel="stylesheet" href="/static/css/clean-design-system.css">
+    <link rel="stylesheet" href="/static/css/clean-sliders.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="container nav-container">
+            <div class="nav-brand">TalkBot</div>
+            <div class="nav-menu">
+                <a href="/dashboard" class="nav-link active">Dashboard</a>
+                <a href="/settings" class="nav-link">Settings</a>
+                <a href="/analytics" class="nav-link">Analytics</a>
+                <a href="/memory" class="nav-link">Memory</a>
+                <a href="/visualizer" class="nav-link">Visualizer</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container" style="padding-top: var(--space-8); padding-bottom: var(--space-8);">
+        <!-- Page Header -->
+        <div class="mb-8">
+            <h1>Dashboard</h1>
+            <p>Monitor your bot's performance and activity</p>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="alert alert-success mb-6">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="spinner" style="border-top-color: var(--color-success);"></div>
+                    <span class="font-medium">Bot Active</span>
+                    <span class="text-sm text-muted">• Connected to Twitch</span>
+                </div>
+                <button class="btn btn-sm btn-ghost">View Logs</button>
+            </div>
+        </div>
+
+        <!-- Key Metrics Grid -->
+        <div class="grid grid-cols-4 mb-8">
+            <div class="metric-card">
+                <div class="metric-label">Messages Today</div>
+                <div class="metric-value">1,247</div>
+                <div class="metric-change positive">
+                    <span>↑ 12%</span>
+                    <span>from yesterday</span>
+                </div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Response Rate</div>
+                <div class="metric-value">68%</div>
+                <div class="metric-change positive">
+                    <span>↑ 5%</span>
+                    <span>from last hour</span>
+                </div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Avg Response Time</div>
+                <div class="metric-value">1.2s</div>
+                <div class="metric-change negative">
+                    <span>↑ 0.3s</span>
+                    <span>slower than avg</span>
+                </div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Active Users</div>
+                <div class="metric-value">42</div>
+                <div class="metric-change">
+                    <span class="text-muted">→ 0%</span>
+                    <span>stable</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Two Column Layout -->
+        <div class="grid grid-cols-2 gap-6 mb-8">
+            <!-- Activity Chart -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Activity Overview</h3>
+                    <select class="form-select" style="width: 120px;">
+                        <option>Last 7 days</option>
+                        <option>Last 30 days</option>
+                        <option>Last 3 months</option>
+                    </select>
+                </div>
+                <div class="card-body">
+                    <canvas id="activityChart" height="300"></canvas>
+                </div>
+            </div>
+
+            <!-- Response Distribution -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Response Distribution</h3>
+                    <span class="badge badge-info">Live</span>
+                </div>
+                <div class="card-body">
+                    <canvas id="responseChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Personality Settings Preview -->
+        <div class="card mb-8">
+            <div class="card-header">
+                <h3 class="card-title">Current Personality</h3>
+                <button class="btn btn-sm btn-secondary">Edit Settings</button>
+            </div>
+            <div class="card-body">
+                <div class="sliders-grid">
+                    <div class="slider-container personality-slider warmth">
+                        <div class="slider-header">
+                            <span class="slider-label">Warmth</span>
+                            <span class="slider-value">75%</span>
+                        </div>
+                        <div class="slider-wrapper">
+                            <div class="slider-progress" style="width: 75%;"></div>
+                            <input type="range" min="0" max="100" value="75" class="tbx-range" disabled>
+                        </div>
+                    </div>
+                    <div class="slider-container personality-slider energy">
+                        <div class="slider-header">
+                            <span class="slider-label">Energy</span>
+                            <span class="slider-value">60%</span>
+                        </div>
+                        <div class="slider-wrapper">
+                            <div class="slider-progress" style="width: 60%;"></div>
+                            <input type="range" min="0" max="100" value="60" class="tbx-range" disabled>
+                        </div>
+                    </div>
+                    <div class="slider-container personality-slider humor">
+                        <div class="slider-header">
+                            <span class="slider-label">Humor</span>
+                            <span class="slider-value">85%</span>
+                        </div>
+                        <div class="slider-wrapper">
+                            <div class="slider-progress" style="width: 85%;"></div>
+                            <input type="range" min="0" max="100" value="85" class="tbx-range" disabled>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Activity Table -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Recent Activity</h3>
+                <button class="btn btn-sm btn-ghost">View All</button>
+            </div>
+            <div class="table-container">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>User</th>
+                            <th>Message</th>
+                            <th>Response</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="text-muted">2 mins ago</td>
+                            <td>user123</td>
+                            <td>How's everyone doing today?</td>
+                            <td>Doing great! Hope you're having a good day too!</td>
+                            <td><span class="badge badge-success">Responded</span></td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">5 mins ago</td>
+                            <td>streamer456</td>
+                            <td>!stats</td>
+                            <td>Command processed</td>
+                            <td><span class="badge badge-info">Command</span></td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">8 mins ago</td>
+                            <td>viewer789</td>
+                            <td>Great stream!</td>
+                            <td>-</td>
+                            <td><span class="badge badge-default">Ignored</span></td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">12 mins ago</td>
+                            <td>chatter101</td>
+                            <td>What game is this?</td>
+                            <td>This is the new update that just dropped!</td>
+                            <td><span class="badge badge-success">Responded</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Clean chart configuration without excessive effects
+        const chartDefaults = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                    cornerRadius: 8,
+                    titleFont: {
+                        size: 14,
+                        weight: '600'
+                    },
+                    bodyFont: {
+                        size: 13
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        display: false,
+                        borderColor: 'rgba(255, 255, 255, 0.08)'
+                    },
+                    ticks: {
+                        color: '#a3a3a3',
+                        font: {
+                            size: 12
+                        }
+                    }
+                },
+                y: {
+                    grid: {
+                        color: 'rgba(255, 255, 255, 0.04)',
+                        borderColor: 'rgba(255, 255, 255, 0.08)'
+                    },
+                    ticks: {
+                        color: '#a3a3a3',
+                        font: {
+                            size: 12
+                        }
+                    }
+                }
+            }
+        };
+
+        // Activity Chart
+        const activityCtx = document.getElementById('activityChart').getContext('2d');
+        new Chart(activityCtx, {
+            type: 'line',
+            data: {
+                labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                datasets: [{
+                    label: 'Messages',
+                    data: [850, 920, 1100, 980, 1250, 1400, 1247],
+                    borderColor: '#8b5cf6',
+                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: '#8b5cf6',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2
+                }]
+            },
+            options: chartDefaults
+        });
+
+        // Response Distribution Chart
+        const responseCtx = document.getElementById('responseChart').getContext('2d');
+        new Chart(responseCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Responded', 'Ignored', 'Commands', 'Errors'],
+                datasets: [{
+                    data: [68, 24, 6, 2],
+                    backgroundColor: [
+                        '#10b981',
+                        '#737373',
+                        '#3b82f6',
+                        '#ef4444'
+                    ],
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                ...chartDefaults,
+                plugins: {
+                    ...chartDefaults.plugins,
+                    legend: {
+                        display: true,
+                        position: 'bottom',
+                        labels: {
+                            padding: 16,
+                            color: '#a3a3a3',
+                            font: {
+                                size: 12
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

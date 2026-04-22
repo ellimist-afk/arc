@@ -1,0 +1,295 @@
+{% extends "base-v2.html" %}
+
+{% block title %}System Health - {{ streamer_name or streamer_id }}{% endblock %}
+
+{% block head %}
+<!-- Load health component before Alpine initializes -->
+<script src="/static/v2/js/pages/health.js"></script>
+<style>
+    /* Health status specific styles */
+    .health-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: var(--tbx-spacing-lg);
+    }
+    
+    .service-status {
+        display: flex;
+        align-items: center;
+        justify-content: between;
+        padding: var(--tbx-spacing-md);
+        border-radius: var(--tbx-radius-sm);
+        transition: all var(--tbx-transition-fast);
+    }
+    
+    .service-status:hover {
+        background: rgba(255, 255, 255, 0.02);
+    }
+    
+    .response-time-bar {
+        height: 4px;
+        border-radius: 2px;
+        overflow: hidden;
+        background: var(--tbx-bg-tertiary);
+    }
+    
+    .response-time-fill {
+        height: 100%;
+        border-radius: 2px;
+        transition: width 0.3s ease;
+    }
+    
+    .chart-container {
+        position: relative;
+        height: 300px;
+        margin-top: var(--tbx-spacing-md);
+    }
+    
+    .metric-card {
+        text-align: center;
+        padding: var(--tbx-spacing-md);
+        border-radius: var(--tbx-radius-sm);
+        background: rgba(255, 255, 255, 0.02);
+    }
+    
+    .alert-item {
+        display: flex;
+        align-items: start;
+        gap: var(--tbx-spacing-sm);
+        padding: var(--tbx-spacing-md);
+        border-radius: var(--tbx-radius-sm);
+        border-left: 4px solid;
+    }
+    
+    .alert-critical {
+        border-color: var(--tbx-error);
+        background: rgba(255, 71, 87, 0.1);
+    }
+    
+    .alert-warning {
+        border-color: var(--tbx-warning);
+        background: rgba(255, 176, 32, 0.1);
+    }
+    
+    .alert-info {
+        border-color: var(--tbx-info);
+        background: rgba(59, 130, 246, 0.1);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div x-data="healthPage()" 
+     x-init="init('{{ streamer_id }}')"
+     data-ui-version="v2"
+     class="space-y-6">
+    
+    <!-- Page Header -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-3xl font-bold">System Health</h1>
+            <p class="text-secondary mt-1">Monitor system performance and service status</p>
+        </div>
+        
+        <!-- Health Status Overview -->
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 px-3 py-1 rounded-full"
+                 :class="overallHealth === 'healthy' ? 'bg-green-500/20' : overallHealth === 'warning' ? 'bg-yellow-500/20' : 'bg-red-500/20'">
+                <div class="w-2 h-2 rounded-full"
+                     :class="overallHealth === 'healthy' ? 'bg-green-500' : overallHealth === 'warning' ? 'bg-yellow-500' : 'bg-red-500'"></div>
+                <span class="text-sm font-medium"
+                      :class="overallHealth === 'healthy' ? 'text-green-400' : overallHealth === 'warning' ? 'text-yellow-400' : 'text-red-400'"
+                      x-text="overallHealth === 'healthy' ? 'All Systems Healthy' : overallHealth === 'warning' ? 'Some Issues Detected' : 'Critical Issues'">
+                    All Systems Healthy
+                </span>
+            </div>
+            
+            <button @click="refreshHealth()" 
+                    class="tbx-button tbx-button-secondary"
+                    :disabled="refreshing">
+                <svg class="w-4 h-4" :class="refreshing && 'animate-spin'" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+                </svg>
+                <span>Refresh</span>
+            </button>
+        </div>
+    </div>
+    
+    <!-- Main Health Grid -->
+    <div class="health-grid">
+        
+        <!-- System Services Status -->
+        <div class="tbx-card col-span-full lg:col-span-2">
+            <h2 class="text-lg font-semibold mb-4">Core Services</h2>
+            <div class="space-y-3">
+                <template x-for="service in services" :key="service.name">
+                    <div class="service-status">
+                        <div class="flex items-center gap-3 flex-1">
+                            <div class="w-3 h-3 rounded-full"
+                                 :class="{
+                                     'bg-green-500': service.status === 'healthy',
+                                     'bg-yellow-500': service.status === 'degraded', 
+                                     'bg-red-500': service.status === 'unhealthy'
+                                 }"></div>
+                            <div class="flex-1">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-medium" x-text="service.name"></span>
+                                    <span class="tbx-badge text-xs"
+                                          :class="{
+                                              'tbx-badge-success': service.status === 'healthy',
+                                              'tbx-badge-warning': service.status === 'degraded',
+                                              'tbx-badge-error': service.status === 'unhealthy'
+                                          }"
+                                          x-text="service.status">
+                                    </span>
+                                </div>
+                                <div class="flex items-center justify-between mt-1">
+                                    <span class="text-xs text-secondary" x-text="service.description"></span>
+                                    <span class="text-xs text-muted" x-text="service.responseTime + 'ms'"></span>
+                                </div>
+                                <div class="response-time-bar mt-2">
+                                    <div class="response-time-fill"
+                                         :class="{
+                                             'bg-green-500': service.responseTime < 100,
+                                             'bg-yellow-500': service.responseTime >= 100 && service.responseTime < 300,
+                                             'bg-red-500': service.responseTime >= 300
+                                         }"
+                                         :style="`width: ${Math.min(100, (service.responseTime / 500) * 100)}%`"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+        
+        <!-- Performance Metrics -->
+        <div class="tbx-card">
+            <h2 class="text-lg font-semibold mb-4">Performance Metrics</h2>
+            <div class="space-y-4">
+                <div class="metric-card">
+                    <div class="tbx-metric-value text-xl" x-text="performance.cpuUsage + '%'">0%</div>
+                    <div class="tbx-metric-label">CPU Usage</div>
+                </div>
+                <div class="metric-card">
+                    <div class="tbx-metric-value text-xl" x-text="performance.memoryUsage + '%'">0%</div>
+                    <div class="tbx-metric-label">Memory Usage</div>
+                </div>
+                <div class="metric-card">
+                    <div class="tbx-metric-value text-xl" x-text="performance.activeConnections">0</div>
+                    <div class="tbx-metric-label">Active Connections</div>
+                </div>
+                <div class="metric-card">
+                    <div class="tbx-metric-value text-xl" x-text="formatUptime(performance.uptime)">0m</div>
+                    <div class="tbx-metric-label">System Uptime</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Response Time Chart -->
+        <div class="tbx-card col-span-full">
+            <h2 class="text-lg font-semibold mb-4">Response Time Trends</h2>
+            <div class="chart-container">
+                <canvas id="responseTimeChart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Recent Alerts -->
+        <div class="tbx-card">
+            <h2 class="text-lg font-semibold mb-4">Recent Alerts</h2>
+            <div class="space-y-3 max-h-64 overflow-y-auto">
+                <template x-for="alert in recentAlerts" :key="alert.id">
+                    <div class="alert-item"
+                         :class="{
+                             'alert-critical': alert.severity === 'critical',
+                             'alert-warning': alert.severity === 'warning',
+                             'alert-info': alert.severity === 'info'
+                         }">
+                        <div class="flex-shrink-0 mt-1">
+                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path x-show="alert.severity === 'critical'" fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                                <path x-show="alert.severity === 'warning'" fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                                <path x-show="alert.severity === 'info'" fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm font-medium" x-text="alert.service"></span>
+                                <span class="text-xs text-muted" x-text="formatTime(alert.timestamp)"></span>
+                            </div>
+                            <p class="text-sm text-secondary mt-1" x-text="alert.message"></p>
+                        </div>
+                    </div>
+                </template>
+                
+                <div x-show="recentAlerts.length === 0" class="text-center py-8 text-secondary">
+                    <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                    </svg>
+                    <p>No recent alerts</p>
+                    <p class="text-sm text-muted">All systems operating normally</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Database Health -->
+        <div class="tbx-card">
+            <h2 class="text-lg font-semibold mb-4">Database Health</h2>
+            <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-secondary">Connection Pool</span>
+                    <span class="tbx-badge tbx-badge-success">Healthy</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-secondary">Active Connections</span>
+                    <span class="text-sm font-medium" x-text="database.activeConnections + '/' + database.maxConnections">5/20</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-secondary">Query Performance</span>
+                    <span class="text-sm font-medium" x-text="database.avgQueryTime + 'ms'">12ms</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-secondary">Storage Used</span>
+                    <span class="text-sm font-medium" x-text="database.storageUsed">245MB</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Memory System Health -->
+        <div class="tbx-card">
+            <h2 class="text-lg font-semibold mb-4">Memory System</h2>
+            <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-secondary">Memory System</span>
+                    <span class="tbx-badge tbx-badge-success">V2 Active</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-secondary">Storage Operations</span>
+                    <span class="text-sm font-medium" x-text="memory.operationsPerSecond + '/sec'">15/sec</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-secondary">Cache Hit Rate</span>
+                    <span class="text-sm font-medium" x-text="memory.cacheHitRate + '%'">87%</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-secondary">Task Registry</span>
+                    <span class="tbx-badge tbx-badge-success">Clean</span>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Health component is already loaded in head, just ensure it's registered
+    document.addEventListener('alpine:init', () => {
+        console.log('[Health] Alpine is initializing, healthPage available:', typeof healthPage !== 'undefined');
+        if (typeof healthPage !== 'undefined') {
+            Alpine.data('healthPage', healthPage);
+        }
+    });
+</script>
+{% endblock %}

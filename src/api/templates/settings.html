@@ -1,0 +1,3179 @@
+{% extends "base.html" %}
+
+{% block title %}TalkBot Settings - {{ streamer_id }}{% endblock %}
+
+{% block extra_styles %}
+<!-- V2 Design System Integration -->
+<link rel="stylesheet" href="/static/v2/css/design-tokens.css">
+<!-- Modal overlay fix -->
+<link rel="stylesheet" href="/static/css/modal-fix.css">
+<!-- Personality settings UX improvements -->
+<link rel="stylesheet" href="/static/css/personality-settings-ux-fixes.css">
+<!-- Unified slider progress fix - replaces all conflicting slider systems -->
+<link rel="stylesheet" href="/static/css/unified-slider-system.css">
+<!-- Preset card text overflow fixes -->
+<link rel="stylesheet" href="/static/css/preset-card-fixes.css">
+<!-- Card overlap prevention fixes -->
+<link rel="stylesheet" href="/static/css/card-overlap-fix.css">
+<style>
+/* Hide x-cloak elements until Alpine.js loads */
+[x-cloak] {
+    display: none !important;
+}
+
+/* EMERGENCY OVAL BLOCKER FIX - Enhanced for Advanced Settings */
+div[style*="border-radius: 50%"]:not(button):not(input):not([role]):not(.tbx-):not([class*="slider"]),
+div[style*="border-radius: 100%"]:not(button):not(input):not([role]),
+div[style*="rx="]:not(svg):not(path),
+div[style*="ellipse"]:not(svg):not(path),
+div[style*="width: 600px"][style*="height: 600px"],
+div[style*="width: 700px"][style*="height: 700px"], 
+div[style*="width: 800px"][style*="height: 800px"],
+*[style*="background: radial-gradient"][style*="circle"]:not(.tbx-):not([class*="gradient"]),
+*[style*="background-image: radial-gradient"][style*="ellipse"]:not(.tbx-),
+.modal-backdrop:not(.show),
+.modal-overlay:not(.show),
+div[style*="position: fixed"][style*="z-index: 9999"]:empty,
+div[style*="position: absolute"][style*="width: 100%"][style*="height: 100%"]:empty {
+    display: none !important;
+    pointer-events: none !important;
+    opacity: 0 !important;
+    z-index: -9999 !important;
+}
+
+/* Force content to be clickable */
+#advanced-section,
+#advanced-section *,
+.advanced-tab-content,
+.advanced-tab-content *,
+[x-show*="advanced"],
+[x-show*="advanced"] *,
+.model-selection-container,
+.model-selection-container *,
+.voice-ai-config,
+.voice-ai-config * {
+    position: relative !important;
+    z-index: 99999 !important;
+    pointer-events: auto !important;
+    background: var(--tbx-surface-base, rgba(20, 20, 30, 0.95)) !important;
+}
+
+/* Specifically ensure model cards are clickable */
+.model-card,
+.model-card *,
+.card .model-card,
+.card .model-card * {
+    position: relative !important;
+    z-index: 100000 !important;
+    pointer-events: auto !important;
+}
+
+/* TalkBot V2 Settings Page - Modern Design */
+:root {
+  /* Override with TalkBot V2 tokens */
+  --tbx-page-bg: var(--tbx-surface-base);
+  --tbx-card-bg: var(--tbx-surface-raised);
+  --tbx-card-elevated: var(--tbx-surface-elevated);
+  --tbx-glass-bg: rgba(28, 28, 38, 0.6);
+  --tbx-glass-border: rgba(232, 107, 215, 0.1);
+  
+  /* Model selection specific variables */
+  --tbx-brand-primary-alpha: rgba(232, 107, 215, 0.15);
+  --tbx-success-alpha: rgba(16, 185, 129, 0.15);
+  --tbx-info-alpha: rgba(59, 130, 246, 0.15);
+  --tbx-warning-alpha: rgba(251, 191, 36, 0.15);
+  --tbx-border-subtle: rgba(255, 255, 255, 0.05);
+  --tbx-turbo-orange: rgb(249, 115, 22);
+  --tbx-turbo-orange-light: rgb(251, 146, 60);
+  --tbx-turbo-orange-alpha: rgba(249, 115, 22, 0.1);
+}
+
+/* Turbo Mode Toggle Enhancements */
+.turbo-toggle-glow {
+  animation: turbo-glow 2s ease-in-out infinite;
+}
+
+@keyframes turbo-glow {
+  0%, 100% { box-shadow: 0 0 5px rgba(249, 115, 22, 0.5); }
+  50% { box-shadow: 0 0 20px rgba(249, 115, 22, 0.8), 0 0 30px rgba(249, 115, 22, 0.4); }
+}
+
+/* Enhanced model card hover for turbo-capable models */
+.model-card.turbo-capable {
+  transition: all 0.3s ease;
+}
+
+.model-card.turbo-capable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(249, 115, 22, 0.3);
+}
+
+/* Modern glass-morphism cards */
+.tbx-card {
+  background: linear-gradient(135deg, var(--tbx-card-bg) 0%, var(--tbx-card-elevated) 100%);
+  border: 1px solid var(--tbx-border-default);
+  border-radius: var(--tbx-radius-xl);
+  padding: var(--tbx-space-6);
+  box-shadow: var(--tbx-shadow-lg);
+  backdrop-filter: blur(12px);
+  transition: all var(--tbx-duration-normal) var(--tbx-ease-out-quad);
+}
+
+.tbx-card:hover {
+  border-color: var(--tbx-border-hover);
+  transform: translateY(-2px);
+  box-shadow: var(--tbx-shadow-xl), var(--tbx-shadow-glow);
+}
+
+/* Modern header styling */
+.tbx-header {
+  background: linear-gradient(135deg, var(--tbx-glass-bg) 0%, rgba(35, 35, 47, 0.4) 100%);
+  border: 1px solid var(--tbx-glass-border);
+  border-radius: var(--tbx-radius-2xl);
+  padding: var(--tbx-space-6);
+  backdrop-filter: blur(16px);
+  margin-bottom: var(--tbx-space-8);
+}
+
+.tbx-header h1 {
+  font-size: var(--tbx-text-3xl);
+  font-weight: var(--tbx-font-bold);
+  background: linear-gradient(135deg, var(--tbx-brand-primary), var(--tbx-brand-primary-light));
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  line-height: var(--tbx-leading-tight);
+}
+
+/* Preset button base styles are now in preset-card-fixes.css */
+
+/* Removed sliding line effect - replaced with clean hover glow */
+.tbx-preset-btn:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 25px rgba(232, 107, 215, 0.15), 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Preset button hover, active, and text styles are now in preset-card-fixes.css */
+  padding: 0 2px; /* Small horizontal padding to prevent edge touching */
+  word-wrap: break-word; /* Break long words if needed */
+  overflow-wrap: break-word; /* Modern alternative to word-wrap */
+  hyphens: manual; /* Only break at explicit hyphen points */
+  /* Single line with ellipsis for cleaner look */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Modern navigation buttons */
+.tbx-nav-btn {
+  background: linear-gradient(135deg, var(--tbx-brand-primary) 0%, var(--tbx-brand-primary-hover) 100%);
+  border: none;
+  border-radius: var(--tbx-radius-lg);
+  padding: var(--tbx-space-3) var(--tbx-space-4);
+  color: var(--tbx-white);
+  font-weight: var(--tbx-font-medium);
+  display: flex;
+  align-items: center;
+  gap: var(--tbx-space-2);
+  transition: all var(--tbx-duration-fast) var(--tbx-ease-spring);
+  cursor: pointer;
+  box-shadow: var(--tbx-shadow-md);
+}
+
+.tbx-nav-btn:hover {
+  background: linear-gradient(135deg, var(--tbx-brand-primary-hover) 0%, var(--tbx-brand-primary-active) 100%);
+  transform: translateY(-2px);
+  box-shadow: var(--tbx-shadow-lg), var(--tbx-shadow-glow);
+}
+
+.tbx-nav-btn.secondary {
+  background: linear-gradient(135deg, var(--tbx-neutral-700) 0%, var(--tbx-neutral-600) 100%);
+}
+
+.tbx-nav-btn.secondary:hover {
+  background: linear-gradient(135deg, var(--tbx-neutral-600) 0%, var(--tbx-neutral-500) 100%);
+}
+
+/* Status indicators */
+.tbx-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tbx-space-2);
+  padding: var(--tbx-space-2) var(--tbx-space-4);
+  border-radius: var(--tbx-radius-full);
+  font-size: var(--tbx-text-sm);
+  font-weight: var(--tbx-font-medium);
+  backdrop-filter: blur(8px);
+}
+
+.tbx-status.connected {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: var(--tbx-success);
+}
+
+.tbx-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: tbx-pulse 2s ease-in-out infinite;
+}
+
+/* Modern grid system */
+.tbx-grid {
+  display: grid;
+  gap: var(--tbx-space-6);
+}
+
+.tbx-grid-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+@media (max-width: 1024px) {
+  .tbx-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Typography improvements */
+.tbx-section-title {
+  font-size: var(--tbx-text-xl);
+  font-weight: var(--tbx-font-semibold);
+  color: var(--tbx-text-primary);
+  margin-bottom: var(--tbx-space-2);
+}
+
+.tbx-section-desc {
+  font-size: var(--tbx-text-sm);
+  color: var(--tbx-text-secondary);
+  line-height: var(--tbx-leading-relaxed);
+}
+
+/* Stats cards with modern styling */
+.tbx-stat-card {
+  text-align: center;
+  padding: var(--tbx-space-4);
+  border-radius: var(--tbx-radius-lg);
+  background: linear-gradient(135deg, var(--tbx-surface-elevated) 0%, var(--tbx-surface-hover) 100%);
+  border: 1px solid var(--tbx-border-default);
+  transition: all var(--tbx-duration-normal) var(--tbx-ease-out-quad);
+}
+
+.tbx-stat-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--tbx-brand-primary-light);
+  box-shadow: var(--tbx-shadow-md);
+}
+
+.tbx-stat-value {
+  font-size: var(--tbx-text-2xl);
+  font-weight: var(--tbx-font-bold);
+  line-height: var(--tbx-leading-tight);
+}
+
+.tbx-stat-label {
+  font-size: var(--tbx-text-xs);
+  color: var(--tbx-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: var(--tbx-space-1);
+}
+
+/* Enhanced Personality Sliders */
+.tbx-slider-container {
+  position: relative;
+  padding: var(--tbx-space-6) 0 var(--tbx-space-8) 0;
+  margin-top: var(--tbx-space-4);
+}
+
+.tbx-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 10px;
+  border-radius: var(--tbx-radius-full);
+  background: linear-gradient(135deg, var(--tbx-surface-elevated) 0%, var(--tbx-surface-hover) 100%);
+  outline: none;
+  transition: all var(--tbx-duration-fast) var(--tbx-ease-out);
+  cursor: pointer;
+  border: 1px solid var(--tbx-border-default);
+}
+
+.tbx-slider:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 0 0 4px rgba(232, 107, 215, 0.1);
+}
+
+.tbx-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--tbx-brand-primary) 0%, var(--tbx-brand-primary-hover) 100%);
+  cursor: pointer;
+  border: 3px solid var(--tbx-white);
+  box-shadow: var(--tbx-shadow-lg), 0 0 0 1px rgba(232, 107, 215, 0.3);
+  transition: all var(--tbx-duration-fast) var(--tbx-ease-spring);
+}
+
+.tbx-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: var(--tbx-shadow-glow), var(--tbx-shadow-lg), 0 0 0 2px rgba(232, 107, 215, 0.4);
+}
+
+.tbx-slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--tbx-brand-primary) 0%, var(--tbx-brand-primary-hover) 100%);
+  cursor: pointer;
+  border: 3px solid var(--tbx-white);
+  box-shadow: var(--tbx-shadow-lg), 0 0 0 1px rgba(232, 107, 215, 0.3);
+  transition: all var(--tbx-duration-fast) var(--tbx-ease-spring);
+}
+
+.tbx-slider::-moz-range-thumb:hover {
+  transform: scale(1.15);
+}
+
+.tbx-slider-bubble {
+  position: absolute;
+  top: -45px;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, var(--tbx-surface-elevated) 0%, var(--tbx-surface-overlay) 100%);
+  border: 1px solid var(--tbx-brand-primary);
+  border-radius: var(--tbx-radius-lg);
+  padding: var(--tbx-space-2) var(--tbx-space-3);
+  font-size: var(--tbx-text-sm);
+  font-weight: var(--tbx-font-semibold);
+  color: var(--tbx-brand-primary);
+  opacity: 0;
+  transition: opacity var(--tbx-duration-fast) var(--tbx-ease-out);
+  pointer-events: none;
+  box-shadow: var(--tbx-shadow-md);
+  backdrop-filter: blur(8px);
+}
+
+.tbx-slider-bubble::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--tbx-brand-primary);
+}
+
+.tbx-slider-container:hover .tbx-slider-bubble,
+.tbx-slider:focus + .tbx-slider-bubble {
+  opacity: 1;
+}
+
+.tbx-trait-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--tbx-space-2);
+}
+
+.tbx-trait-label {
+  font-size: var(--tbx-text-xs);
+  color: var(--tbx-text-muted);
+  font-weight: var(--tbx-font-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tbx-trait-group {
+  margin-bottom: var(--tbx-space-6);
+}
+
+.tbx-trait-title {
+  font-size: var(--tbx-text-sm);
+  font-weight: var(--tbx-font-semibold);
+  color: var(--tbx-text-primary);
+  margin-bottom: var(--tbx-space-3);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="min-h-screen" style="background: var(--tbx-surface-base);">
+<div class="container mx-auto px-6 py-8 space-y-8"
+     x-data="settingsPage('{{ streamer_id }}')"
+     x-init="init()"
+     hx-ext="ws"
+     hx-ws="connect:/ws/{{ streamer_id }}">
+
+    <!-- Modern Header -->
+    <header class="tbx-header">
+    <script src="/static/js/timer-cleanup-manager.js"></script>
+        <div class="flex items-center justify-between">
+            <div class="flex-1">
+                <h1 class="tbx-header h1 mb-3">TalkBot Dashboard</h1>
+                <p class="tbx-section-desc">Configure your AI co-host's personality, voice settings, and behavioral traits</p>
+            </div>
+            
+            <!-- Enhanced Connection Status -->
+            <div class="tbx-status connected">
+                <div class="tbx-status-dot"></div>
+                <span>Connected</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Modern Navigation Section -->
+    <section class="flex flex-wrap gap-4 mb-8">
+        <button onclick="window.open('/visualizer/{{ streamer_id }}', '_blank')" 
+                class="tbx-nav-btn">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+            </svg>
+            <span>TwitchLife Graph</span>
+        </button>
+        
+        <button onclick="window.location.href='/ui/v2/live/{{ streamer_id }}'" 
+                class="tbx-nav-btn secondary">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            <span>Live Controls</span>
+        </button>
+    </section>
+
+    <!-- Modern Status & Stats Section -->
+    <section class="tbx-grid tbx-grid-2">
+        <!-- Bot Status Card -->
+        <div class="tbx-card">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="tbx-section-title mb-1">Bot Status</h3>
+                    <p class="tbx-section-desc">Current operational state</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center justify-center py-6">
+                <div class="text-center">
+                    <div class="mb-4"
+                         :class="botStatus.running ? (connectionStatus === 'muted' ? 'tbx-status warning' : 'tbx-status connected') : 'tbx-status error'">
+                        <div class="tbx-status-dot"></div>
+                        <span class="font-semibold" x-text="botStatus.running ? (connectionStatus === 'muted' ? 'MUTED' : 'ACTIVE') : 'STOPPED'">STOPPED</span>
+                    </div>
+                    <p class="tbx-section-desc" 
+                       x-text="botStatus.running ? 'Co-host is ready to interact' : 'Start from Live Controls'">Co-host is currently stopped</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Session Stats Card -->
+        <div class="tbx-card">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="tbx-section-title mb-1">Session Stats</h3>
+                    <p class="tbx-section-desc">Real-time activity metrics</p>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-4">
+                <div class="tbx-stat-card">
+                    <div class="tbx-stat-value" style="color: var(--tbx-info);" x-text="botStatus.messages || 0">0</div>
+                    <div class="tbx-stat-label">Messages</div>
+                </div>
+                <div class="tbx-stat-card">
+                    <div class="tbx-stat-value" style="color: var(--tbx-warning);" x-text="botStatus.responses || 0">0</div>
+                    <div class="tbx-stat-label">Responses</div>
+                </div>
+                <div class="tbx-stat-card">
+                    <div class="tbx-stat-value" style="color: var(--tbx-success);" x-text="metrics.uniqueEngaged || 0">0</div>
+                    <div class="tbx-stat-label">Users Engaged</div>
+                </div>
+                <div class="tbx-stat-card">
+                    <div class="tbx-stat-value" style="color: var(--tbx-brand-primary);" x-text="formatUptime(botStatus.uptime)">0m</div>
+                    <div class="tbx-stat-label">Uptime</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Modern Personality Presets Section -->
+    <section class="tbx-card" :class="{'opacity-75 pointer-events-none': loadingStates.presets}">
+        <!-- Section Header -->
+        <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h2 class="tbx-section-title mb-2">Personality Presets</h2>
+                    <p class="tbx-section-desc">
+                        <span x-show="!selectedOverflowPersonality">Choose from carefully crafted personalities for instant setup</span>
+                        <span x-show="selectedOverflowPersonality" style="color: var(--tbx-text-muted);">Custom personality active • Presets temporarily dimmed</span>
+                    </p>
+                    
+                    <!-- Success Indicator -->
+                    <div x-show="savedPersonalities.length > 0" 
+                         x-transition:enter="transition ease-out duration-300"
+                         x-transition:enter-start="opacity-0 transform scale-95"
+                         x-transition:enter-end="opacity-100 transform scale-100"
+                         class="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full" 
+                         style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: var(--tbx-success);">
+                        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                        <span class="text-sm font-medium">Settings Saved</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Help Button -->
+            <button class="w-10 h-10 rounded-lg flex items-center justify-center transition-colors" 
+                    style="background: var(--tbx-surface-elevated); border: 1px solid var(--tbx-border-default); color: var(--tbx-text-secondary);"
+                    onmouseover="this.style.borderColor='var(--tbx-brand-primary)'; this.style.color='var(--tbx-text-primary)';"
+                    onmouseout="this.style.borderColor='var(--tbx-border-default)'; this.style.color='var(--tbx-text-secondary)';"
+                    title="Get help with personality presets">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Enhanced Personality Preset Grid -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-7 gap-3 mb-6">
+            <button class="tbx-preset-btn"
+                    @click="applyPreset('chill')"
+                    :class="{ 
+                        'active': activePersonality === 'chill' && !selectedOverflowPersonality,
+                        'opacity-50': selectedOverflowPersonality
+                    }"
+                    :title="activePersonality === 'chill' && !selectedOverflowPersonality ? 'Currently active' : 'Apply Chill personality'">
+                <span class="emoji">😎</span>
+                <span class="text-sm font-medium">Chill</span>
+            </button>
+            
+            <button class="tbx-preset-btn"
+                    @click="applyPreset('cozy')"
+                    :class="{ 
+                        'active': activePersonality === 'cozy' && !selectedOverflowPersonality,
+                        'opacity-50': selectedOverflowPersonality
+                    }"
+                    :title="activePersonality === 'cozy' && !selectedOverflowPersonality ? 'Currently active' : 'Apply Cozy personality'">
+                <span class="emoji">☕</span>
+                <span class="text-sm font-medium">Cozy</span>
+            </button>
+            
+            <button class="tbx-preset-btn"
+                    @click="applyPreset('roast')"
+                    :class="{ 
+                        'active': activePersonality === 'roast' && !selectedOverflowPersonality,
+                        'opacity-50': selectedOverflowPersonality
+                    }"
+                    :title="activePersonality === 'roast' && !selectedOverflowPersonality ? 'Currently active' : 'Apply Roast personality'">
+                <span class="emoji">🔥</span>
+                <span class="text-sm font-medium">Roast</span>
+            </button>
+            
+            <button class="tbx-preset-btn"
+                    @click="applyPreset('hype')"
+                    :class="{ 
+                        'active': activePersonality === 'hype' && !selectedOverflowPersonality,
+                        'opacity-50': selectedOverflowPersonality
+                    }"
+                    :title="activePersonality === 'hype' && !selectedOverflowPersonality ? 'Currently active' : 'Apply Hype personality'">
+                <span class="emoji">⚡</span>
+                <span class="text-sm font-medium">Hype</span>
+            </button>
+            
+            <button class="tbx-preset-btn"
+                    @click="applyPreset('sage')"
+                    :class="{ 
+                        'active': activePersonality === 'sage' && !selectedOverflowPersonality,
+                        'opacity-50': selectedOverflowPersonality
+                    }"
+                    :title="activePersonality === 'sage' && !selectedOverflowPersonality ? 'Currently active' : 'Apply Wise personality'">
+                <span class="emoji">🧙</span>
+                <span class="text-sm font-medium">Wise</span>
+            </button>
+            
+            <button class="tbx-preset-btn"
+                    @click="applyPreset('chaos_goblin')"
+                    :class="{ 
+                        'active': activePersonality === 'chaos_goblin' && !selectedOverflowPersonality,
+                        'opacity-50': selectedOverflowPersonality
+                    }"
+                    :title="activePersonality === 'chaos_goblin' && !selectedOverflowPersonality ? 'Currently active' : 'Apply Chaos personality'">
+                <span class="emoji">😈</span>
+                <span class="text-sm font-medium">Chaos</span>
+            </button>
+            
+            <button class="tbx-preset-btn"
+                    @click="showCustomPresetModal = true"
+                    :class="{ 
+                        'active': activePersonality === 'custom' || selectedOverflowPersonality
+                    }"
+                    :title="activePersonality === 'custom' || selectedOverflowPersonality ? 'Currently active - Custom personality' : 'Create custom personality'">
+                <span class="emoji">⭐</span>
+                <span class="text-sm font-medium">Custom</span>
+                <span x-show="savedPersonalities.some(p => p.sourceName === 'custom')" 
+                      class="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center text-white text-xs">
+                    ✓
+                </span>
+            </button>
+        </div>
+
+        <!-- Advanced Personality Explorer -->
+        <div class="mt-6 p-6 rounded-xl border transition-all duration-300"
+             style="background: linear-gradient(135deg, var(--tbx-surface-elevated) 0%, var(--tbx-surface-raised) 100%); border-color: var(--tbx-border-default);"
+             :class="{'border-accent': selectedOverflowPersonality}"
+             x-bind:style="selectedOverflowPersonality ? 'border-color: var(--tbx-brand-primary) !important; box-shadow: 0 0 20px rgba(232, 107, 215, 0.1);' : ''">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-lg">
+                        🎭
+                    </div>
+                    <div>
+                        <label class="text-sm font-semibold" style="color: var(--tbx-text-primary);">Advanced Personalities</label>
+                        <span x-show="selectedOverflowPersonality" 
+                              x-transition:enter="transition ease-out duration-200"
+                              x-transition:enter-start="opacity-0 scale-95"
+                              x-transition:enter-end="opacity-100 scale-100"
+                              class="ml-2 inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium"
+                              style="background: rgba(16, 185, 129, 0.15); color: var(--tbx-success); border: 1px solid rgba(16, 185, 129, 0.3);">
+                            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                            </svg>
+                            ACTIVE
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="text-xs px-3 py-1 rounded-full" 
+                     style="background: var(--tbx-surface-hover); color: var(--tbx-text-secondary); border: 1px solid var(--tbx-border-default);"
+                     x-bind:style="selectedOverflowPersonality ? 'background: rgba(16, 185, 129, 0.1); color: var(--tbx-success); border-color: var(--tbx-success);' : ''">
+                    <span x-show="!selectedOverflowPersonality">Explore</span>
+                    <span x-show="selectedOverflowPersonality">Active</span>
+                </div>
+            </div>
+                
+                <!-- Active Custom Personality Display -->
+                <div x-show="selectedOverflowPersonality" 
+                     x-transition:enter="transition ease-out duration-300"
+                     x-transition:enter-start="opacity-0 transform scale-95"
+                     x-transition:enter-end="opacity-100 transform scale-100"
+                     class="mb-4 p-3 bg-accent/10 border-2 border-accent/30 rounded-lg">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-accent rounded-full flex items-center justify-center">
+                                <span class="text-white font-bold text-lg">🎭</span>
+                            </div>
+                            <div>
+                                <h4 class="text-accent font-semibold">Currently Active:</h4>
+                                <p class="text-white font-medium" x-text="getActivePersonalityName()"></p>
+                            </div>
+                        </div>
+                        <div class="status-dot bg-success"></div>
+                    </div>
+                </div>
+                
+            <!-- Modern Dropdown Selector -->
+            <select class="w-full p-4 rounded-lg border transition-all duration-300 appearance-none bg-no-repeat bg-right"
+                    style="background-color: var(--tbx-surface-raised); border-color: var(--tbx-border-default); color: var(--tbx-text-primary); background-image: url('data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 20 20\'%3E%3Cpath stroke=\'%236b7280\' stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1.5\' d=\'M6 8l4 4 4-4\'/%3E%3C/svg%3E'); background-size: 1.5em 1.5em; background-position: right 1rem center; padding-right: 3rem;"
+                    x-model="selectedOverflowPersonality"
+                    @change="applyOverflowPersonality()"
+                    x-init="loadAllPersonalities()"
+                    onmouseover="this.style.borderColor='var(--tbx-brand-primary)'; this.style.boxShadow='0 0 0 1px rgba(232, 107, 215, 0.2)'"
+                    onmouseout="this.style.borderColor='var(--tbx-border-default)'; this.style.boxShadow='none'"
+                    onfocus="this.style.borderColor='var(--tbx-brand-primary)'; this.style.boxShadow='0 0 0 2px rgba(232, 107, 215, 0.2)'"
+                    onblur="this.style.borderColor='var(--tbx-border-default)'; this.style.boxShadow='none'"
+                    :class="{'border-accent': selectedOverflowPersonality}">
+                <option value="">Choose a unique personality...</option>
+                <template x-for="personality in overflowPersonalities" :key="personality.id">
+                    <option :value="personality.id" x-text="`${personality.emoji} ${personality.name}`"></option>
+                </template>
+            </select>
+            
+            <p class="mt-3 text-sm" style="color: var(--tbx-text-secondary); line-height: 1.5;">
+                <span x-show="!selectedOverflowPersonality">Discover carefully crafted AI personalities that bring unique character to your stream</span>
+                <span x-show="selectedOverflowPersonality" style="color: var(--tbx-brand-primary);">
+                    <strong x-text="getActivePersonalityName()"></strong> is now actively controlling your bot's personality traits
+                </span>
+            </p>
+            </div>
+
+
+        <!-- Recent Saved Personalities -->
+        <div x-show="savedPersonalities.length > 0" 
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="opacity-0 transform scale-95"
+             x-transition:enter-end="opacity-100 transform scale-100"
+             class="mt-6 p-4 rounded-xl border"
+             style="background: linear-gradient(135deg, var(--tbx-surface-hover) 0%, var(--tbx-surface-raised) 100%); border-color: var(--tbx-border-default);">
+            <div class="flex items-center gap-2 mb-4">
+                <svg class="w-5 h-5" style="color: var(--tbx-brand-primary);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <h4 class="text-sm font-semibold" style="color: var(--tbx-text-primary);">Recently Saved</h4>
+            </div>
+            
+            <div class="space-y-2">
+                <template x-for="personality in savedPersonalities.slice(-3).reverse()" :key="personality.id">
+                    <div class="flex items-center justify-between p-3 rounded-lg border transition-all duration-200"
+                         style="background: var(--tbx-surface-elevated); border-color: var(--tbx-border-default);"
+                         onmouseover="this.style.borderColor='var(--tbx-brand-primary-light)'; this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(0, 0, 0, 0.15)'"
+                         onmouseout="this.style.borderColor='var(--tbx-border-default)'; this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                        <div class="flex items-center gap-3">
+                            <div class="w-3 h-3 rounded-full" 
+                                 :class="personality.active ? 'bg-success' : 'bg-neutral-400'"
+                                 :style="personality.active ? 'background: var(--tbx-success);' : 'background: var(--tbx-neutral-500);'"></div>
+                            <span x-text="personality.name" class="text-sm font-medium" style="color: var(--tbx-text-primary);"></span>
+                        </div>
+                        <button @click="applyPreset(personality.sourceName)" 
+                                x-show="!personality.active"
+                                class="px-3 py-1 text-xs rounded-lg border transition-colors"
+                                style="background: var(--tbx-surface-raised); border-color: var(--tbx-border-default); color: var(--tbx-text-secondary);"
+                                onmouseover="this.style.borderColor='var(--tbx-brand-primary)'; this.style.color='var(--tbx-brand-primary)'"
+                                onmouseout="this.style.borderColor='var(--tbx-border-default)'; this.style.color='var(--tbx-text-secondary)'">
+                            Apply
+                        </button>
+                        <span x-show="personality.active" 
+                              class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium"
+                              style="background: rgba(16, 185, 129, 0.15); color: var(--tbx-success); border: 1px solid rgba(16, 185, 129, 0.3);">
+                            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                            </svg>
+                            Active
+                        </span>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </section>
+
+    <!-- Modern Personality Fine-Tuning Section -->
+    <section class="tbx-card" :class="{'opacity-50 pointer-events-none': loadingStates.personality}">
+        <!-- Enhanced Section Header -->
+        <div class="flex items-center justify-between mb-8">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"/>
+                    </svg>
+                </div>
+                <div>
+                    <h2 class="tbx-section-title mb-2">Fine-Tune Personality</h2>
+                    <p class="tbx-section-desc">Precisely adjust individual personality traits to craft your perfect AI co-host</p>
+                </div>
+            </div>
+            
+            <!-- Enhanced Loading Indicator -->
+            <div x-show="loadingStates.personality" 
+                 x-transition:enter="transition ease-out duration-300"
+                 x-transition:enter-start="opacity-0 scale-95"
+                 x-transition:enter-end="opacity-100 scale-100"
+                 class="w-8 h-8 rounded-lg flex items-center justify-center"
+                 style="background: var(--tbx-surface-elevated); border: 1px solid var(--tbx-border-default);">
+                <div class="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" style="color: var(--tbx-brand-primary);"></div>
+            </div>
+        </div>
+        
+        <!-- Modern Sliders Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8" :class="{'opacity-50 pointer-events-none': isLoading}">
+            <!-- Warmth Trait -->
+            <div class="tbx-trait-group">
+                <label class="tbx-trait-title">Warmth & Empathy</label>
+                <div class="tbx-slider-container trait-warmth">
+                    <input type="range"
+                           class="tbx-slider"
+                           min="0"
+                           max="1"
+                           step="0.05"
+                           x-model="traits.warmth"
+                           @input="debounceTraitsUpdate(); updateSliderVisual($el, $el.value)"
+                           x-init="$nextTick(() => updateSliderVisual($el, traits.warmth || 0.65))"
+                           aria-label="Warmth personality trait"
+                           role="slider"
+                           :aria-valuenow="Math.round((traits.warmth || 0.65) * 100)"
+                           aria-valuemin="0"
+                           aria-valuemax="100"
+                           >
+                    <div class="tbx-slider-bubble slider-value-bubble" 
+                         :style="'left: ' + ((traits.warmth || 0.65) * 100) + '%'">
+                        <span x-text="Math.round((traits.warmth || 0.65) * 100) + '%'"></span>
+                    </div>
+                </div>
+                <div class="tbx-trait-labels">
+                    <span class="tbx-trait-label">Analytical</span>
+                    <span class="tbx-trait-label">Empathetic</span>
+                </div>
+            </div>
+
+            <!-- Energy Trait -->
+            <div class="tbx-trait-group">
+                <label class="tbx-trait-title">Energy & Enthusiasm</label>
+                <div class="tbx-slider-container trait-energy">
+                    <input type="range"
+                           class="tbx-slider"
+                           min="0"
+                           max="1"
+                           step="0.05"
+                           x-model="traits.energy"
+                           @input="debounceTraitsUpdate(); updateSliderVisual($el, $el.value)"
+                           x-init="$nextTick(() => updateSliderVisual($el, traits.energy || 0.65))"
+                           aria-label="Energy personality trait"
+                           role="slider"
+                           :aria-valuenow="Math.round((traits.energy || 0.65) * 100)"
+                           aria-valuemin="0"
+                           aria-valuemax="100"
+                           >
+                    <div class="tbx-slider-bubble slider-value-bubble" 
+                         :style="'left: ' + ((traits.energy || 0.65) * 100) + '%'">
+                        <span x-text="Math.round((traits.energy || 0.65) * 100) + '%'"></span>
+                    </div>
+                </div>
+                <div class="tbx-trait-labels">
+                    <span class="tbx-trait-label">Mellow</span>
+                    <span class="tbx-trait-label">Energetic</span>
+                </div>
+            </div>
+
+            <!-- Humor Trait -->
+            <div class="tbx-trait-group">
+                <label class="tbx-trait-title">Humor & Playfulness</label>
+                <div class="tbx-slider-container trait-humor">
+                    <input type="range"
+                           class="tbx-slider"
+                           min="0"
+                           max="1"
+                           step="0.05"
+                           x-model="traits.humor"
+                           @input="debounceTraitsUpdate(); updateSliderVisual($el, $el.value)"
+                           x-init="$nextTick(() => updateSliderVisual($el, traits.humor || 0.55))"
+                           aria-label="Humor personality trait"
+                           role="slider"
+                           :aria-valuenow="Math.round((traits.humor || 0.55) * 100)"
+                           aria-valuemin="0"
+                           aria-valuemax="100"
+                           >
+                    <div class="tbx-slider-bubble slider-value-bubble" 
+                         :style="'left: ' + ((traits.humor || 0.55) * 100) + '%'">
+                        <span x-text="Math.round((traits.humor || 0.55) * 100) + '%'"></span>
+                    </div>
+                </div>
+                <div class="tbx-trait-labels">
+                    <span class="tbx-trait-label">Professional</span>
+                    <span class="tbx-trait-label">Playful</span>
+                </div>
+            </div>
+
+            <!-- Sass Trait -->
+            <div class="tbx-trait-group">
+                <label class="tbx-trait-title">Sass & Attitude</label>
+                <div class="tbx-slider-container trait-sass">
+                    <input type="range"
+                           class="tbx-slider"
+                           min="0"
+                           max="1"
+                           step="0.05"
+                           x-model="traits.sass"
+                           @input="debounceTraitsUpdate(); updateSliderVisual($el, $el.value)"
+                           x-init="$nextTick(() => updateSliderVisual($el, traits.sass || 0.45))"
+                           aria-label="Sass personality trait"
+                           role="slider"
+                           :aria-valuenow="Math.round((traits.sass || 0.45) * 100)"
+                           aria-valuemin="0"
+                           aria-valuemax="100"
+                           >
+                    <div class="tbx-slider-bubble slider-value-bubble" 
+                         :style="'left: ' + ((traits.sass || 0.45) * 100) + '%'">
+                        <span x-text="Math.round((traits.sass || 0.45) * 100) + '%'"></span>
+                    </div>
+                </div>
+                <div class="tbx-trait-labels">
+                    <span class="tbx-trait-label">Respectful</span>
+                    <span class="tbx-trait-label">Sassy</span>
+                </div>
+            </div>
+
+            <!-- Verbosity Trait -->
+            <div class="tbx-trait-group">
+                <label class="tbx-trait-title">Response Length</label>
+                <div class="tbx-slider-container trait-verbosity">
+                    <input type="range"
+                           class="tbx-slider"
+                           min="0"
+                           max="1"
+                           step="0.05"
+                           x-model="traits.verbosity"
+                           @input="debounceTraitsUpdate(); updateSliderVisual($el, $el.value)"
+                           x-init="$nextTick(() => updateSliderVisual($el, traits.verbosity || 0.50))"
+                           aria-label="Response length personality trait"
+                           role="slider"
+                           :aria-valuenow="Math.round((traits.verbosity || 0.50) * 100)"
+                           aria-valuemin="0"
+                           aria-valuemax="100"
+                           >
+                    <div class="tbx-slider-bubble slider-value-bubble" 
+                         :style="'left: ' + ((traits.verbosity || 0.50) * 100) + '%'">
+                        <span x-text="Math.round((traits.verbosity || 0.50) * 100) + '%'"></span>
+                    </div>
+                </div>
+                <div class="tbx-trait-labels">
+                    <span class="tbx-trait-label">Concise</span>
+                    <span class="tbx-trait-label">Elaborate</span>
+                </div>
+            </div>
+
+            <!-- Personality Balance Trait (new addition) -->
+            <div class="tbx-trait-group lg:col-span-2">
+                <div class="flex items-center gap-2 mb-4">
+                    <svg class="w-5 h-5" style="color: var(--tbx-brand-primary);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                    <span class="text-sm font-semibold" style="color: var(--tbx-text-primary);">Personality Balance</span>
+                </div>
+                <div class="grid grid-cols-5 gap-2 text-center text-xs" style="color: var(--tbx-text-secondary);">
+                    <div class="p-2 rounded" style="background: var(--tbx-surface-elevated);">
+                        <div class="font-medium mb-1">Warmth</div>
+                        <div class="text-lg" x-text="Math.round((traits.warmth || 0.65) * 100) + '%'" style="color: var(--tbx-brand-primary);">65%</div>
+                    </div>
+                    <div class="p-2 rounded" style="background: var(--tbx-surface-elevated);">
+                        <div class="font-medium mb-1">Energy</div>
+                        <div class="text-lg" x-text="Math.round((traits.energy || 0.65) * 100) + '%'" style="color: var(--tbx-brand-primary);">65%</div>
+                    </div>
+                    <div class="p-2 rounded" style="background: var(--tbx-surface-elevated);">
+                        <div class="font-medium mb-1">Humor</div>
+                        <div class="text-lg" x-text="Math.round((traits.humor || 0.55) * 100) + '%'" style="color: var(--tbx-brand-primary);">55%</div>
+                    </div>
+                    <div class="p-2 rounded" style="background: var(--tbx-surface-elevated);">
+                        <div class="font-medium mb-1">Sass</div>
+                        <div class="text-lg" x-text="Math.round((traits.sass || 0.45) * 100) + '%'" style="color: var(--tbx-brand-primary);">45%</div>
+                    </div>
+                    <div class="p-2 rounded" style="background: var(--tbx-surface-elevated);">
+                        <div class="font-medium mb-1">Length</div>
+                        <div class="text-lg" x-text="Math.round((traits.verbosity || 0.50) * 100) + '%'" style="color: var(--tbx-brand-primary);">50%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- Modern Save Section -->
+        <div class="mt-10 p-6 rounded-xl border" 
+             style="background: linear-gradient(135deg, var(--tbx-surface-elevated) 0%, var(--tbx-surface-overlay) 100%); border-color: var(--tbx-border-default);">
+            <div class="flex items-center justify-between">
+                <!-- Status & Instructions -->
+                <div class="flex-1">
+                    <div class="flex items-center gap-3 mb-2">
+                        <!-- Unsaved Changes Indicator -->
+                        <div x-show="traitsChanged" 
+                             x-transition:enter="transition ease-out duration-200"
+                             x-transition:enter-start="opacity-0 scale-95"
+                             x-transition:enter-end="opacity-100 scale-100"
+                             class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium"
+                             style="background: rgba(251, 191, 36, 0.15); border: 1px solid rgba(251, 191, 36, 0.3); color: var(--tbx-warning);">
+                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                            </svg>
+                            <span>Unsaved Changes</span>
+                        </div>
+                        
+                        <!-- Saved Confirmation -->
+                        <div x-show="traitsSaved" 
+                             x-transition:enter="transition ease-out duration-300"
+                             x-transition:enter-start="opacity-0 scale-95"
+                             x-transition:enter-end="opacity-100 scale-100"
+                             class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium"
+                             style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); color: var(--tbx-success);">
+                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                            </svg>
+                            <span>Settings Saved!</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Quick Tip -->
+                    <div class="flex items-center gap-2">
+                        <svg class="w-4 h-4" style="color: var(--tbx-text-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <p class="text-sm" style="color: var(--tbx-text-muted);">Press <kbd class="px-1.5 py-0.5 text-xs rounded" style="background: var(--tbx-surface-raised); border: 1px solid var(--tbx-border-default);">Ctrl+S</kbd> to save quickly</p>
+                    </div>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="flex items-center gap-3">
+                    <!-- Reload Button -->
+                    <button class="w-10 h-10 rounded-lg border transition-all duration-200 flex items-center justify-center"
+                            style="background: var(--tbx-surface-raised); border-color: var(--tbx-border-default); color: var(--tbx-text-secondary);"
+                            @click="loadCurrentPersonality()"
+                            :disabled="isLoading"
+                            title="Reload settings from server"
+                            onmouseover="this.style.borderColor='var(--tbx-brand-primary)'; this.style.color='var(--tbx-brand-primary)'; this.style.transform='translateY(-1px)'"
+                            onmouseout="this.style.borderColor='var(--tbx-border-default)'; this.style.color='var(--tbx-text-secondary)'; this.style.transform='translateY(0)'">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+                        </svg>
+                    </button>
+                    
+                    <!-- Save Button -->
+                    <button class="px-6 py-3 rounded-lg border transition-all duration-200 flex items-center gap-3 font-medium"
+                            style="background: linear-gradient(135deg, var(--tbx-brand-primary) 0%, var(--tbx-brand-primary-hover) 100%); border-color: var(--tbx-brand-primary); color: var(--tbx-white);"
+                            @click="saveTraits()"
+                            :disabled="!traitsChanged || isLoading"
+                            x-bind:style="(!traitsChanged || isLoading) ? 'opacity: 0.5; cursor: not-allowed; background: var(--tbx-neutral-600); border-color: var(--tbx-neutral-600);' : ''"
+                            onmouseover="if (!this.disabled) { this.style.transform='translateY(-2px)'; this.style.boxShadow='var(--tbx-shadow-glow), var(--tbx-shadow-lg)'; }"
+                            onmouseout="if (!this.disabled) { this.style.transform='translateY(0)'; this.style.boxShadow='none'; }">
+                        <svg class="w-5 h-5" x-show="!isLoading" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M7.707 10.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V6h5a2 2 0 012 2v7a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2h5v5.586l-1.293-1.293zM9 4a1 1 0 012 0v2H9V4z"/>
+                        </svg>
+                        <div class="w-5 h-5" x-show="isLoading">
+                            <div class="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                        <span x-show="!isLoading">Save Personality</span>
+                        <span x-show="isLoading">Saving...</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Voice & AI Configuration -->
+    <div class="card">
+        <div class="flex items-center justify-between mb-6">
+            <div>
+                <h2 class="text-xl font-semibold mb-2">Voice & AI Configuration</h2>
+                <p class="text-secondary text-sm">Configure advanced voice and AI response settings</p>
+            </div>
+        </div>
+
+        <!-- Modern AI Model Selection -->
+        <div class="tbx-card mb-6" x-data="{
+            currentModel: $data.model || 'gpt-4o-mini',
+            showComparison: false,
+            loading: false,
+            hasChanges: false,
+            modelManagerReady: false,
+            
+            get modelConfig() {
+                // Return fallback models if ModelManager isn't ready yet
+                if (!window.modelManagerInstance?.modelConfig || Object.keys(window.modelManagerInstance.modelConfig).length === 0) {
+                    return {
+                        'gpt-4o-mini': {
+                            name: 'GPT-4o Mini',
+                            provider: 'openai',
+                            cost: '$',
+                            speed: 'Very Fast',
+                            quality: 'Good',
+                            features: ['chat', 'voice'],
+                            description: 'Best value option - fast and affordable',
+                            icon: 'Fast',
+                            category: 'cloud',
+                            recommended: 'budget'
+                        },
+                        'gpt-4o': {
+                            name: 'GPT-4o',
+                            provider: 'openai',
+                            cost: '$$$',
+                            speed: 'Fast',
+                            quality: 'Excellent',
+                            features: ['chat', 'voice', 'realtime', 'vision'],
+                            description: 'Most capable model with realtime support',
+                            icon: 'Premium',
+                            category: 'cloud',
+                            recommended: 'premium'
+                        },
+                        'claude-3-5-sonnet-20241022': {
+                            name: 'Claude 3.5 Sonnet (Latest)',
+                            provider: 'anthropic',
+                            cost: '$$',
+                            speed: 'Fast',
+                            quality: 'Excellent',
+                            features: ['chat', 'vision', 'coding'],
+                            description: 'Most advanced Claude model',
+                            icon: 'Best',
+                            category: 'cloud',
+                            recommended: 'quality'
+                        },
+                        'claude-3-5-haiku-20241022': {
+                            name: 'Claude 3.5 Haiku',
+                            provider: 'anthropic',
+                            cost: '$',
+                            speed: 'Very Fast',
+                            quality: 'Good',
+                            features: ['chat'],
+                            description: 'Lightning fast responses',
+                            icon: 'Speed',
+                            category: 'cloud',
+                            recommended: 'speed'
+                        },
+                        'grok-2-1212': {
+                            name: 'Grok 2',
+                            provider: 'xai',
+                            cost: '$$$',
+                            speed: 'Fast',
+                            quality: 'Excellent',
+                            features: ['chat', 'realtime-data'],
+                            description: 'Real-time knowledge with personality',
+                            icon: 'Hot',
+                            category: 'cloud'
+                        },
+                        'gemini-1.5-pro': {
+                            name: 'Gemini 1.5 Pro',
+                            provider: 'google',
+                            cost: '$$',
+                            speed: 'Medium',
+                            quality: 'Excellent',
+                            features: ['chat', 'vision', 'long-context'],
+                            description: 'Google\'s most capable model',
+                            icon: 'Pro',
+                            category: 'cloud'
+                        },
+                        'gemini-1.5-flash': {
+                            name: 'Gemini 1.5 Flash',
+                            provider: 'google',
+                            cost: '$',
+                            speed: 'Very Fast',
+                            quality: 'Good',
+                            features: ['chat', 'vision'],
+                            description: 'Fast and efficient responses',
+                            icon: 'Fast',
+                            category: 'cloud'
+                        },
+                        'gpt-4-turbo': {
+                            name: 'GPT-4 Turbo',
+                            provider: 'openai',
+                            cost: '$$',
+                            speed: 'Medium',
+                            quality: 'Excellent',
+                            features: ['chat', 'voice', 'vision'],
+                            description: 'Powerful reasoning and analysis',
+                            icon: 'Smart',
+                            category: 'cloud'
+                        },
+                        'claude-3-opus-20240229': {
+                            name: 'Claude 3 Opus',
+                            provider: 'anthropic',
+                            cost: '$$$$',
+                            speed: 'Slow',
+                            quality: 'Exceptional',
+                            features: ['chat', 'vision', 'coding'],
+                            description: 'Most intelligent Claude model',
+                            icon: 'Top',
+                            category: 'cloud'
+                        },
+                        'claude-3-sonnet-20240229': {
+                            name: 'Claude 3 Sonnet',
+                            provider: 'anthropic',
+                            cost: '$$',
+                            speed: 'Medium',
+                            quality: 'Very Good',
+                            features: ['chat', 'vision'],
+                            description: 'Balanced Claude model',
+                            icon: 'Art',
+                            category: 'cloud'
+                        },
+                        'grok-2-vision-1212': {
+                            name: 'Grok 2 Vision',
+                            provider: 'xai',
+                            cost: '$$$',
+                            speed: 'Medium',
+                            quality: 'Excellent',
+                            features: ['chat', 'vision', 'realtime-data'],
+                            description: 'Grok with image understanding',
+                            icon: 'Vision',
+                            category: 'cloud'
+                        },
+                        'gpt-3.5-turbo': {
+                            name: 'GPT-3.5 Turbo',
+                            provider: 'openai',
+                            cost: '$',
+                            speed: 'Very Fast',
+                            quality: 'Good',
+                            features: ['chat'],
+                            description: 'Legacy model for basic tasks',
+                            icon: 'Basic',
+                            category: 'cloud'
+                        },
+                        'gpt-4o-realtime-preview': {
+                            name: 'GPT-4o Realtime',
+                            provider: 'openai',
+                            cost: '$$$$',
+                            speed: 'Instant',
+                            quality: 'Excellent',
+                            features: ['chat', 'voice', 'realtime'],
+                            description: 'Ultra-low latency voice conversations',
+                            icon: 'Fast',
+                            category: 'cloud',
+                            recommended: 'realtime'
+                        }
+                    };
+                }
+                return window.modelManagerInstance.modelConfig;
+            },
+            
+            getModelName(modelId) {
+                return this.modelConfig[modelId]?.name || modelId;
+            },
+            
+            getModelInfo(modelId) {
+                return this.modelConfig[modelId] || {};
+            },
+            
+            supportsRealtime(modelId) {
+                return this.modelConfig[modelId]?.features?.includes('realtime') || false;
+            },
+            
+            supportsVoice(modelId) {
+                return this.modelConfig[modelId]?.features?.includes('voice') || false;
+            },
+            
+            async saveModel() {
+                if (this.loading) return;
+                
+                this.loading = true;
+                try {
+                    await window.SettingsApiService.saveModel(
+                        window.StateManager.state.streamerId,
+                        this.currentModel
+                    );
+                    
+                    // Update parent component
+                    $data.model = this.currentModel;
+                    
+                    // Update StateManager
+                    window.StateManager.setState('models.current', this.currentModel);
+                    
+                    window.showToast('Model updated successfully', 'success');
+                    
+                    // Check if realtime should be disabled
+                    if (!this.supportsRealtime(this.currentModel) && $data.realtimeEnabled) {
+                        $data.realtimeEnabled = false;
+                        window.StateManager.setState('models.realtimeEnabled', false);
+                        window.showToast('Realtime mode disabled (not supported by this model)', 'info');
+                    }
+                    
+                } catch (error) {
+                    console.error('Failed to save model:', error);
+                    window.showToast('Failed to update model', 'error');
+                } finally {
+                    this.loading = false;
+                }
+            },
+            
+            init() {
+                // Watch for model changes
+                this.$watch('currentModel', (value) => {
+                    if (value !== $data.model) {
+                        this.hasChanges = true;
+                        this.saveModel();
+                    }
+                });
+                
+                // Check for ModelManager readiness
+                this.checkModelManagerReady();
+                
+                // Set up interval to check if ModelManager becomes available
+                const checkInterval = timerManager.setInterval(() => {
+                    if (window.modelManagerInstance?.modelConfig && 
+                        Object.keys(window.modelManagerInstance.modelConfig).length > 0) {
+                        this.modelManagerReady = true;
+                        this.$nextTick(() => {
+                            console.log('ModelManager is ready, models available:', Object.keys(this.modelConfig));
+                        });
+                        timerManager.clearInterval(checkInterval);
+                    }
+                }, 100);
+                
+                // Clear interval after 10 seconds if ModelManager never loads
+                timerManager.setTimeout(() => timerManager.clearInterval(checkInterval), 10000);
+            },
+            
+            checkModelManagerReady() {
+                if (window.modelManagerInstance?.modelConfig && 
+                    Object.keys(window.modelManagerInstance.modelConfig).length > 0) {
+                    this.modelManagerReady = true;
+                    console.log('ModelManager ready with models:', Object.keys(this.modelConfig));
+                } else {
+                    console.log('ModelManager not ready yet, using fallback models');
+                }
+            }
+        }"
+            <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center text-2xl">
+                        🧠
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold" style="color: var(--tbx-text-primary);">AI Model Selection</h3>
+                        <p class="text-sm" style="color: var(--tbx-text-secondary);">Choose the AI model that powers your co-host</p>
+                        <div class="flex items-center gap-2 mt-1" x-show="!modelManagerReady">
+                            <div class="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                            <span class="text-xs" style="color: var(--tbx-info);">Loading model library...</span>
+                        </div>
+                        <div class="flex items-center gap-2 mt-1" x-show="modelManagerReady">
+                            <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+                            <span class="text-xs" style="color: var(--tbx-success);" x-text="`${Object.keys(modelConfig).length} models available`">Models available</span>
+                        </div>
+                        <!-- Debug Info (temporary) -->
+                        <div class="mt-2 p-2 bg-gray-100 rounded text-xs" style="border-left: 3px solid #f59e0b;">
+                            <strong>Debug Info:</strong><br>
+                            ModelManager Ready: <span x-text="modelManagerReady">false</span><br>
+                            ModelManager Instance: <span x-text="window.modelManagerInstance ? 'Available' : 'Not Available'">Checking...</span><br>
+                            Current Model: <span x-text="currentModel">Loading...</span><br>
+                            Available Models: <span x-text="Object.keys(modelConfig).join(', ')">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+                <button @click="showComparison = !showComparison" 
+                        class="px-4 py-2 rounded-lg border transition-all duration-200 text-sm font-medium"
+                        style="background: var(--tbx-surface-raised); border-color: var(--tbx-border-default); color: var(--tbx-text-secondary);"
+                        onmouseover="this.style.borderColor='var(--tbx-brand-primary)'; this.style.color='var(--tbx-brand-primary)'"
+                        onmouseout="this.style.borderColor='var(--tbx-border-default)'; this.style.color='var(--tbx-text-secondary)'">
+                    <span x-text="showComparison ? 'Hide Comparison' : 'Compare Models'">Compare Models</span>
+                </button>
+            </div>
+
+            <!-- Current Selection Display with Integrated Turbo Mode -->
+            <div class="p-4 rounded-xl border mb-6"
+                 style="background: linear-gradient(135deg, var(--tbx-surface-elevated) 0%, var(--tbx-surface-raised) 100%); border-color: var(--tbx-brand-primary);">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-4">
+                        <div class="text-3xl" x-text="getModelInfo(currentModel)?.icon || '🤖'">🤖</div>
+                        <div>
+                            <h4 class="font-semibold text-lg" style="color: var(--tbx-text-primary);" x-text="getModelName(currentModel)">Current Model</h4>
+                            <p class="text-sm" style="color: var(--tbx-text-secondary);" x-text="getModelInfo(currentModel)?.description || 'No description'">Model description</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 text-sm">
+                        <div class="flex items-center gap-1" x-show="getModelInfo(currentModel)?.cost">
+                            <span style="color: var(--tbx-text-muted);">Cost:</span>
+                            <span style="color: var(--tbx-success);" x-text="getModelInfo(currentModel)?.cost || '$'">$</span>
+                        </div>
+                        <div class="flex items-center gap-1" x-show="getModelInfo(currentModel)?.speed">
+                            <span style="color: var(--tbx-text-muted);">Speed:</span>
+                            <span style="color: var(--tbx-info);" x-text="getModelInfo(currentModel)?.speed || 'Medium'">Medium</span>
+                        </div>
+                        <div class="flex items-center gap-2" x-show="supportsRealtime(currentModel)">
+                            <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                            <span class="text-green-400 text-xs font-medium">Realtime Ready</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Integrated Turbo Mode Toggle (prominent placement) -->
+                <div class="p-3 rounded-lg border-t border-gray-700 transition-all duration-300"
+                     :class="{ 
+                         'opacity-50': !supportsRealtime(currentModel), 
+                         'bg-orange-500/5 border-orange-500/30': realtimeEnabled && supportsRealtime(currentModel),
+                         'hover:bg-orange-500/10': supportsRealtime(currentModel) && !realtimeEnabled
+                     }"
+                     x-init="
+                         // Add attention-grabbing animation when realtime is first available
+                         $watch('currentModel', (value) => {
+                             if (supportsRealtime(value) && !realtimeEnabled) {
+                                 // Brief highlight animation to draw attention
+                                 $el.classList.add('animate-pulse');
+                                 timerManager.setTimeout(() => $el.classList.remove('animate-pulse'), 2000);
+                             }
+                         })
+                     ">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3 flex-1">
+                            <div class="text-2xl">🚀</div>
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2">
+                                    <h4 class="font-medium" 
+                                        :class="supportsRealtime(currentModel) ? 'text-orange-400' : 'text-gray-500'">
+                                        Turbo Mode (0ms Latency)
+                                    </h4>
+                                    <div x-show="!supportsRealtime(currentModel)" 
+                                         class="px-2 py-0.5 text-xs bg-gray-700 text-gray-400 rounded-full">
+                                        Not Available
+                                    </div>
+                                    <div x-show="realtimeEnabled && supportsRealtime(currentModel)" 
+                                         class="px-2 py-0.5 text-xs bg-orange-500/20 text-orange-400 rounded-full animate-pulse">
+                                        ACTIVE
+                                    </div>
+                                </div>
+                                <p class="text-xs mt-1"
+                                   :class="supportsRealtime(currentModel) ? 'text-gray-400' : 'text-gray-600'">
+                                    Ultra-low latency voice conversations with OpenAI Realtime API
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <!-- Large, Prominent Toggle Switch -->
+                        <div class="relative">
+                            <label class="relative inline-flex items-center cursor-pointer"
+                                   :class="{ 
+                                       'opacity-50 cursor-not-allowed': !supportsRealtime(currentModel),
+                                       'turbo-toggle-glow': realtimeEnabled && supportsRealtime(currentModel)
+                                   }">
+                                <input type="checkbox" 
+                                       x-model="realtimeEnabled" 
+                                       @change="updateRealtimeMode()" 
+                                       :disabled="!supportsRealtime(currentModel)"
+                                       class="sr-only">
+                                <!-- Larger Toggle Background (increased size) -->
+                                <div class="relative w-14 h-8 rounded-full transition-all duration-300 ease-in-out border-2"
+                                     :style="realtimeEnabled && supportsRealtime(currentModel) 
+                                            ? 'background: linear-gradient(135deg, rgb(249 115 22), rgb(251 146 60)); border-color: rgb(249 115 22);' 
+                                            : 'background-color: rgb(55 65 81); border-color: rgb(75 85 99);'">
+                                    <!-- Larger Toggle Circle with glow effect -->
+                                    <div class="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow-lg transition-all duration-300 ease-in-out"
+                                         :style="realtimeEnabled && supportsRealtime(currentModel) 
+                                                ? 'transform: translateX(24px); box-shadow: 0 0 12px rgba(249, 115, 22, 0.5);' 
+                                                : 'transform: translateX(0);'">
+                                        <!-- Inner indicator -->
+                                        <div class="absolute inset-1 rounded-full"
+                                             :style="realtimeEnabled && supportsRealtime(currentModel)
+                                                    ? 'background: linear-gradient(135deg, rgb(249 115 22), rgb(251 146 60));'
+                                                    : 'background: rgb(156 163 175);'">
+                                        </div>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Expanded info when enabled -->
+                    <div x-show="realtimeEnabled && supportsRealtime(currentModel)" 
+                         x-transition
+                         class="mt-3 p-3 bg-orange-500/10 rounded-lg border border-orange-500/20">
+                        <div class="flex items-start gap-2 text-xs text-orange-300">
+                            <span class="w-2 h-2 bg-orange-400 rounded-full animate-pulse flex-shrink-0 mt-1"></span>
+                            <div class="space-y-1">
+                                <div>• Voice-to-voice streaming with instant responses</div>
+                                <div>• Natural conversation interruptions supported</div>
+                                <div>• Powered by <strong>gpt-4o-realtime-preview</strong></div>
+                                <div class="text-gray-400 mt-2">Toggle with <code class="px-1 py-0.5 bg-gray-800 rounded">!turbo</code> command in chat</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Model Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                <!-- Cloud Models -->
+                <template x-for="[modelId, config] in Object.entries(modelConfig).filter(([id, cfg]) => cfg.category === 'cloud')" :key="modelId">
+                    <div class="model-card relative" 
+                         :class="{ 
+                             'active': currentModel === modelId, 
+                             'loading': loading,
+                             'ring-2 ring-orange-500/50': config.features?.includes('realtime'),
+                             'turbo-capable': config.features?.includes('realtime')
+                         }"
+                         @click="if (!loading) { 
+                             currentModel = modelId;
+                             // Show hint about turbo mode for realtime-capable models
+                             if (config.features?.includes('realtime') && !realtimeEnabled) {
+                                 window.showToast('💡 Enable Turbo Mode above for ultra-low latency!', 'info');
+                             }
+                         }"
+                         style="cursor: pointer;">
+                        <!-- Turbo Badge for realtime-capable models -->
+                        <div x-show="config.features?.includes('realtime')" 
+                             class="absolute -top-2 -left-2 z-10">
+                            <div class="px-2 py-1 bg-gradient-to-r from-orange-500 to-orange-600 text-white text-xs font-bold rounded-full shadow-lg flex items-center gap-1">
+                                <span>🚀</span>
+                                <span>TURBO</span>
+                            </div>
+                        </div>
+                        
+                        <div class="model-header">
+                            <span class="model-icon" x-text="config.icon">🤖</span>
+                            <div class="model-type-badge cloud">
+                                <span x-text="config.provider.toUpperCase()">PROVIDER</span>
+                            </div>
+                        </div>
+                        <div class="model-name flex items-center gap-2">
+                            <span x-text="config.name">Model Name</span>
+                            <span x-show="config.features?.includes('realtime')" 
+                                  class="text-orange-400 text-xs">(Turbo Ready)</span>
+                        </div>
+                        <div class="model-desc" x-text="config.description">Description</div>
+                        <div class="flex items-center justify-between mt-3">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs" style="color: var(--tbx-text-muted);" x-text="config.cost">$</span>
+                                <span class="text-xs" style="color: var(--tbx-text-muted);">•</span>
+                                <span class="text-xs" style="color: var(--tbx-text-muted);" x-text="config.speed">Speed</span>
+                            </div>
+                            <div class="flex flex-wrap gap-1">
+                                <template x-for="feature in config.features.slice(0, 2)" :key="feature">
+                                    <span class="text-xs px-1.5 py-0.5 rounded-full" 
+                                          :class="feature === 'realtime' ? 'bg-orange-500/20 text-orange-400 font-semibold animate-pulse' : ''"
+                                          :style="feature !== 'realtime' ? 'background: var(--tbx-brand-primary-alpha); color: var(--tbx-brand-primary);' : ''"
+                                          x-text="feature === 'realtime' ? '⚡ realtime' : feature">feature</span>
+                                </template>
+                            </div>
+                        </div>
+                        <div x-show="config.recommended && config.recommended !== 'realtime'" 
+                             class="absolute -top-2 -right-2 bg-gradient-to-r from-yellow-400 to-orange-400 text-black text-xs font-bold px-2 py-1 rounded-full">
+                            <span x-text="config.recommended?.toUpperCase()">RECOMMENDED</span>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Local Models Section -->
+            <div x-data="{
+                available: false,
+                models: [],
+                loading: true,
+                
+                async init() {
+                    await this.checkOllama();
+                },
+                
+                async checkOllama() {
+                    this.loading = true;
+                    try {
+                        const data = await window.SettingsApiService.getOllamaStatus();
+                        this.available = data.available || false;
+                        this.models = data.models || [];
+                        
+                        if (this.available) {
+                            // Add Ollama models to available models
+                            this.models.forEach(model => {
+                                if (!window.StateManager.state.models.available.includes(model)) {
+                                    window.StateManager.state.models.available.push(model);
+                                }
+                            });
+                        }
+                    } catch (error) {
+                        console.error('Failed to check Ollama status:', error);
+                        this.available = false;
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                
+                async refreshModels() {
+                    await this.checkOllama();
+                    if (this.available && this.models.length > 0) {
+                        window.showToast('Ollama models refreshed successfully', 'success');
+                    } else {
+                        window.showToast('No Ollama models found', 'info');
+                    }
+                }
+            }" x-show="available || models.length > 0 || loading" class="border-t pt-6" style="border-color: var(--tbx-border-subtle);">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-3">
+                        <div class="text-2xl">🏠</div>
+                        <div>
+                            <h4 class="font-semibold" style="color: var(--tbx-text-primary);">Local Models (Ollama)</h4>
+                            <p class="text-sm" style="color: var(--tbx-text-secondary);">Run AI models locally for privacy and control</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div x-show="available" class="flex items-center gap-2">
+                            <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+                            <span class="text-green-400 text-sm font-medium">Connected</span>
+                        </div>
+                        <button @click="refreshModels()" 
+                                :disabled="loading"
+                                class="px-3 py-1.5 rounded-md border text-sm transition-all duration-200"
+                                style="background: var(--tbx-surface-raised); border-color: var(--tbx-border-default); color: var(--tbx-text-secondary);"
+                                onmouseover="this.style.borderColor='var(--tbx-brand-primary)'; this.style.color='var(--tbx-brand-primary)'"
+                                onmouseout="this.style.borderColor='var(--tbx-border-default)'; this.style.color='var(--tbx-text-secondary)'">
+                            <div x-show="!loading" class="flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                </svg>
+                                <span>Refresh</span>
+                            </div>
+                            <div x-show="loading" class="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                        </button>
+                    </div>
+                </div>
+
+                <div x-show="!available && !loading" class="p-4 rounded-lg border border-dashed" style="border-color: var(--tbx-border-subtle); background: var(--tbx-surface-base);">
+                    <div class="text-center">
+                        <div class="text-4xl mb-3">📦</div>
+                        <h5 class="font-medium mb-2" style="color: var(--tbx-text-primary);">Ollama Not Found</h5>
+                        <p class="text-sm mb-4" style="color: var(--tbx-text-secondary);">
+                            Install Ollama to run AI models locally for free
+                        </p>
+                        <a href="https://ollama.ai" 
+                           target="_blank" 
+                           class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-200 text-sm font-medium"
+                           style="background: var(--tbx-surface-raised); border-color: var(--tbx-border-default); color: var(--tbx-text-primary);"
+                           onmouseover="this.style.borderColor='var(--tbx-brand-primary)'; this.style.background='var(--tbx-brand-primary-alpha)'"
+                           onmouseout="this.style.borderColor='var(--tbx-border-default)'; this.style.background='var(--tbx-surface-raised)'">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            <span>Download Ollama</span>
+                        </a>
+                    </div>
+                </div>
+
+                <div x-show="available && models.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <template x-for="model in models" :key="model">
+                        <div class="model-card" 
+                             :class="{ 'active': currentModel === model }"
+                             @click="currentModel = model"
+                             style="cursor: pointer;">
+                            <div class="model-header">
+                                <span class="model-icon">🏠</span>
+                                <div class="model-type-badge local">LOCAL</div>
+                            </div>
+                            <div class="model-name" x-text="model">Local Model</div>
+                            <div class="model-desc">Locally hosted model for privacy</div>
+                            <div class="flex items-center justify-between mt-3">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs" style="color: var(--tbx-success);">Free</span>
+                                    <span class="text-xs" style="color: var(--tbx-text-muted);">•</span>
+                                    <span class="text-xs" style="color: var(--tbx-text-muted);">Private</span>
+                                </div>
+                                <span class="text-xs px-1.5 py-0.5 rounded-full" 
+                                      style="background: var(--tbx-success-alpha); color: var(--tbx-success);">
+                                    offline
+                                </span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Model Comparison Table -->
+            <div x-show="showComparison" 
+                 x-transition:enter="transition ease-out duration-300"
+                 x-transition:enter-start="opacity-0 transform scale-95"
+                 x-transition:enter-end="opacity-100 transform scale-100"
+                 class="border-t pt-6 mt-6" style="border-color: var(--tbx-border-subtle);">
+                <h4 class="text-lg font-semibold mb-4" style="color: var(--tbx-text-primary);">Model Comparison</h4>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr style="border-bottom: 1px solid var(--tbx-border-subtle);">
+                                <th class="text-left py-3 px-2" style="color: var(--tbx-text-primary);">Model</th>
+                                <th class="text-left py-3 px-2" style="color: var(--tbx-text-primary);">Provider</th>
+                                <th class="text-left py-3 px-2" style="color: var(--tbx-text-primary);">Cost</th>
+                                <th class="text-left py-3 px-2" style="color: var(--tbx-text-primary);">Speed</th>
+                                <th class="text-left py-3 px-2" style="color: var(--tbx-text-primary);">Quality</th>
+                                <th class="text-left py-3 px-2" style="color: var(--tbx-text-primary);">Features</th>
+                                <th class="text-center py-3 px-2" style="color: var(--tbx-text-primary);">Select</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="[modelId, config] in Object.entries(modelConfig).filter(([id, cfg]) => cfg.category === 'cloud').slice(0, 8)" :key="modelId">
+                                <tr style="border-bottom: 1px solid var(--tbx-border-subtle);" 
+                                    :class="{ 'bg-purple-500/10': currentModel === modelId }">
+                                    <td class="py-3 px-2">
+                                        <div class="flex items-center gap-2">
+                                            <span x-text="config.icon">🤖</span>
+                                            <span style="color: var(--tbx-text-primary);" x-text="config.name">Model</span>
+                                        </div>
+                                    </td>
+                                    <td class="py-3 px-2" style="color: var(--tbx-text-secondary);" x-text="config.provider">Provider</td>
+                                    <td class="py-3 px-2" style="color: var(--tbx-text-secondary);" x-text="config.cost">Cost</td>
+                                    <td class="py-3 px-2" style="color: var(--tbx-text-secondary);" x-text="config.speed">Speed</td>
+                                    <td class="py-3 px-2" style="color: var(--tbx-text-secondary);" x-text="config.quality">Quality</td>
+                                    <td class="py-3 px-2">
+                                        <div class="flex flex-wrap gap-1">
+                                            <template x-for="feature in config.features.slice(0, 3)" :key="feature">
+                                                <span class="text-xs px-2 py-0.5 rounded-full" 
+                                                      style="background: var(--tbx-brand-primary-alpha); color: var(--tbx-brand-primary);"
+                                                      x-text="feature">feature</span>
+                                            </template>
+                                        </div>
+                                    </td>
+                                    <td class="py-3 px-2 text-center">
+                                        <button @click="currentModel = modelId; showComparison = false"
+                                                :class="{ 'bg-purple-600': currentModel === modelId }"
+                                                class="px-3 py-1 rounded-md border text-xs font-medium transition-all duration-200"
+                                                style="border-color: var(--tbx-brand-primary); color: var(--tbx-brand-primary);"
+                                                :style="currentModel === modelId ? 'background: var(--tbx-brand-primary); color: white;' : 'background: transparent;'">
+                                            <span x-text="currentModel === modelId ? 'Selected' : 'Select'">Select</span>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Saving Status -->
+            <div x-show="hasChanges || loading" 
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 scale-95"
+                 x-transition:enter-end="opacity-100 scale-100"
+                 class="mt-4 p-3 rounded-lg border" 
+                 :style="loading ? 'background: var(--tbx-info-alpha); border-color: var(--tbx-info);' : 'background: var(--tbx-warning-alpha); border-color: var(--tbx-warning);'">
+                <div class="flex items-center gap-2 text-sm">
+                    <div x-show="loading" class="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
+                    <svg x-show="hasChanges && !loading" class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                    </svg>
+                    <span x-text="loading ? 'Switching AI model...' : 'Model selection will be saved automatically'">Status</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dead Air Control - Simplified Clean Implementation -->
+        <div class="card" :class="{'opacity-50': loadingStates.deadair}">
+            <div class="flex items-start justify-between mb-6">
+                <div>
+                    <h2 class="text-xl font-semibold mb-2 flex items-center gap-2">
+                        <span class="text-2xl">🔇</span> Dead Air Response
+                    </h2>
+                    <p class="text-secondary text-sm">How long to wait during silence before the bot speaks</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-sm" :class="deadairEnabled ? 'text-green-400' : 'text-gray-500'">
+                        <span x-text="deadairEnabled ? 'Active' : 'Disabled'"></span>
+                    </span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" 
+                               x-model="deadairEnabled" 
+                               @change="updateDeadAirEnabled()" 
+                               class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Current Value Display -->
+            <div class="bg-elevated rounded-lg p-4 mb-6 border border-subtle">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <span class="text-sm text-secondary">Current Setting</span>
+                        <div class="text-2xl font-semibold text-primary" x-text="formatDeadAirTime(deadairThreshold)"></div>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-sm text-secondary">Category</span>
+                        <div class="text-sm font-medium" :class="{
+                            'text-green-400': deadairThreshold <= 180,
+                            'text-blue-400': deadairThreshold > 180 && deadairThreshold <= 360,
+                            'text-purple-400': deadairThreshold > 360
+                        }" x-text="
+                            deadairThreshold <= 180 ? 'Active Chat' :
+                            deadairThreshold <= 360 ? 'Balanced' : 'Minimal'
+                        "></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dead Air Response Slider -->
+            <div class="mb-6">
+                <div class="audio-slider-container dead-air-slider">
+                    <input type="range"
+                           id="settings-dead-air"
+                           class="range-slider audio-slider"
+                           min="120"
+                           max="900"
+                           step="60"
+                           x-model.number="deadairThreshold"
+                           data-format="{value}s"
+                           @input="debounceDeadAirUpdate()"
+                           @change="updateDeadAirThreshold()"
+                           :disabled="!deadairEnabled"
+                           aria-label="Dead air response threshold">
+                    <div class="slider-progress-fill"></div>
+                    <div class="slider-value-bubble"></div>
+                </div>
+                
+                <!-- Range Labels -->
+                <div class="slider-labels">
+                    <span class="slider-label-left">2 min</span>
+                    <span class="slider-label-center">5 min</span>
+                    <span class="slider-label-right">15 min</span>
+                </div>
+            </div>
+
+            <!-- Preset Buttons -->
+            <div class="grid grid-cols-4 gap-3 mb-6">
+                <button @click="setDeadAirPreset(120)"
+                        class="dead-air-preset-btn"
+                        :class="{ 'active': deadairThreshold === 120 }"
+                        :disabled="!deadairEnabled">
+                    <div class="emoji">💬</div>
+                    <div class="label">Active</div>
+                    <div class="duration">2m</div>
+                </button>
+                <button @click="setDeadAirPreset(300)"
+                        class="dead-air-preset-btn"
+                        :class="{ 'active': deadairThreshold === 300 }"
+                        :disabled="!deadairEnabled">
+                    <div class="emoji">⚖️</div>
+                    <div class="label">Default</div>
+                    <div class="duration">5m</div>
+                </button>
+                <button @click="setDeadAirPreset(600)"
+                        class="dead-air-preset-btn"
+                        :class="{ 'active': deadairThreshold === 600 }"
+                        :disabled="!deadairEnabled">
+                    <div class="emoji">☕</div>
+                    <div class="label">Quiet</div>
+                    <div class="duration">10m</div>
+                </button>
+                <button @click="setDeadAirPreset(900)"
+                        class="dead-air-preset-btn"
+                        :class="{ 'active': deadairThreshold === 900 }"
+                        :disabled="!deadairEnabled">
+                    <div class="emoji">🌙</div>
+                    <div class="label">Minimal</div>
+                    <div class="duration">15m</div>
+                </button>
+            </div>
+
+            <!-- Info -->
+            <div class="bg-base rounded-lg p-4 border border-subtle">
+                <h4 class="font-semibold text-sm mb-2">How it works</h4>
+                <p class="text-xs text-secondary mb-4">
+                    The bot monitors silence periods and automatically generates responses after the threshold time passes.
+                    Choose the setting that matches your streaming style and content.
+                </p>
+                
+                <!-- Aligned Explanations -->
+                <div class="dead-air-explanations">
+                    <div class="dead-air-explanation active-preset">
+                        <div class="explanation-title">
+                            💬 Active (2m)
+                        </div>
+                        <div class="explanation-text">
+                            High engagement mode. Perfect for interactive gameplay, tutorials, or energetic streams where constant chatter keeps viewers engaged.
+                        </div>
+                    </div>
+                    
+                    <div class="dead-air-explanation default-preset">
+                        <div class="explanation-title">
+                            ⚖️ Default (5m)
+                        </div>
+                        <div class="explanation-text">
+                            Balanced approach. Ideal for most content types, allowing natural conversation flow while preventing awkward long silences.
+                        </div>
+                    </div>
+                    
+                    <div class="dead-air-explanation quiet-preset">
+                        <div class="explanation-title">
+                            ☕ Quiet (10m)
+                        </div>
+                        <div class="explanation-text">
+                            Relaxed setting. Great for chill streams, creative work, or when you need longer focus periods without interruption.
+                        </div>
+                    </div>
+                    
+                    <div class="dead-air-explanation minimal-preset">
+                        <div class="explanation-title">
+                            🌙 Minimal (15m)
+                        </div>
+                        <div class="explanation-text">
+                            Ultra-low intervention. Perfect for focused work, study sessions, or ambient streams where silence is intentional and comfortable.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Personality Builder Card -->
+    <div class="card border-2 border-primary-500/30 bg-primary-600/5">
+        <div class="text-center mb-6">
+            <button @click="showCustomPresetModal = true"
+                    class="btn btn-primary btn-lg">
+                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                </svg>
+                Create Custom Personality
+                <span class="badge badge-primary ml-2">Featured</span>
+            </button>
+            <p class="mt-3 text-sm text-secondary">Design your perfect AI co-host with custom traits and behaviors</p>
+        </div>
+
+        <div class="p-6 bg-elevated rounded-lg border border-subtle">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-10 h-10 bg-primary-600 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold">AI Personality Builder</h3>
+                    <p class="text-sm text-secondary">Describe your ideal co-host in plain English</p>
+                </div>
+            </div>
+
+            <!-- Description Input -->
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-primary mb-2">Describe Your Ideal Co-Host</label>
+                    <textarea
+                        x-model="description"
+                        placeholder="e.g., 'A supportive gamer buddy who gets excited about clutch plays but stays chill during losses. Should be witty but not mean, and loves retro games.'"
+                        rows="3"
+                        class="form-control resize-none"
+                    ></textarea>
+                </div>
+
+                <!-- Quick Templates -->
+                <div class="flex flex-wrap gap-2">
+                    <span class="text-xs text-secondary">Quick examples:</span>
+                    <template x-for="[key, template] in Object.entries({
+                        'hype_beast': 'energetic hype person who celebrates every win',
+                        'chill_friend': 'laid-back supportive friend who keeps things relaxed',
+                        'comedy_sidekick': 'witty comedian who makes jokes about everything',
+                        'sarcastic_buddy': 'sarcastic but caring friend who roasts lovingly'
+                    })" :key="key">
+                        <button
+                            @click="description = template; generatedPersonality = null"
+                            class="btn btn-ghost btn-sm"
+                            x-text="key.replace('_', ' ')"
+                        ></button>
+                    </template>
+                </div>
+
+                <!-- Generate Button -->
+                <div class="flex gap-3">
+                    <button
+                        @click="generatePersonality()"
+                        :disabled="!description.trim() || generatingPersonality"
+                        class="btn btn-primary"
+                    >
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" x-show="!generatingPersonality">
+                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                        </svg>
+                        <div class="loading-spinner" x-show="generatingPersonality"></div>
+                        <span x-text="generatingPersonality ? 'Generating...' : 'Generate Personality'"></span>
+                    </button>
+
+                    <button
+                        @click="generatedPersonality = null; description = ''"
+                        x-show="generatedPersonality"
+                        class="btn btn-secondary"
+                        :title="generatedPersonality?.applied ? 'Generate a new personality' : 'Clear generated personality'"
+                    >
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                        Clear
+                    </button>
+                </div>
+
+                <!-- Generated Personality Preview -->
+                <div x-show="generatedPersonality"
+                     x-transition:enter="transition ease-out duration-300"
+                     x-transition:enter-start="opacity-0 transform scale-95"
+                     x-transition:enter-end="opacity-100 transform scale-100"
+                     class="mt-6 p-4 bg-base rounded-lg border border-primary-500/30">
+                    <div class="flex items-center justify-between mb-4">
+                        <h4 class="font-medium text-primary" x-text="generatedPersonality?.name || 'Generated Personality'"></h4>
+                        <button
+                            @click="applyGeneratedPersonality()"
+                            :disabled="generatedPersonality?.applied"
+                            :class="generatedPersonality?.applied ? 'btn btn-success' : 'btn btn-primary'"
+                        >
+                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                            </svg>
+                            <span x-text="generatedPersonality?.applied ? 'Applied & Saved' : 'Apply This Personality'"></span>
+                        </button>
+                    </div>
+
+                    <div class="space-y-3 text-sm">
+                        <div x-show="generatedPersonality?.traits?.length">
+                            <span class="text-secondary font-medium">Traits:</span>
+                            <div class="flex flex-wrap gap-1 mt-1">
+                                <template x-for="trait in generatedPersonality?.traits || []" :key="trait">
+                                    <span class="badge badge-primary" x-text="trait"></span>
+                                </template>
+                            </div>
+                        </div>
+
+                        <div x-show="generatedPersonality?.interests?.length">
+                            <span class="text-secondary font-medium">Interests:</span>
+                            <span class="ml-2 text-primary" x-text="generatedPersonality?.interests?.join(', ')"></span>
+                        </div>
+
+                        <div x-show="generatedPersonality?.catchphrases?.length">
+                            <span class="text-secondary font-medium">Sample catchphrases:</span>
+                            <span class="ml-2 text-primary" x-text="generatedPersonality?.catchphrases?.slice(0, 3).join(', ')"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bot Memory System Interface -->
+    <div class="card" :class="{'opacity-50': loadingStates.memory}">
+        <div class="flex items-start justify-between mb-6">
+            <div>
+                <h2 class="text-xl font-semibold mb-2 flex items-center gap-2">
+                    <span class="text-2xl">🧠</span> Bot Memory
+                </h2>
+                <p class="text-secondary text-sm">View and manage what your AI co-host remembers about your community</p>
+            </div>
+            <!-- Help Button -->
+            <button class="btn btn-ghost btn-sm" title="Help">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Memory Overview Stats -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="card p-4 text-center border-primary-500/20 hover:border-primary-500/40 transition-colors">
+                <div class="text-2xl mb-2">🧠</div>
+                <div class="text-2xl font-bold text-primary" x-text="memoryStats.total_memories || 0">0</div>
+                <div class="text-xs text-secondary">Total Memories</div>
+            </div>
+            <div class="card p-4 text-center border-info/20 hover:border-info/40 transition-colors">
+                <div class="text-2xl mb-2">💬</div>
+                <div class="text-2xl font-bold text-info" x-text="memoryStats.memory_types?.interaction || 0">0</div>
+                <div class="text-xs text-secondary">Conversations</div>
+            </div>
+            <div class="card p-4 text-center border-success/20 hover:border-success/40 transition-colors">
+                <div class="text-2xl mb-2">💡</div>
+                <div class="text-2xl font-bold text-success" x-text="memoryStats.memory_types?.fact || 0">0</div>
+                <div class="text-xs text-secondary">Facts Learned</div>
+            </div>
+            <div class="card p-4 text-center border-warning/20 hover:border-warning/40 transition-colors">
+                <div class="text-2xl mb-2">👥</div>
+                <div class="text-2xl font-bold text-warning" x-text="memoryStats.unique_users || 0">0</div>
+                <div class="text-xs text-secondary">Users Remembered</div>
+            </div>
+        </div>
+
+        <!-- Memory Search Interface -->
+        <div class="p-4 bg-elevated rounded-lg border border-subtle mb-6">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="text-2xl">🔍</span>
+                <div>
+                    <h3 class="text-lg font-semibold">Search Memories</h3>
+                    <p class="text-sm text-secondary">Find specific conversations, facts, or user preferences</p>
+                </div>
+            </div>
+            
+            <div class="space-y-3">
+                <div class="relative">
+                    <input type="text" 
+                           x-model="memorySearchQuery"
+                           @input="debounceMemorySearch()"
+                           placeholder="Search memories... (e.g. 'conversations about gaming' or 'username preferences')"
+                           class="form-control pl-10">
+                    <svg class="absolute left-3 top-3.5 w-5 h-5 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                </div>
+                
+                <div class="flex flex-wrap gap-2">
+                    <select x-model="memorySearchFilters.memory_type" 
+                            @change="performMemorySearch()"
+                            class="form-control">
+                        <option value="">All Types</option>
+                        <option value="interaction">💬 Conversations</option>
+                        <option value="fact">💡 Facts</option>
+                        <option value="preference">⭐ Preferences</option>
+                        <option value="event">📅 Events</option>
+                    </select>
+                    
+                    <button @click="clearMemorySearch()" 
+                            x-show="memorySearchQuery || memorySearchFilters.memory_type"
+                            class="btn btn-danger btn-sm">
+                        Clear Filters
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Memory Results Display -->
+        <div class="space-y-4 mb-6">
+            <!-- Search Results Header -->
+            <div x-show="memorySearchResults.length > 0 || memorySearchQuery" class="flex items-center justify-between">
+                <div class="text-sm text-gray-400">
+                    <span x-show="memorySearchResults.length > 0">
+                        Found <span x-text="memorySearchResults.length" class="text-white font-medium"></span> memories
+                        <span x-show="memorySearchQuery" class="ml-2">for "<span x-text="memorySearchQuery" class="text-accent"></span>"</span>
+                    </span>
+                    <span x-show="memorySearchResults.length === 0 && memorySearchQuery && !loadingStates.memorySearch" class="text-gray-500">
+                        No memories found matching your search
+                    </span>
+                </div>
+                <button x-show="memorySearchResults.length > 0" 
+                        @click="exportMemoryResults()"
+                        class="text-xs px-3 py-1 bg-accent/20 border border-accent/30 rounded text-accent hover:bg-accent/30 transition-colors">
+                    Export Results
+                </button>
+            </div>
+
+            <!-- Memory Cards -->
+            <div class="space-y-3 max-h-96 overflow-y-auto" x-show="memorySearchResults.length > 0">
+                <template x-for="memory in memorySearchResults" :key="memory.id">
+                    <div class="memory-card bg-surface/30 border border-white/10 rounded-lg p-4 hover:border-accent/30 transition-all duration-200">
+                        <!-- Memory Header -->
+                        <div class="flex items-start justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <span x-text="getMemoryTypeIcon(memory.memory_type)" class="text-xl"></span>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <span x-text="memory.user || 'System'" class="text-sm font-medium text-white"></span>
+                                        <span x-text="getMemoryTypeLabel(memory.memory_type)" 
+                                              class="text-xs px-2 py-1 rounded-full" 
+                                              :class="getMemoryTypeColor(memory.memory_type)"></span>
+                                    </div>
+                                    <div class="text-xs text-gray-500" x-text="formatMemoryTime(memory.timestamp)"></div>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <span x-show="memory.relevance_score" 
+                                      :title="`Relevance: ${Math.round(memory.relevance_score * 100)}%`"
+                                      class="text-xs text-accent bg-accent/20 px-2 py-1 rounded"
+                                      x-text="`${Math.round(memory.relevance_score * 100)}%`"></span>
+                                <button @click="deleteMemory(memory.id)" 
+                                        class="text-gray-400 hover:text-red-400 transition-colors"
+                                        title="Delete this memory">
+                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Memory Content -->
+                        <div class="text-sm text-gray-300 line-clamp-3 leading-relaxed" x-text="memory.content"></div>
+                        
+                        <!-- Memory Actions -->
+                        <div class="flex items-center gap-2 mt-3 pt-3 border-t border-white/5">
+                            <button @click="expandMemory(memory)" 
+                                    class="text-xs px-2 py-1 bg-blue-500/20 border border-blue-500/30 rounded text-blue-400 hover:bg-blue-500/30 transition-colors">
+                                View Full Context
+                            </button>
+                            <button x-show="memory.user" 
+                                    @click="searchByUser(memory.user)"
+                                    class="text-xs px-2 py-1 bg-purple-500/20 border border-purple-500/30 rounded text-purple-400 hover:bg-purple-500/30 transition-colors">
+                                View User History
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Loading State -->
+            <div x-show="loadingStates.memorySearch" class="flex items-center justify-center py-8">
+                <div class="flex items-center gap-3 text-gray-400">
+                    <div class="spinner-small"></div>
+                    <span>Searching memories...</span>
+                </div>
+            </div>
+
+            <!-- Empty State -->
+            <div x-show="memorySearchResults.length === 0 && !memorySearchQuery && !loadingStates.memory" class="text-center py-12">
+                <div class="text-6xl mb-4">🧠</div>
+                <h3 class="text-lg font-medium text-white mb-2">Your Bot's Memory Bank</h3>
+                <p class="text-gray-400 text-sm mb-4">As your AI co-host interacts with viewers, memories will appear here</p>
+                <button @click="loadRecentMemories()" 
+                        class="px-4 py-2 bg-accent hover:bg-accent/80 text-white rounded-lg text-sm transition-colors">
+                    Load Recent Activity
+                </button>
+            </div>
+        </div>
+
+        <!-- Memory Management Controls -->
+        <div class="border-t border-white/10 pt-6">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                    <h3 class="text-lg font-medium text-white mb-1">Memory Management</h3>
+                    <p class="text-sm text-gray-400">Export, clear, or manage privacy settings for bot memories</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button @click="exportAllMemories()" 
+                            class="px-4 py-2 bg-blue-500/20 border border-blue-500/30 rounded-lg text-blue-400 hover:bg-blue-500/30 transition-colors text-sm">
+                        📥 Export All
+                    </button>
+                    <button @click="showMemorySettings = true"
+                            class="px-4 py-2 bg-purple-500/20 border border-purple-500/30 rounded-lg text-purple-400 hover:bg-purple-500/30 transition-colors text-sm">
+                        ⚙️ Privacy Settings
+                    </button>
+                    <button @click="confirmClearMemory()" 
+                            class="px-4 py-2 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 hover:bg-red-500/30 transition-colors text-sm">
+                        🗑️ Clear Old Memories
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reset to Defaults - Danger Zone -->
+    <div class="card p-6 border-2 border-red-500/20 bg-red-500/5">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 bg-red-500/20 rounded-lg flex items-center justify-center">
+                <svg class="w-6 h-6 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                </svg>
+            </div>
+            <div>
+                <h2 class="text-xl font-semibold text-red-300">Reset Personality Settings</h2>
+                <p class="text-sm text-red-200/80">Restore personality and model settings to defaults</p>
+            </div>
+        </div>
+        
+        <div class="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-4">
+            <h3 class="text-sm font-medium text-red-300 mb-2">⚠️ This will reset:</h3>
+            <ul class="text-xs text-red-200/90 space-y-1 list-disc list-inside">
+                <li>All personality traits (Warmth, Energy, Humor, Sass, Verbosity)</li>
+                <li>Current personality preset back to "Cozy"</li>
+                <li>Response cooldowns and thresholds</li>
+                <li>AI model selection</li>
+                <li>System toggles (Memory, Emergency controls)</li>
+            </ul>
+        </div>
+        
+        <!-- Danger Zone Actions -->
+        <div class="space-y-4">
+            <!-- Delete Custom Preset -->
+            <template x-if="allPresets.custom_presets && Object.keys(allPresets.custom_presets).length > 0">
+                <div class="flex flex-col gap-3 p-4 bg-red-500/5 border border-red-500/20 rounded-lg">
+                    <div>
+                        <h4 class="text-sm font-medium text-red-300">Delete Custom Preset</h4>
+                        <p class="text-xs text-red-200/70">Permanently remove a saved custom personality</p>
+                    </div>
+                    <select class="px-4 py-2 bg-red-900/30 border border-red-500/30 text-red-200 rounded-lg text-sm max-w-xs"
+                            @change="if($event.target.value) deleteCustomPreset($event.target.value); $event.target.value = ''">
+                        <option value="">Choose preset to delete...</option>
+                        <template x-for="[id, preset] in Object.entries(allPresets.custom_presets || {})" :key="id">
+                            <option x-bind:value="id" x-text="preset.name"></option>
+                        </template>
+                    </select>
+                </div>
+            </template>
+            
+            <!-- Show message when no custom presets exist -->
+            <template x-if="!allPresets.custom_presets || Object.keys(allPresets.custom_presets).length === 0">
+                <div class="flex flex-col gap-3 p-4 bg-gray-500/5 border border-gray-500/20 rounded-lg">
+                    <div>
+                        <h4 class="text-sm font-medium text-gray-300">No Custom Presets</h4>
+                        <p class="text-xs text-gray-400">Use the AI Personality Builder above to create custom personalities</p>
+                    </div>
+                </div>
+            </template>
+            
+            <!-- Reset All Settings -->
+            <div class="flex items-center justify-between">
+                <div class="text-xs text-gray-400">
+                    <span class="text-yellow-400">💡 Tip:</span> Consider saving your current personality as a custom preset first
+                </div>
+                <button class="btn bg-red-600 hover:bg-red-500 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+                        @click="resetToDefaults()"
+                        title="Reset personality settings to factory defaults">
+                    🔄 Reset Personality Settings
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+
+    <!-- Custom Preset Creation Modal -->
+    <div x-show="showCustomPresetModal"
+         x-cloak
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 z-50 overflow-y-auto">
+        
+        <!-- Backdrop -->
+        <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" @click="showCustomPresetModal = false"></div>
+        
+        <!-- Modal -->
+        <div class="relative min-h-screen flex items-center justify-center p-4">
+            <div class="relative bg-surface border border-white/10 rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+                 @click.stop>
+                
+                <!-- Header -->
+                <div class="sticky top-0 bg-surface border-b border-white/10 px-6 py-4 flex items-center justify-between">
+                    <h2 class="text-xl font-semibold text-white">Create Custom Personality</h2>
+                    <button @click="showCustomPresetModal = false"
+                            class="p-2 hover:bg-white/10 rounded-lg transition-colors">
+                        <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                
+                <!-- Body -->
+                <div class="p-6 space-y-6">
+                    <!-- Name Input -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Personality Name *</label>
+                        <input type="text"
+                               x-model="newPreset.name"
+                               placeholder="e.g., Friendly Gaming Buddy"
+                               class="w-full px-4 py-3 bg-background border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-colors">
+                    </div>
+                    
+                    <!-- Description -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Description *</label>
+                        <textarea x-model="newPreset.description"
+                                  placeholder="Describe what makes this personality unique..."
+                                  rows="2"
+                                  class="w-full px-4 py-3 bg-background border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-colors resize-none"></textarea>
+                    </div>
+                    
+                    <!-- System Prompt -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">System Prompt *</label>
+                        <textarea x-model="newPreset.systemPrompt"
+                                  placeholder="Define how this personality should behave and respond..."
+                                  rows="6"
+                                  class="w-full px-4 py-3 bg-background border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-colors font-mono text-sm"></textarea>
+                        <p class="mt-2 text-xs text-gray-500">This defines the personality's behavior and speaking style</p>
+                    </div>
+                    
+                    <!-- Catchphrases -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Catchphrases (Optional)</label>
+                        <input type="text"
+                               x-model="newPreset.catchphrasesText"
+                               placeholder="Enter phrases separated by commas"
+                               class="w-full px-4 py-3 bg-background border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-colors">
+                        <p class="mt-2 text-xs text-gray-500">Common phrases this personality might say</p>
+                    </div>
+                    
+                    <!-- Emotes -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Favorite Emotes (Optional)</label>
+                        <input type="text"
+                               x-model="newPreset.emotesText"
+                               placeholder="😎 🎮 💪 (separate with spaces)"
+                               class="w-full px-4 py-3 bg-background border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-accent transition-colors">
+                    </div>
+                    
+                    <!-- Copy Current Traits Option -->
+                    <div class="p-4 bg-accent/10 border border-accent/20 rounded-lg">
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox"
+                                   x-model="newPreset.useCurrentTraits"
+                                   class="w-4 h-4 text-accent bg-background border-white/20 rounded focus:ring-accent">
+                            <div>
+                                <p class="text-sm font-medium text-white">Use Current Trait Settings</p>
+                                <p class="text-xs text-gray-400">Copy your current personality traits (warmth, energy, humor, etc.)</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- Footer -->
+                <div class="sticky bottom-0 bg-surface border-t border-white/10 px-6 py-4 flex items-center justify-end gap-3">
+                    <button @click="showCustomPresetModal = false"
+                            class="px-4 py-2 bg-surface border border-white/10 hover:border-white/20 text-gray-400 hover:text-white rounded-lg transition-colors">
+                        Cancel
+                    </button>
+                    <button @click="saveCustomPreset()"
+                            :disabled="!newPreset.name || !newPreset.description || !newPreset.systemPrompt"
+                            class="px-4 py-2 bg-accent hover:bg-accent/80 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors">
+                        Create Personality
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Styles for personality buttons -->
+<style>
+.preset-pill {
+    padding: 0.5rem 1rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.15s ease;
+    cursor: pointer;
+    display: inline-block;
+}
+
+.preset-pill:hover {
+    border-color: #9333ea;
+    color: white;
+    background: rgba(147, 51, 234, 0.1);
+}
+
+.preset-pill.active {
+    background: #9333ea;
+    border-color: #9333ea;
+    color: white;
+}
+
+.custom-button {
+    background: rgba(147, 51, 234, 0.1);
+    border-color: rgba(147, 51, 234, 0.3);
+}
+
+.custom-button:hover {
+    background: rgba(147, 51, 234, 0.2);
+    border-color: #9333ea;
+}
+
+.custom-button.active {
+    background: #9333ea;
+    border-color: #7e22ce;
+}
+
+/* Model card styles for Voice & Brain section */
+.model-card {
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    min-height: 120px;
+}
+
+.model-card:hover {
+    border-color: var(--accent);
+    background: rgba(124, 58, 237, 0.1);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.2);
+}
+
+.model-card.active {
+    border-color: var(--accent);
+    background: rgba(124, 58, 237, 0.2);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
+.model-card.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.model-card.disabled:hover {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.02);
+    transform: none;
+    box-shadow: none;
+}
+
+.model-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.model-icon {
+    font-size: 1.25rem;
+    line-height: 1;
+}
+
+.model-speed {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.model-name {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.model-desc {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    line-height: 1.3;
+    flex-grow: 1;
+}
+
+/* Hide radio buttons but keep them functional */
+.model-card input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+/* Active state indicator */
+.model-card.active::before {
+    content: "✓";
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 20px;
+    height: 20px;
+    background: var(--accent);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: white;
+    font-weight: bold;
+    box-shadow: 0 2px 4px rgba(124, 58, 237, 0.3);
+}
+
+/* Model type badges */
+.model-type-badge {
+    font-size: 0.625rem;
+    font-weight: 600;
+    padding: 0.125rem 0.375rem;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.model-type-badge.cloud {
+    background: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.model-type-badge.local {
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+/* Enhanced Personality Dropdown Styles */
+.personality-dropdown-enhanced {
+    background: rgba(0, 0, 0, 0.5);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    font-size: 15px;
+}
+
+.personality-dropdown-enhanced:hover {
+    box-shadow: 0 10px 15px rgba(147, 51, 234, 0.2), 0 4px 6px rgba(147, 51, 234, 0.15);
+    transform: translateY(-1px);
+}
+
+.personality-dropdown-enhanced:focus {
+    box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.3), 0 10px 15px rgba(147, 51, 234, 0.2);
+}
+
+.personality-dropdown-enhanced option {
+    background: #1a1a2e;
+    color: white;
+    padding: 8px;
+}
+
+.personality-dropdown-enhanced option:hover {
+    background: #2a2a3e;
+}
+
+/* Pulse animation for the NEW badge */
+@keyframes subtle-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.animate-subtle-pulse {
+    animation: subtle-pulse 2s ease-in-out infinite;
+}
+
+/* Shimmer effect for the Create Custom Personality button */
+@keyframes shimmer {
+    0% { transform: translateX(-200%) skewX(-12deg); }
+    100% { transform: translateX(200%) skewX(-12deg); }
+}
+
+/* Glow effect for the main button */
+@keyframes glow {
+    0%, 100% { box-shadow: 0 0 20px rgba(147, 51, 234, 0.5), 0 0 40px rgba(147, 51, 234, 0.3); }
+    50% { box-shadow: 0 0 30px rgba(147, 51, 234, 0.7), 0 0 60px rgba(147, 51, 234, 0.5); }
+}
+
+/* Enhanced custom button in presets */
+.preset-pill.custom-button {
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.preset-pill.custom-button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    animation: shimmer 3s infinite;
+}
+
+.preset-pill.custom-button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 5px 15px rgba(147, 51, 234, 0.4);
+}
+
+/* ===== PERSONALITY SLIDERS STYLING ===== */
+.slider-container {
+    position: relative;
+    margin-bottom: 1rem;
+    padding: 0.5rem 0;
+}
+
+.range-slider {
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    outline: none;
+    cursor: pointer;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    position: relative;
+    transition: none; /* Disable transition for instant updates */
+}
+
+/* Default background will be set via JavaScript */
+
+/* Webkit browsers (Chrome, Safari) */
+.range-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #9333ea;
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 2px 6px rgba(147, 51, 234, 0.4);
+    transition: all 0.2s ease;
+}
+
+.range-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
+    box-shadow: 0 3px 8px rgba(147, 51, 234, 0.6);
+}
+
+.range-slider::-webkit-slider-thumb:active {
+    transform: scale(1.2);
+    box-shadow: 0 4px 12px rgba(147, 51, 234, 0.8);
+}
+
+/* Firefox */
+.range-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #9333ea;
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 2px 6px rgba(147, 51, 234, 0.4);
+    transition: all 0.2s ease;
+}
+
+.range-slider::-moz-range-thumb:hover {
+    transform: scale(1.1);
+    box-shadow: 0 3px 8px rgba(147, 51, 234, 0.6);
+}
+
+.range-slider::-moz-range-track {
+    background: transparent;
+    border: none;
+    height: 8px;
+}
+
+/* Edge/IE */
+.range-slider::-ms-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #9333ea;
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 2px 6px rgba(147, 51, 234, 0.4);
+}
+
+.range-slider::-ms-track {
+    background: transparent;
+    border-color: transparent;
+    color: transparent;
+    height: 8px;
+}
+
+/* FIXED: Active preset button styling */
+.btn-preset {
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.btn-preset.btn-primary.active {
+    background: #9333ea !important;
+    border-color: #9333ea !important;
+    color: white !important;
+    box-shadow: 0 0 20px rgba(147, 51, 234, 0.6), inset 0 0 0 2px rgba(255, 255, 255, 0.2) !important;
+    transform: scale(1.05);
+    font-weight: 600;
+}
+
+.btn-preset.btn-primary.active:hover {
+    background: #7928ca !important;
+    border-color: #7928ca !important;
+    transform: scale(1.07);
+    box-shadow: 0 0 25px rgba(147, 51, 234, 0.7), inset 0 0 0 2px rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Add checkmark to active preset */
+.btn-preset.btn-primary.active::after {
+    content: '✓';
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    background: #10b981;
+    color: white;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: bold;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    z-index: 1;
+}
+
+/* Percentage bubble */
+.slider-percentage-bubble {
+    position: absolute;
+    top: -35px;
+    transform: translateX(-50%);
+    background: rgba(147, 51, 234, 0.9);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 1;
+    transition: all 0.2s ease;
+    z-index: 10;
+}
+
+.slider-percentage-bubble::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 4px solid transparent;
+    border-top-color: rgba(147, 51, 234, 0.9);
+}
+
+/* Show bubble always for better user feedback */
+.slider-percentage-bubble {
+    opacity: 1;
+}
+
+/* Enhanced visibility on hover and focus */
+.slider-container:hover .slider-percentage-bubble,
+.range-slider:focus + .slider-percentage-bubble,
+.range-slider:active + .slider-percentage-bubble {
+    opacity: 1;
+    transform: translateX(-50%) scale(1.05);
+}
+
+/* Dead Air Slider Specific Styling */
+.dead-air-slider .range-slider {
+    background: linear-gradient(
+        to right, 
+        #3b82f6 0%, 
+        #3b82f6 var(--slider-progress, 33%), 
+        rgba(59, 130, 246, 0.2) var(--slider-progress, 33%), 
+        rgba(59, 130, 246, 0.2) 100%
+    );
+}
+
+.dead-air-slider .range-slider::-webkit-slider-thumb {
+    background: #3b82f6;
+    border: 2px solid white;
+    box-shadow: 0 2px 6px rgba(59, 130, 246, 0.4);
+}
+
+.dead-air-slider .range-slider::-webkit-slider-thumb:hover {
+    box-shadow: 0 3px 8px rgba(59, 130, 246, 0.6);
+}
+
+.dead-air-slider .range-slider::-webkit-slider-thumb:active {
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.8);
+}
+
+.dead-air-slider .range-slider::-moz-range-thumb {
+    background: #3b82f6;
+    border: 2px solid white;
+    box-shadow: 0 2px 6px rgba(59, 130, 246, 0.4);
+}
+
+.dead-air-slider .range-slider::-moz-range-thumb:hover {
+    box-shadow: 0 3px 8px rgba(59, 130, 246, 0.6);
+}
+
+.dead-air-slider .slider-percentage-bubble {
+    background: rgba(59, 130, 246, 0.9);
+    font-family: monospace;
+    min-width: 50px;
+    text-align: center;
+}
+
+.dead-air-slider .slider-percentage-bubble::after {
+    border-top-color: rgba(59, 130, 246, 0.9);
+}
+
+/* Loading state */
+.slider-container.loading {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.slider-container.loading .range-slider {
+    cursor: not-allowed;
+}
+
+/* Focus states for accessibility */
+.range-slider:focus {
+    box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.3);
+}
+
+/* Trait-specific thumb colors */
+.trait-warmth .range-slider::-webkit-slider-thumb,
+.trait-warmth .range-slider::-moz-range-thumb {
+    background: #ef4444;
+}
+
+.trait-energy .range-slider::-webkit-slider-thumb,
+.trait-energy .range-slider::-moz-range-thumb {
+    background: #f59e0b;
+}
+
+.trait-humor .range-slider::-webkit-slider-thumb,
+.trait-humor .range-slider::-moz-range-thumb {
+    background: #10b981;
+}
+
+.trait-sass .range-slider::-webkit-slider-thumb,
+.trait-sass .range-slider::-moz-range-thumb {
+    background: #8b5cf6;
+}
+
+.trait-verbosity .range-slider::-webkit-slider-thumb,
+.trait-verbosity .range-slider::-moz-range-thumb {
+    background: #06b6d4;
+}
+</style>
+
+{% endblock %}
+
+{% block right_rail %}
+<div class="space-y-6" x-data="rightRail()">
+    <!-- Status Badge -->
+    <div class="card p-4">
+        <div class="status-badge status-speaking w-full justify-center"
+             x-bind:class="'status-' + connectionStatus">
+            <div class="status-dot"></div>
+            <span x-text="connectionStatus.charAt(0).toUpperCase() + connectionStatus.slice(1)">Speaking</span>
+        </div>
+    </div>
+
+    <!-- Recent Interactions -->
+    <div class="card p-4">
+        <h3 class="font-semibold mb-4">Recent Interactions</h3>
+        <div class="space-y-3 max-h-80 overflow-y-auto">
+            <template x-for="interaction in recentInteractions" :key="interaction.id">
+                <div class="interaction-item">
+                    <div class="interaction-avatar" x-text="interaction.user.charAt(0).toUpperCase()">A</div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-medium text-sm" x-text="interaction.user">username</span>
+                            <span class="text-xs text-gray-500" x-text="formatTime(interaction.timestamp)">2m ago</span>
+                        </div>
+                        <p class="text-sm text-gray-400 line-clamp-2" x-text="interaction.message">Message content here</p>
+                    </div>
+                </div>
+            </template>
+
+            <div x-show="recentInteractions.length === 0" class="text-center py-8 text-gray-500">
+                <p class="text-sm">No recent interactions</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Today's Wins -->
+    <div class="card p-4">
+        <h3 class="font-semibold mb-4">Today's Wins</h3>
+        <div class="space-y-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span class="text-lg">🎯</span>
+                    <span class="text-sm">Dead air filled</span>
+                </div>
+                <span class="font-semibold text-accent" x-text="metrics.silencesFilled || 0">0</span>
+            </div>
+
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span class="text-lg">👥</span>
+                    <span class="text-sm">Unique engaged</span>
+                </div>
+                <span class="font-semibold text-accent" x-text="metrics.uniqueEngaged || 0">0</span>
+            </div>
+
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span class="text-lg">😅</span>
+                    <span class="text-sm">Awkward saved</span>
+                </div>
+                <span class="font-semibold text-accent" x-text="metrics.awkwardSaved || 0">0</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Token Usage & Cost Tracking -->
+    <div class="card p-4 border-2 border-accent/20">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold text-accent">💰 Your Spending</h3>
+            <span class="text-xs text-gray-400">Most Important Metric</span>
+        </div>
+        
+        <!-- Cost Summary Cards -->
+        <div class="grid grid-cols-2 gap-3 mb-4">
+            <div class="bg-surface/50 rounded-lg p-3 text-center">
+                <div class="text-2xl font-bold text-green-400" x-text="'$' + (tokenStats.todayCost || 0).toFixed(2)">$0.00</div>
+                <div class="text-xs text-gray-400">Today</div>
+            </div>
+            <div class="bg-surface/50 rounded-lg p-3 text-center">
+                <div class="text-2xl font-bold text-yellow-400" x-text="'$' + (tokenStats.monthlyCost || 0).toFixed(2)">$0.00</div>
+                <div class="text-xs text-gray-400">This Month</div>
+            </div>
+        </div>
+        
+        <!-- Usage Details -->
+        <div class="space-y-2 text-sm">
+            <div class="flex justify-between">
+                <span class="text-gray-400">Tokens Today:</span>
+                <span x-text="(tokenStats.todayTokens || 0).toLocaleString()">0</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-gray-400">Avg per Message:</span>
+                <span x-text="'$' + (tokenStats.avgCostPerMessage || 0).toFixed(4)">$0.0000</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="text-gray-400">Most Expensive Hour:</span>
+                <span x-text="'$' + (tokenStats.peakHourCost || 0).toFixed(2)">$0.00</span>
+            </div>
+        </div>
+        
+        <!-- Simple Usage Bar -->
+        <div class="mt-4">
+            <div class="flex justify-between text-xs text-gray-400 mb-1">
+                <span>Daily Usage</span>
+                <span x-text="Math.round((tokenStats.todayCost / (tokenStats.dailyBudget || 10)) * 100) + '%'">0%</span>
+            </div>
+            <div class="w-full bg-surface rounded-full h-2">
+                <div class="h-2 rounded-full transition-all duration-500"
+                     :class="(tokenStats.todayCost / (tokenStats.dailyBudget || 10)) > 0.8 ? 'bg-red-400' : (tokenStats.todayCost / (tokenStats.dailyBudget || 10)) > 0.6 ? 'bg-yellow-400' : 'bg-green-400'"
+                     :style="`width: ${Math.min(100, (tokenStats.todayCost / (tokenStats.dailyBudget || 10)) * 100)}%`"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<!-- Include external settings JavaScript -->
+<script src="/static/js/settings.js?v=20250125001"></script>
+
+<!-- Emergency Overlay Removal Script -->
+<script>
+// Remove problematic circular overlays that block Advanced Settings
+function removeBlockingOverlays() {
+    // Find elements with large circular backgrounds
+    const overlays = document.querySelectorAll('div, span, section');
+    
+    overlays.forEach(el => {
+        const style = window.getComputedStyle(el);
+        const inlineStyle = el.getAttribute('style') || '';
+        
+        // Check for large circular elements
+        const isLargeCircle = (
+            (style.borderRadius === '50%' && 
+             (parseInt(style.width) > 500 || parseInt(style.height) > 500)) ||
+            inlineStyle.includes('border-radius: 50%') && 
+            (inlineStyle.includes('600px') || inlineStyle.includes('700px') || inlineStyle.includes('800px'))
+        );
+        
+        // Check for radial gradient backgrounds
+        const hasRadialGradient = (
+            style.backgroundImage.includes('radial-gradient') && 
+            (style.backgroundImage.includes('circle') || style.backgroundImage.includes('ellipse'))
+        );
+        
+        // Remove blocking elements
+        if (isLargeCircle || hasRadialGradient) {
+            console.log('Removing blocking overlay:', el);
+            el.style.display = 'none';
+            el.style.pointerEvents = 'none';
+            el.style.zIndex = '-9999';
+        }
+    });
+    
+    // Ensure Advanced Settings content is visible
+    const advancedElements = document.querySelectorAll(
+        '#advanced-section, .advanced-tab-content, [x-show*="advanced"], .model-selection-container, .voice-ai-config'
+    );
+    
+    advancedElements.forEach(el => {
+        el.style.position = 'relative';
+        el.style.zIndex = '99999';
+        el.style.pointerEvents = 'auto';
+        el.style.background = 'var(--tbx-surface-base, rgba(20, 20, 30, 0.95))';
+    });
+}
+
+// Run immediately and on DOM changes
+removeBlockingOverlays();
+
+// Use MutationObserver to catch dynamically added overlays
+const observer = new MutationObserver(removeBlockingOverlays);
+observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+
+// Run every 2 seconds as a safety net
+timerManager.setInterval(removeBlockingOverlays, 2000);
+</script>
+
+<!-- Personality Integration Bridge - Ensures legacy and v2 systems work together -->
+<script src="/static/js/personality-integration-bridge.js"></script>
+<!-- Unified slider system - single implementation for all sliders -->
+<script src="/static/js/unified-slider-system.js"></script>
+
+<!-- Global updateSliderVisual function to fix slider visibility -->
+<script>
+// Global function required by Alpine.js slider templates
+window.updateSliderVisual = function(sliderElement, value) {
+    if (!sliderElement) return;
+    
+    // Let the unified slider system handle the actual work
+    if (window.UnifiedSliderSystem && window.UnifiedSliderSystem.sliders) {
+        // Find this slider in the unified system and update it
+        const sliderId = sliderElement.id;
+        if (sliderId) {
+            const sliderData = window.UnifiedSliderSystem.sliders.get(sliderId);
+            if (sliderData) {
+                window.UnifiedSliderSystem.updateSlider(sliderData);
+                return;
+            }
+        }
+    }
+    
+    // Fallback: Manual visual update if unified system isn't ready
+    const container = sliderElement.closest('.tbx-slider-container, .slider-container');
+    if (!container) return;
+    
+    // Ensure container is positioned
+    if (getComputedStyle(container).position === 'static') {
+        container.style.position = 'relative';
+    }
+    
+    // Calculate progress
+    const min = parseFloat(sliderElement.min) || 0;
+    const max = parseFloat(sliderElement.max) || 1;
+    const currentValue = parseFloat(value) || 0;
+    const progress = ((currentValue - min) / (max - min)) * 100;
+    const clampedProgress = Math.max(0, Math.min(100, progress));
+    
+    // Update or create progress fill
+    let progressFill = container.querySelector('.slider-progress-fill');
+    if (!progressFill) {
+        progressFill = document.createElement('div');
+        progressFill.className = 'slider-progress-fill';
+        container.appendChild(progressFill);
+    }
+    
+    // Set the width based on progress
+    progressFill.style.width = clampedProgress + '%';
+    
+    // Update bubble if it exists
+    const bubble = container.querySelector('.slider-value-bubble, .tbx-slider-bubble');
+    if (bubble) {
+        bubble.style.left = clampedProgress + '%';
+        const span = bubble.querySelector('span');
+        if (span) {
+            if (max === 1 && min === 0) {
+                span.textContent = Math.round(currentValue * 100) + '%';
+            } else {
+                span.textContent = Math.round(currentValue);
+            }
+        }
+    }
+};
+
+console.log('[Settings] Global updateSliderVisual function defined');
+</script>
+
+<!-- Advanced Model Manager Module -->
+<script src="/static/js/settings/modules/ModelManager.js?v=20250125001"></script>
+
+<script>
+// The main settingsPage function is loaded from the external JS file above.
+// This ensures there's only one implementation and avoids conflicts.
+
+// Initialize Model Manager after DOM loads
+document.addEventListener('DOMContentLoaded', function() {
+    // Wait for Alpine to be ready
+    document.addEventListener('alpine:init', () => {
+        // Initialize global ModelManager instance
+        if (window.ModelManager && window.StateManager) {
+            window.modelManagerInstance = new window.ModelManager({
+                core: null, // Will be set up by Alpine components
+                state: window.StateManager,
+                api: window.SettingsApiService,
+                streamerId: '{{ streamer_id }}'
+            });
+            
+            // Initialize the module
+            window.modelManagerInstance.init().then(() => {
+                console.log('[Settings] ModelManager initialized successfully');
+                // Trigger Alpine.js reactivity update
+                Alpine.nextTick(() => {
+                    console.log('[Settings] Triggering Alpine.js update after ModelManager init');
+                });
+            }).catch(error => {
+                console.error('[Settings] ModelManager initialization failed:', error);
+                // Show error to user
+                if (window.showToast) {
+                    window.showToast('Failed to load model selection interface', 'error');
+                }
+            });
+        }
+    });
+});
+</script>
+
+<!-- Slider progress fix for proper visual updates -->
+<!-- Removed: Using unified slider system instead -->
+{% endblock %}

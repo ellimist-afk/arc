@@ -1,0 +1,681 @@
+{% extends "layouts-v2/dashboard-layout.html" %}
+
+{% block title %}Command Builder - TalkBot{% endblock %}
+
+{% block page_styles %}
+<link rel="stylesheet" href="/static/v2/css/pages/commands.css">
+{% endblock %}
+
+{% block content %}
+<div class="tbx-page-header">
+    <div class="tbx-page-title">
+        <h1>Command Builder</h1>
+        <span class="tbx-badge tbx-badge--info">Visual Editor</span>
+    </div>
+    <div class="tbx-page-actions">
+        <button class="tbx-btn tbx-btn--secondary" id="import-commands">
+            <i class="fas fa-upload"></i> Import
+        </button>
+        <button class="tbx-btn tbx-btn--secondary" id="export-commands">
+            <i class="fas fa-download"></i> Export
+        </button>
+        <button class="tbx-btn tbx-btn--primary" id="create-command">
+            <i class="fas fa-plus"></i> New Command
+        </button>
+    </div>
+</div>
+
+<!-- Command Overview -->
+<div class="tbx-grid tbx-grid--3-col">
+    <div class="tbx-metric-card">
+        <div class="tbx-metric-icon tbx-metric-icon--success">
+            <i class="fas fa-terminal"></i>
+        </div>
+        <div class="tbx-metric-content">
+            <span class="tbx-metric-value" id="total-commands">0</span>
+            <span class="tbx-metric-label">Total Commands</span>
+        </div>
+    </div>
+    
+    <div class="tbx-metric-card">
+        <div class="tbx-metric-icon tbx-metric-icon--info">
+            <i class="fas fa-chart-line"></i>
+        </div>
+        <div class="tbx-metric-content">
+            <span class="tbx-metric-value" id="active-commands">0</span>
+            <span class="tbx-metric-label">Active Commands</span>
+        </div>
+    </div>
+    
+    <div class="tbx-metric-card">
+        <div class="tbx-metric-icon tbx-metric-icon--warning">
+            <i class="fas fa-clock"></i>
+        </div>
+        <div class="tbx-metric-content">
+            <span class="tbx-metric-value" id="usage-today">0</span>
+            <span class="tbx-metric-label">Uses Today</span>
+        </div>
+    </div>
+</div>
+
+<!-- Command Builder Interface -->
+<div class="tbx-grid tbx-grid--2-col">
+    <!-- Command List -->
+    <div class="tbx-card">
+        <div class="tbx-card__header">
+            <h3 class="tbx-card__title">Commands</h3>
+            <div class="tbx-command-filters">
+                <select class="tbx-select" id="command-filter">
+                    <option value="all">All Commands</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="builtin">Built-in</option>
+                    <option value="custom">Custom</option>
+                </select>
+                <input type="text" class="tbx-input tbx-input--small" placeholder="Search commands..." id="command-search">
+            </div>
+        </div>
+        <div class="tbx-card__body">
+            <div class="tbx-command-list" id="command-list">
+                <!-- Commands will be populated here -->
+                <div class="tbx-command-item" data-command="help">
+                    <div class="tbx-command-header">
+                        <span class="tbx-command-name">!help</span>
+                        <div class="tbx-command-status">
+                            <span class="tbx-status-dot tbx-status-dot--success"></span>
+                            <span class="tbx-badge tbx-badge--info">Built-in</span>
+                        </div>
+                    </div>
+                    <div class="tbx-command-description">
+                        Shows available commands and usage information
+                    </div>
+                    <div class="tbx-command-stats">
+                        <span class="tbx-stat-item">
+                            <i class="fas fa-eye"></i> 142 uses
+                        </span>
+                        <span class="tbx-stat-item">
+                            <i class="fas fa-clock"></i> 2.1s avg
+                        </span>
+                    </div>
+                    <div class="tbx-command-actions">
+                        <button class="tbx-btn tbx-btn--small tbx-btn--secondary" onclick="editCommand('help')">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="tbx-btn tbx-btn--small tbx-btn--secondary" onclick="testCommand('help')">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button class="tbx-btn tbx-btn--small tbx-btn--secondary" onclick="duplicateCommand('help')">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="tbx-command-item" data-command="stats">
+                    <div class="tbx-command-header">
+                        <span class="tbx-command-name">!stats</span>
+                        <div class="tbx-command-status">
+                            <span class="tbx-status-dot tbx-status-dot--success"></span>
+                            <span class="tbx-badge tbx-badge--success">Custom</span>
+                        </div>
+                    </div>
+                    <div class="tbx-command-description">
+                        Display bot statistics and performance metrics
+                    </div>
+                    <div class="tbx-command-stats">
+                        <span class="tbx-stat-item">
+                            <i class="fas fa-eye"></i> 89 uses
+                        </span>
+                        <span class="tbx-stat-item">
+                            <i class="fas fa-clock"></i> 1.8s avg
+                        </span>
+                    </div>
+                    <div class="tbx-command-actions">
+                        <button class="tbx-btn tbx-btn--small tbx-btn--secondary" onclick="editCommand('stats')">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="tbx-btn tbx-btn--small tbx-btn--secondary" onclick="testCommand('stats')">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button class="tbx-btn tbx-btn--small tbx-btn--danger" onclick="deleteCommand('stats')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Command Editor -->
+    <div class="tbx-card">
+        <div class="tbx-card__header">
+            <h3 class="tbx-card__title">Command Editor</h3>
+            <div class="tbx-editor-controls">
+                <button class="tbx-btn tbx-btn--small tbx-btn--secondary" id="save-command">
+                    <i class="fas fa-save"></i> Save
+                </button>
+                <button class="tbx-btn tbx-btn--small tbx-btn--secondary" id="clear-editor">
+                    <i class="fas fa-times"></i> Clear
+                </button>
+            </div>
+        </div>
+        <div class="tbx-card__body">
+            <div class="tbx-editor-form" id="command-editor">
+                <div class="tbx-form-group">
+                    <label class="tbx-label">Command Name</label>
+                    <div class="tbx-input-group">
+                        <span class="tbx-input-prefix">!</span>
+                        <input type="text" class="tbx-input" id="command-name" placeholder="commandname">
+                    </div>
+                    <small class="tbx-help-text">Use lowercase, no spaces or special characters</small>
+                </div>
+                
+                <div class="tbx-form-group">
+                    <label class="tbx-label">Description</label>
+                    <input type="text" class="tbx-input" id="command-description" placeholder="Brief description of what this command does">
+                </div>
+                
+                <div class="tbx-form-group">
+                    <label class="tbx-label">Response Type</label>
+                    <select class="tbx-select" id="response-type">
+                        <option value="text">Text Response</option>
+                        <option value="embed">Rich Embed</option>
+                        <option value="voice">Voice Response</option>
+                        <option value="action">Bot Action</option>
+                        <option value="api">API Call</option>
+                    </select>
+                </div>
+                
+                <div class="tbx-form-group">
+                    <label class="tbx-label">Response Content</label>
+                    <textarea class="tbx-textarea" id="response-content" rows="4" placeholder="Enter the response content or template..."></textarea>
+                    <div class="tbx-template-helpers">
+                        <span class="tbx-template-tag" onclick="insertTemplate('{user}')">{user}</span>
+                        <span class="tbx-template-tag" onclick="insertTemplate('{channel}')">{channel}</span>
+                        <span class="tbx-template-tag" onclick="insertTemplate('{args}')">{args}</span>
+                        <span class="tbx-template-tag" onclick="insertTemplate('{random}')">{random}</span>
+                    </div>
+                </div>
+                
+                <div class="tbx-form-row">
+                    <div class="tbx-form-group">
+                        <label class="tbx-label">Cooldown (seconds)</label>
+                        <input type="number" class="tbx-input" id="command-cooldown" value="5" min="0" max="300">
+                    </div>
+                    
+                    <div class="tbx-form-group">
+                        <label class="tbx-label">Permission Level</label>
+                        <select class="tbx-select" id="permission-level">
+                            <option value="everyone">Everyone</option>
+                            <option value="subscriber">Subscribers</option>
+                            <option value="vip">VIPs</option>
+                            <option value="moderator">Moderators</option>
+                            <option value="broadcaster">Broadcaster Only</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="tbx-form-group">
+                    <label class="tbx-checkbox">
+                        <input type="checkbox" id="command-enabled" checked>
+                        <span class="tbx-checkmark"></span>
+                        Command Enabled
+                    </label>
+                </div>
+                
+                <div class="tbx-form-group">
+                    <label class="tbx-checkbox">
+                        <input type="checkbox" id="track-usage">
+                        <span class="tbx-checkmark"></span>
+                        Track Usage Statistics
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Command Testing Environment -->
+<div class="tbx-card">
+    <div class="tbx-card__header">
+        <h3 class="tbx-card__title">Testing Environment</h3>
+        <button class="tbx-btn tbx-btn--small tbx-btn--primary" id="run-test">
+            <i class="fas fa-play"></i> Run Test
+        </button>
+    </div>
+    <div class="tbx-card__body">
+        <div class="tbx-test-environment">
+            <div class="tbx-test-input">
+                <label class="tbx-label">Test Input</label>
+                <div class="tbx-input-group">
+                    <input type="text" class="tbx-input" id="test-input" placeholder="!command arg1 arg2">
+                    <button class="tbx-btn tbx-btn--secondary" id="simulate-user">
+                        <i class="fas fa-user"></i> As User
+                    </button>
+                </div>
+            </div>
+            
+            <div class="tbx-test-results" id="test-results">
+                <div class="tbx-test-placeholder">
+                    <i class="fas fa-flask fa-2x"></i>
+                    <p>Enter a command above and click "Run Test" to see the output</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Command Analytics -->
+<div class="tbx-card">
+    <div class="tbx-card__header">
+        <h3 class="tbx-card__title">Usage Analytics</h3>
+        <select class="tbx-select" id="analytics-period">
+            <option value="24h">Last 24 Hours</option>
+            <option value="7d" selected>Last 7 Days</option>
+            <option value="30d">Last 30 Days</option>
+        </select>
+    </div>
+    <div class="tbx-card__body">
+        <div class="tbx-analytics-grid">
+            <div class="tbx-analytics-chart">
+                <h4>Most Used Commands</h4>
+                <div class="tbx-command-ranking">
+                    <div class="tbx-ranking-item">
+                        <span class="tbx-rank">1</span>
+                        <span class="tbx-command">!help</span>
+                        <div class="tbx-usage-bar">
+                            <div class="tbx-usage-fill" style="width: 100%"></div>
+                        </div>
+                        <span class="tbx-usage-count">142</span>
+                    </div>
+                    <div class="tbx-ranking-item">
+                        <span class="tbx-rank">2</span>
+                        <span class="tbx-command">!stats</span>
+                        <div class="tbx-usage-bar">
+                            <div class="tbx-usage-fill" style="width: 65%"></div>
+                        </div>
+                        <span class="tbx-usage-count">89</span>
+                    </div>
+                    <div class="tbx-ranking-item">
+                        <span class="tbx-rank">3</span>
+                        <span class="tbx-command">!uptime</span>
+                        <div class="tbx-usage-bar">
+                            <div class="tbx-usage-fill" style="width: 45%"></div>
+                        </div>
+                        <span class="tbx-usage-count">64</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tbx-analytics-stats">
+                <h4>Performance Metrics</h4>
+                <div class="tbx-metric-list">
+                    <div class="tbx-metric-item">
+                        <span class="tbx-metric-label">Avg Response Time</span>
+                        <span class="tbx-metric-value">1.8s</span>
+                    </div>
+                    <div class="tbx-metric-item">
+                        <span class="tbx-metric-label">Success Rate</span>
+                        <span class="tbx-metric-value">99.2%</span>
+                    </div>
+                    <div class="tbx-metric-item">
+                        <span class="tbx-metric-label">Error Rate</span>
+                        <span class="tbx-metric-value">0.8%</span>
+                    </div>
+                    <div class="tbx-metric-item">
+                        <span class="tbx-metric-label">Total Executions</span>
+                        <span class="tbx-metric-value">1,247</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Command Import/Export Modal -->
+<div class="tbx-modal" id="import-export-modal" style="display: none;">
+    <div class="tbx-modal-content">
+        <div class="tbx-modal-header">
+            <h4 id="modal-title">Import Commands</h4>
+            <button class="tbx-modal-close" onclick="closeModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="tbx-modal-body">
+            <div id="import-content">
+                <div class="tbx-file-upload">
+                    <input type="file" id="import-file" accept=".json,.txt" style="display: none;">
+                    <div class="tbx-upload-area" onclick="document.getElementById('import-file').click()">
+                        <i class="fas fa-cloud-upload-alt fa-2x"></i>
+                        <p>Click to select a file or drag and drop</p>
+                        <small>Supports JSON and TXT formats</small>
+                    </div>
+                </div>
+            </div>
+            <div id="export-content" style="display: none;">
+                <div class="tbx-export-options">
+                    <label class="tbx-checkbox">
+                        <input type="checkbox" checked>
+                        <span class="tbx-checkmark"></span>
+                        Include Built-in Commands
+                    </label>
+                    <label class="tbx-checkbox">
+                        <input type="checkbox" checked>
+                        <span class="tbx-checkmark"></span>
+                        Include Usage Statistics
+                    </label>
+                </div>
+                <textarea class="tbx-textarea" rows="10" readonly id="export-data"></textarea>
+            </div>
+        </div>
+        <div class="tbx-modal-footer">
+            <button class="tbx-btn tbx-btn--secondary" onclick="closeModal()">Cancel</button>
+            <button class="tbx-btn tbx-btn--primary" id="modal-action">Import</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block page_scripts %}
+<script src="/static/v2/js/pages/commands.js"></script>
+<script>
+// Command Builder JavaScript
+document.addEventListener('DOMContentLoaded', function() {
+    const streamerId = '{{ streamer_id }}';
+    let currentCommand = null;
+    let commands = [];
+    
+    // Initialize command builder
+    loadCommands();
+    setupEventListeners();
+    
+    function loadCommands() {
+        // Mock command data - replace with API call
+        commands = [
+            {
+                name: 'help',
+                description: 'Shows available commands and usage information',
+                type: 'builtin',
+                enabled: true,
+                cooldown: 5,
+                permission: 'everyone',
+                responseType: 'text',
+                content: 'Available commands: !help, !stats, !uptime. Use !help [command] for details.',
+                usage: 142,
+                avgTime: 2.1
+            },
+            {
+                name: 'stats',
+                description: 'Display bot statistics and performance metrics',
+                type: 'custom',
+                enabled: true,
+                cooldown: 10,
+                permission: 'everyone',
+                responseType: 'embed',
+                content: 'Bot has been running for {uptime} with {messages} messages processed.',
+                usage: 89,
+                avgTime: 1.8
+            }
+        ];
+        
+        updateCommandList();
+        updateMetrics();
+    }
+    
+    function updateCommandList() {
+        const container = document.getElementById('command-list');
+        const filter = document.getElementById('command-filter').value;
+        const search = document.getElementById('command-search').value.toLowerCase();
+        
+        let filteredCommands = commands.filter(cmd => {
+            if (filter !== 'all' && cmd.type !== filter && filter !== (cmd.enabled ? 'active' : 'inactive')) {
+                return false;
+            }
+            if (search && !cmd.name.toLowerCase().includes(search) && !cmd.description.toLowerCase().includes(search)) {
+                return false;
+            }
+            return true;
+        });
+        
+        container.innerHTML = filteredCommands.map(cmd => `
+            <div class="tbx-command-item" data-command="${cmd.name}">
+                <div class="tbx-command-header">
+                    <span class="tbx-command-name">!${cmd.name}</span>
+                    <div class="tbx-command-status">
+                        <span class="tbx-status-dot tbx-status-dot--${cmd.enabled ? 'success' : 'inactive'}"></span>
+                        <span class="tbx-badge tbx-badge--${cmd.type === 'builtin' ? 'info' : 'success'}">${cmd.type === 'builtin' ? 'Built-in' : 'Custom'}</span>
+                    </div>
+                </div>
+                <div class="tbx-command-description">${cmd.description}</div>
+                <div class="tbx-command-stats">
+                    <span class="tbx-stat-item">
+                        <i class="fas fa-eye"></i> ${cmd.usage} uses
+                    </span>
+                    <span class="tbx-stat-item">
+                        <i class="fas fa-clock"></i> ${cmd.avgTime}s avg
+                    </span>
+                </div>
+                <div class="tbx-command-actions">
+                    <button class="tbx-btn tbx-btn--small tbx-btn--secondary" onclick="editCommand('${cmd.name}')">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="tbx-btn tbx-btn--small tbx-btn--secondary" onclick="testCommand('${cmd.name}')">
+                        <i class="fas fa-play"></i>
+                    </button>
+                    ${cmd.type === 'custom' ? `
+                        <button class="tbx-btn tbx-btn--small tbx-btn--danger" onclick="deleteCommand('${cmd.name}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    ` : `
+                        <button class="tbx-btn tbx-btn--small tbx-btn--secondary" onclick="duplicateCommand('${cmd.name}')">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    `}
+                </div>
+            </div>
+        `).join('');
+    }
+    
+    function updateMetrics() {
+        document.getElementById('total-commands').textContent = commands.length;
+        document.getElementById('active-commands').textContent = commands.filter(c => c.enabled).length;
+        document.getElementById('usage-today').textContent = commands.reduce((sum, c) => sum + c.usage, 0);
+    }
+    
+    function setupEventListeners() {
+        document.getElementById('command-filter').addEventListener('change', updateCommandList);
+        document.getElementById('command-search').addEventListener('input', updateCommandList);
+        document.getElementById('create-command').addEventListener('click', createNewCommand);
+        document.getElementById('save-command').addEventListener('click', saveCommand);
+        document.getElementById('clear-editor').addEventListener('click', clearEditor);
+        document.getElementById('run-test').addEventListener('click', runTest);
+        document.getElementById('import-commands').addEventListener('click', () => openModal('import'));
+        document.getElementById('export-commands').addEventListener('click', () => openModal('export'));
+    }
+    
+    window.editCommand = function(name) {
+        const command = commands.find(c => c.name === name);
+        if (!command) return;
+        
+        currentCommand = command;
+        document.getElementById('command-name').value = command.name;
+        document.getElementById('command-description').value = command.description;
+        document.getElementById('response-type').value = command.responseType;
+        document.getElementById('response-content').value = command.content;
+        document.getElementById('command-cooldown').value = command.cooldown;
+        document.getElementById('permission-level').value = command.permission;
+        document.getElementById('command-enabled').checked = command.enabled;
+        
+        showToast(`Editing command: !${name}`, 'info');
+    };
+    
+    window.testCommand = function(name) {
+        document.getElementById('test-input').value = `!${name}`;
+        runTest();
+    };
+    
+    window.deleteCommand = function(name) {
+        if (confirm(`Are you sure you want to delete the command !${name}?`)) {
+            commands = commands.filter(c => c.name !== name);
+            updateCommandList();
+            updateMetrics();
+            showToast(`Command !${name} deleted`, 'success');
+        }
+    };
+    
+    window.duplicateCommand = function(name) {
+        const command = commands.find(c => c.name === name);
+        if (!command) return;
+        
+        const newCommand = { ...command, name: `${name}_copy`, type: 'custom' };
+        commands.push(newCommand);
+        updateCommandList();
+        updateMetrics();
+        showToast(`Command duplicated as !${newCommand.name}`, 'success');
+    };
+    
+    function createNewCommand() {
+        currentCommand = null;
+        clearEditor();
+        showToast('Creating new command', 'info');
+    }
+    
+    function clearEditor() {
+        document.getElementById('command-name').value = '';
+        document.getElementById('command-description').value = '';
+        document.getElementById('response-type').value = 'text';
+        document.getElementById('response-content').value = '';
+        document.getElementById('command-cooldown').value = '5';
+        document.getElementById('permission-level').value = 'everyone';
+        document.getElementById('command-enabled').checked = true;
+        document.getElementById('track-usage').checked = false;
+    }
+    
+    function saveCommand() {
+        const name = document.getElementById('command-name').value.trim();
+        if (!name) {
+            showToast('Please enter a command name', 'error');
+            return;
+        }
+        
+        const commandData = {
+            name: name,
+            description: document.getElementById('command-description').value,
+            type: 'custom',
+            enabled: document.getElementById('command-enabled').checked,
+            cooldown: parseInt(document.getElementById('command-cooldown').value),
+            permission: document.getElementById('permission-level').value,
+            responseType: document.getElementById('response-type').value,
+            content: document.getElementById('response-content').value,
+            usage: currentCommand ? currentCommand.usage : 0,
+            avgTime: currentCommand ? currentCommand.avgTime : 0
+        };
+        
+        if (currentCommand && currentCommand.name === name) {
+            // Update existing command
+            Object.assign(currentCommand, commandData);
+        } else {
+            // Create new command
+            commands.push(commandData);
+        }
+        
+        updateCommandList();
+        updateMetrics();
+        showToast(`Command !${name} saved successfully`, 'success');
+    }
+    
+    function runTest() {
+        const input = document.getElementById('test-input').value.trim();
+        if (!input.startsWith('!')) {
+            showToast('Test input must start with !', 'error');
+            return;
+        }
+        
+        const [commandName, ...args] = input.slice(1).split(' ');
+        const command = commands.find(c => c.name === commandName);
+        
+        const resultsContainer = document.getElementById('test-results');
+        
+        if (!command) {
+            resultsContainer.innerHTML = `
+                <div class="tbx-test-error">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>Command !${commandName} not found</p>
+                </div>
+            `;
+            return;
+        }
+        
+        if (!command.enabled) {
+            resultsContainer.innerHTML = `
+                <div class="tbx-test-warning">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <p>Command !${commandName} is disabled</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // Simulate command execution
+        let output = command.content;
+        output = output.replace('{user}', 'TestUser');
+        output = output.replace('{channel}', streamerId || 'TestChannel');
+        output = output.replace('{args}', args.join(' ') || '');
+        output = output.replace('{random}', Math.floor(Math.random() * 100));
+        
+        resultsContainer.innerHTML = `
+            <div class="tbx-test-success">
+                <div class="tbx-test-header">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Test Successful</span>
+                    <span class="tbx-test-time">${command.avgTime}s</span>
+                </div>
+                <div class="tbx-test-output">
+                    <strong>Output:</strong>
+                    <div class="tbx-output-content">${output}</div>
+                </div>
+            </div>
+        `;
+    }
+    
+    function openModal(type) {
+        const modal = document.getElementById('import-export-modal');
+        const title = document.getElementById('modal-title');
+        const importContent = document.getElementById('import-content');
+        const exportContent = document.getElementById('export-content');
+        const actionBtn = document.getElementById('modal-action');
+        
+        if (type === 'import') {
+            title.textContent = 'Import Commands';
+            importContent.style.display = 'block';
+            exportContent.style.display = 'none';
+            actionBtn.textContent = 'Import';
+        } else {
+            title.textContent = 'Export Commands';
+            importContent.style.display = 'none';
+            exportContent.style.display = 'block';
+            actionBtn.textContent = 'Download';
+            
+            // Generate export data
+            const exportData = JSON.stringify(commands, null, 2);
+            document.getElementById('export-data').value = exportData;
+        }
+        
+        modal.style.display = 'flex';
+    }
+    
+    window.closeModal = function() {
+        document.getElementById('import-export-modal').style.display = 'none';
+    };
+    
+    window.insertTemplate = function(template) {
+        const textarea = document.getElementById('response-content');
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const text = textarea.value;
+        textarea.value = text.substring(0, start) + template + text.substring(end);
+        textarea.focus();
+        textarea.setSelectionRange(start + template.length, start + template.length);
+    };
+});
+</script>
+{% endblock %}

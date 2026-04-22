@@ -1,0 +1,427 @@
+{% extends "base-v2.html" %}
+
+{% block title %}Component Showcase - TalkBot{% endblock %}
+
+{% block head %}
+    <link rel="stylesheet" href="/static/v2/css/components.css">
+{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-8" x-data="componentShowcase()">
+    <!-- Header -->
+    <div class="text-center py-8">
+        <h1 class="text-4xl font-bold bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">
+            TalkBot V2 Components
+        </h1>
+        <p class="text-secondary mt-2">Interactive showcase of V2 UI components</p>
+    </div>
+    
+    <!-- Connection Status Component -->
+    <section class="tbx-card">
+        <h2 class="text-2xl font-semibold mb-6">Connection Status</h2>
+        
+        <div class="grid md:grid-cols-2 gap-6">
+            <div>
+                <h3 class="text-lg font-medium mb-4">Basic Status Indicator</h3>
+                <div x-data="connectionStatus()" x-init="init()" class="space-y-4">
+                    <!-- Compact Status -->
+                    <div class="flex items-center gap-3 p-4 bg-gray-800/50 rounded-lg">
+                        <div class="w-3 h-3 rounded-full" :class="indicatorColor"></div>
+                        <span class="text-sm" :class="statusColor" x-text="statusText"></span>
+                        <button @click="toggleDetails()" class="ml-auto text-xs text-secondary hover:text-primary">
+                            Details
+                        </button>
+                    </div>
+                    
+                    <!-- Detailed Status -->
+                    <div x-show="showDetails" x-transition class="p-4 bg-gray-800/30 rounded-lg space-y-2">
+                        <div class="flex justify-between text-sm">
+                            <span class="text-secondary">Status:</span>
+                            <span x-text="statusText"></span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-secondary">Last Connected:</span>
+                            <span x-text="formatLastConnected()"></span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-secondary">Latency:</span>
+                            <span x-text="formatLatency()"></span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-secondary">Retry Attempts:</span>
+                            <span x-text="reconnectAttempts"></span>
+                        </div>
+                        
+                        <button @click="retryConnection()" 
+                                :disabled="status === 'connecting'"
+                                class="w-full mt-3 tbx-button tbx-button-secondary">
+                            <span x-show="status !== 'connecting'">Retry Connection</span>
+                            <span x-show="status === 'connecting'">Connecting...</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Status Controls for Demo -->
+                <div class="mt-4 space-y-2">
+                    <h4 class="text-sm font-medium text-secondary">Demo Controls:</h4>
+                    <div class="flex gap-2">
+                        <button @click="$dispatch('ws-connection-status', { detail: { status: 'connected' } })" 
+                                class="tbx-button tbx-button-secondary text-xs">
+                            Set Connected
+                        </button>
+                        <button @click="$dispatch('ws-connection-status', { detail: { status: 'connecting' } })" 
+                                class="tbx-button tbx-button-secondary text-xs">
+                            Set Connecting
+                        </button>
+                        <button @click="$dispatch('ws-connection-status', { detail: { status: 'disconnected' } })" 
+                                class="tbx-button tbx-button-secondary text-xs">
+                            Set Disconnected
+                        </button>
+                        <button @click="$dispatch('ws-connection-status', { detail: { status: 'error' } })" 
+                                class="tbx-button tbx-button-secondary text-xs">
+                            Set Error
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div>
+                <h3 class="text-lg font-medium mb-4">Integration Example</h3>
+                <div class="p-4 bg-gray-800/50 rounded-lg">
+                    <code class="text-sm text-gray-300">
+&lt;div x-data="connectionStatus()" x-init="init()"&gt;<br>
+&nbsp;&nbsp;&lt;div class="flex items-center gap-2"&gt;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&lt;div :class="indicatorColor"&gt;&lt;/div&gt;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&lt;span x-text="statusText"&gt;&lt;/span&gt;<br>
+&nbsp;&nbsp;&lt;/div&gt;<br>
+&lt;/div&gt;
+                    </code>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Stat Tile Components -->
+    <section class="tbx-card">
+        <h2 class="text-2xl font-semibold mb-6">Stat Tiles</h2>
+        
+        <div class="grid md:grid-cols-4 gap-4 mb-6">
+            <!-- Number Stat -->
+            <div x-data="statTile({
+                label: 'Chat Messages',
+                value: demoStats.chatMessages,
+                format: 'number',
+                icon: 'chat'
+            })" class="tbx-card bg-gray-800/30">
+                <div class="flex items-center justify-between mb-2">
+                    <h3 class="text-sm font-medium text-secondary" x-text="label"></h3>
+                    <div x-show="trendIcon" x-html="trendIcon"></div>
+                </div>
+                <div class="flex items-baseline gap-2">
+                    <span class="text-2xl font-bold" :class="colorClasses" x-text="formattedValue"></span>
+                    <span x-show="changeIndicator" class="text-xs" :class="trendColor" x-text="changeIndicator"></span>
+                </div>
+            </div>
+            
+            <!-- Percentage Stat -->
+            <div x-data="statTile({
+                label: 'CPU Usage',
+                value: demoStats.cpuUsage,
+                format: 'percentage',
+                color: 'warning'
+            })" class="tbx-card bg-gray-800/30">
+                <div class="flex items-center justify-between mb-2">
+                    <h3 class="text-sm font-medium text-secondary" x-text="label"></h3>
+                    <div x-show="trendIcon" x-html="trendIcon"></div>
+                </div>
+                <div class="flex items-baseline gap-2">
+                    <span class="text-2xl font-bold" :class="colorClasses" x-text="formattedValue"></span>
+                    <span x-show="changeIndicator" class="text-xs" :class="trendColor" x-text="changeIndicator"></span>
+                </div>
+            </div>
+            
+            <!-- Duration Stat -->
+            <div x-data="statTile({
+                label: 'Uptime',
+                value: demoStats.uptime,
+                format: 'duration',
+                color: 'success'
+            })" class="tbx-card bg-gray-800/30">
+                <div class="flex items-center justify-between mb-2">
+                    <h3 class="text-sm font-medium text-secondary" x-text="label"></h3>
+                    <div x-show="trendIcon" x-html="trendIcon"></div>
+                </div>
+                <div class="flex items-baseline gap-2">
+                    <span class="text-2xl font-bold" :class="colorClasses" x-text="formattedValue"></span>
+                    <span x-show="changeIndicator" class="text-xs" :class="trendColor" x-text="changeIndicator"></span>
+                </div>
+            </div>
+            
+            <!-- Bytes Stat -->
+            <div x-data="statTile({
+                label: 'Memory Usage',
+                value: demoStats.memoryUsage,
+                format: 'bytes',
+                color: 'info'
+            })" class="tbx-card bg-gray-800/30">
+                <div class="flex items-center justify-between mb-2">
+                    <h3 class="text-sm font-medium text-secondary" x-text="label"></h3>
+                    <div x-show="trendIcon" x-html="trendIcon"></div>
+                </div>
+                <div class="flex items-baseline gap-2">
+                    <span class="text-2xl font-bold" :class="colorClasses" x-text="formattedValue"></span>
+                    <span x-show="changeIndicator" class="text-xs" :class="trendColor" x-text="changeIndicator"></span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Demo Controls -->
+        <div class="flex gap-4 mb-4">
+            <button @click="updateDemoStats()" class="tbx-button tbx-button-primary">
+                Update Stats (Demo)
+            </button>
+            <button @click="resetDemoStats()" class="tbx-button tbx-button-secondary">
+                Reset Stats
+            </button>
+        </div>
+    </section>
+    
+    <!-- Personality Sliders -->
+    <section class="tbx-card">
+        <h2 class="text-2xl font-semibold mb-6">Personality Sliders</h2>
+        
+        <div class="grid md:grid-cols-2 gap-8">
+            <div class="space-y-6">
+                <h3 class="text-lg font-medium">Core Traits</h3>
+                
+                <!-- Humor Slider -->
+                <div x-data="personalitySlider({
+                    trait: 'humor',
+                    label: 'Humor Level',
+                    value: 65,
+                    description: 'How funny and playful the bot should be'
+                })" class="slider-container">
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="text-sm font-medium" x-text="label"></label>
+                        <span class="text-sm tabular-nums" :class="hasChanged ? 'text-accent' : 'text-secondary'">
+                            <span x-text="valueDisplay"></span>
+                            <span x-show="hasChanged" x-text="changeIndicator" class="ml-1"></span>
+                        </span>
+                    </div>
+                    
+                    <div class="relative">
+                        <!-- Track -->
+                        <div class="slider-track w-full h-3 bg-gray-700 rounded-full cursor-pointer relative overflow-hidden"
+                             @mousedown="handleMouseDown"
+                             @touchstart="handleTouchStart"
+                             :style="trackStyle">
+                             
+                            <!-- Thumb -->
+                            <div class="slider-thumb absolute top-1/2 w-6 h-6 bg-white rounded-full border-2 border-gray-300 cursor-grab active:cursor-grabbing shadow-lg transition-all duration-200"
+                                 :style="thumbStyle"
+                                 :class="{ 'scale-125 shadow-xl': isDragging }">
+                            </div>
+                        </div>
+                        
+                        <!-- Save Indicator -->
+                        <div class="save-indicator absolute -top-8 left-1/2 transform -translate-x-1/2 opacity-0 transition-opacity duration-300">
+                            <div class="bg-green-500 text-white text-xs px-2 py-1 rounded">Saved</div>
+                        </div>
+                    </div>
+                    
+                    <p x-show="description" class="text-xs text-secondary mt-1" x-text="description"></p>
+                </div>
+                
+                <!-- Energy Slider -->
+                <div x-data="personalitySlider({
+                    trait: 'energy',
+                    label: 'Energy Level',
+                    value: 80,
+                    description: 'How energetic and enthusiastic responses should be'
+                })" class="slider-container">
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="text-sm font-medium" x-text="label"></label>
+                        <span class="text-sm tabular-nums" :class="hasChanged ? 'text-accent' : 'text-secondary'">
+                            <span x-text="valueDisplay"></span>
+                            <span x-show="hasChanged" x-text="changeIndicator" class="ml-1"></span>
+                        </span>
+                    </div>
+                    
+                    <div class="relative">
+                        <div class="slider-track w-full h-3 bg-gray-700 rounded-full cursor-pointer relative overflow-hidden"
+                             @mousedown="handleMouseDown"
+                             @touchstart="handleTouchStart"
+                             :style="trackStyle">
+                             
+                            <div class="slider-thumb absolute top-1/2 w-6 h-6 bg-white rounded-full border-2 border-gray-300 cursor-grab active:cursor-grabbing shadow-lg transition-all duration-200"
+                                 :style="thumbStyle"
+                                 :class="{ 'scale-125 shadow-xl': isDragging }">
+                            </div>
+                        </div>
+                        
+                        <div class="save-indicator absolute -top-8 left-1/2 transform -translate-x-1/2 opacity-0 transition-opacity duration-300">
+                            <div class="bg-green-500 text-white text-xs px-2 py-1 rounded">Saved</div>
+                        </div>
+                    </div>
+                    
+                    <p x-show="description" class="text-xs text-secondary mt-1" x-text="description"></p>
+                </div>
+                
+                <!-- Chattiness Slider -->
+                <div x-data="personalitySlider({
+                    trait: 'chattiness',
+                    label: 'Chattiness',
+                    value: 45,
+                    description: 'How talkative and verbose the bot should be'
+                })" class="slider-container">
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="text-sm font-medium" x-text="label"></label>
+                        <span class="text-sm tabular-nums" :class="hasChanged ? 'text-accent' : 'text-secondary'">
+                            <span x-text="valueDisplay"></span>
+                            <span x-show="hasChanged" x-text="changeIndicator" class="ml-1"></span>
+                        </span>
+                    </div>
+                    
+                    <div class="relative">
+                        <div class="slider-track w-full h-3 bg-gray-700 rounded-full cursor-pointer relative overflow-hidden"
+                             @mousedown="handleMouseDown"
+                             @touchstart="handleTouchStart"
+                             :style="trackStyle">
+                             
+                            <div class="slider-thumb absolute top-1/2 w-6 h-6 bg-white rounded-full border-2 border-gray-300 cursor-grab active:cursor-grabbing shadow-lg transition-all duration-200"
+                                 :style="thumbStyle"
+                                 :class="{ 'scale-125 shadow-xl': isDragging }">
+                            </div>
+                        </div>
+                        
+                        <div class="save-indicator absolute -top-8 left-1/2 transform -translate-x-1/2 opacity-0 transition-opacity duration-300">
+                            <div class="bg-green-500 text-white text-xs px-2 py-1 rounded">Saved</div>
+                        </div>
+                    </div>
+                    
+                    <p x-show="description" class="text-xs text-secondary mt-1" x-text="description"></p>
+                </div>
+            </div>
+            
+            <div>
+                <h3 class="text-lg font-medium mb-4">Usage Example</h3>
+                <div class="p-4 bg-gray-800/50 rounded-lg">
+                    <code class="text-sm text-gray-300 whitespace-pre-wrap">
+&lt;div x-data="personalitySlider({
+    trait: 'humor',
+    label: 'Humor Level',
+    value: 65,
+    description: 'How funny should the bot be?'
+})"&gt;
+    &lt;!-- Slider implementation --&gt;
+&lt;/div&gt;</code>
+                </div>
+                
+                <div class="mt-6 space-y-4">
+                    <h4 class="font-medium">Features:</h4>
+                    <ul class="text-sm text-secondary space-y-2">
+                        <li>• Real-time value updates with smooth animations</li>
+                        <li>• Dynamic color coding based on trait type</li>
+                        <li>• Keyboard accessibility (arrow keys, page up/down)</li>
+                        <li>• Touch/mobile support with haptic feedback</li>
+                        <li>• Auto-save with debouncing</li>
+                        <li>• Visual feedback for unsaved changes</li>
+                        <li>• Integration with personality store</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Component Usage Guide -->
+    <section class="tbx-card">
+        <h2 class="text-2xl font-semibold mb-6">Usage Guide</h2>
+        
+        <div class="grid md:grid-cols-3 gap-6">
+            <div>
+                <h3 class="text-lg font-medium mb-3">Connection Status</h3>
+                <p class="text-sm text-secondary mb-4">
+                    Displays real-time connection status with WebSocket integration.
+                </p>
+                <div class="space-y-2 text-sm">
+                    <div><strong>States:</strong> connected, connecting, disconnected, error</div>
+                    <div><strong>Features:</strong> Auto-retry, latency monitoring, detailed view</div>
+                </div>
+            </div>
+            
+            <div>
+                <h3 class="text-lg font-medium mb-3">Stat Tiles</h3>
+                <p class="text-sm text-secondary mb-4">
+                    Animated metric displays with trend indicators and various formats.
+                </p>
+                <div class="space-y-2 text-sm">
+                    <div><strong>Formats:</strong> number, percentage, duration, bytes</div>
+                    <div><strong>Features:</strong> Animations, trends, real-time updates</div>
+                </div>
+            </div>
+            
+            <div>
+                <h3 class="text-lg font-medium mb-3">Personality Sliders</h3>
+                <p class="text-sm text-secondary mb-4">
+                    Interactive trait adjustment with persistence and visual feedback.
+                </p>
+                <div class="space-y-2 text-sm">
+                    <div><strong>Traits:</strong> All personality aspects supported</div>
+                    <div><strong>Features:</strong> Auto-save, accessibility, mobile support</div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/v2/js/components/connection-status.js"></script>
+<script src="/static/v2/js/components/stat-tile.js"></script>
+<script src="/static/v2/js/components/personality-slider-v2.js"></script>
+
+<script>
+function componentShowcase() {
+    return {
+        demoStats: {
+            chatMessages: 1247,
+            cpuUsage: 67,
+            uptime: 14520, // seconds
+            memoryUsage: 524288000 // bytes
+        },
+        
+        updateDemoStats() {
+            // Simulate realistic stat changes
+            this.demoStats.chatMessages += Math.floor(Math.random() * 50) + 1;
+            this.demoStats.cpuUsage = Math.max(10, Math.min(95, this.demoStats.cpuUsage + (Math.random() - 0.5) * 20));
+            this.demoStats.uptime += Math.floor(Math.random() * 300) + 30;
+            this.demoStats.memoryUsage += Math.floor(Math.random() * 1000000) - 500000;
+            
+            // Dispatch update event for stat tiles
+            window.dispatchEvent(new CustomEvent('ws-message', {
+                detail: {
+                    type: 'metrics',
+                    metrics: this.demoStats
+                }
+            }));
+        },
+        
+        resetDemoStats() {
+            this.demoStats = {
+                chatMessages: 1247,
+                cpuUsage: 67,
+                uptime: 14520,
+                memoryUsage: 524288000
+            };
+            
+            window.dispatchEvent(new CustomEvent('ws-message', {
+                detail: {
+                    type: 'metrics',
+                    metrics: this.demoStats
+                }
+            }));
+        }
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,62 @@
+/* Navigation Enhanced CSS */
+/* Enhanced navigation styles for TalkBot dashboard */
+
+.nav-link.active,
+.nav-link.nav-active,
+.tbx-nav-link.active {
+    background: linear-gradient(135deg, #9146FF 0%, #7C3AED 100%);
+    color: white !important;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(145, 70, 255, 0.3);
+}
+
+.nav-link:hover,
+.tbx-nav-link:hover {
+    background: rgba(145, 70, 255, 0.1);
+    transform: translateX(2px);
+    transition: all 0.2s ease;
+}
+
+.nav-menu.open,
+.nav-menu.nav-open,
+.tbx-nav-menu.open {
+    display: flex !important;
+    flex-direction: column;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #1A1A20;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+}
+
+.menu-toggle.active,
+.nav-toggle.active {
+    transform: rotate(90deg);
+}
+
+/* Responsive navigation */
+@media (max-width: 768px) {
+    .nav-menu,
+    .tbx-nav-menu {
+        display: none;
+    }
+    
+    .menu-toggle,
+    .nav-toggle {
+        display: block;
+    }
+}
+
+@media (min-width: 769px) {
+    .menu-toggle,
+    .nav-toggle {
+        display: none;
+    }
+    
+    .nav-menu,
+    .tbx-nav-menu {
+        display: flex !important;
+    }
+}

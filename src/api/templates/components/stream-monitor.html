@@ -1,0 +1,583 @@
+<!-- Stream Monitor Component -->
+<div class="card p-6" x-data="streamMonitorComponent()">
+    <h2 class="text-xl font-semibold mb-4 text-primary">Stream Monitor</h2>
+    <p class="text-secondary text-sm mb-6">Real-time chat activity monitoring</p>
+
+    <div class="deadair-controls">
+        <!-- Status Display -->
+        <div class="control-group">
+            <div class="status-section">
+                <div class="status-header">
+                    <span class="status-title">Monitor Status</span>
+                    <div class="status-display">
+                        <span class="status-indicator" :class="enabled ? 'active' : 'inactive'">
+                            <span class="indicator-dot"></span>
+                            <span x-text="enabled ? 'Active' : 'Inactive'">Active</span>
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Current Settings Display -->
+                <div class="settings-display" x-show="enabled" x-transition>
+                    <div class="setting-item">
+                        <span class="setting-label">Dead Air Threshold:</span>
+                        <span class="setting-value" id="deadAirDisplay" x-text="getDeadAirDisplayText()">30 seconds</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">
+                        Configure dead air settings in the Response Controls section above
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Status -->
+        <div class="status-section" x-show="enabled" x-transition>
+            <h3 class="status-title">Live Monitor</h3>
+
+            <div class="silence-monitor">
+                <div class="monitor-visual">
+                    <div class="silence-bar">
+                        <div class="silence-fill"
+                             :style="`width: ${Math.min((currentSilence / threshold) * 100, 100)}%`"
+                             :class="currentSilence >= threshold ? 'critical' : currentSilence >= threshold * 0.8 ? 'warning' : 'normal'">
+                        </div>
+                    </div>
+
+                    <div class="monitor-labels">
+                        <span class="current-time" x-text="currentSilence.toFixed(1) + 's'">0.0s</span>
+                        <span class="threshold-marker" x-text="threshold + 's'">5s</span>
+                    </div>
+                </div>
+
+                <div class="monitor-status">
+                    <div class="status-indicator"
+                         :class="currentSilence >= threshold ? 'active' : 'monitoring'">
+                        <span class="status-dot"></span>
+                        <span class="status-text" x-text="currentSilence >= threshold ? 'Response triggered!' : 'Monitoring silence...'">
+                            Monitoring silence...
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistics -->
+        <div class="stats-section">
+            <h3 class="stats-title">Today's Engagements</h3>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-number" x-text="stats.rescuesTriggered || 0">0</span>
+                    <span class="stat-label">Engagements</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-number" x-text="(stats.avgSilenceTime || 0).toFixed(1)">0.0</span>
+                    <span class="stat-label">Avg Silence (s)</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-number" x-text="stats.longestSilence || 0">0</span>
+                    <span class="stat-label">Longest (s)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function streamMonitorComponent() {
+    return {
+        enabled: true,
+        threshold: 30,
+        currentSilence: 0,
+        stats: {
+            rescuesTriggered: 0,
+            avgSilenceTime: 0,
+            longestSilence: 0
+        },
+        silenceInterval: null,
+
+        init() {
+            this.loadSettings();
+            this.loadStats();
+            if (this.enabled) {
+                this.startMonitoring();
+            }
+
+            // Listen for WebSocket messages
+            this.$el.addEventListener('htmx:wsAfterMessage', (event) => {
+                this.handleWebSocketMessage(event.detail);
+            });
+        },
+
+        async loadSettings() {
+            try {
+                const response = await fetch('/api/v2/settings/');
+                if (response.ok) {
+                    const settings = await response.json();
+                    if (settings.deadair) {
+                        this.enabled = settings.deadair.enabled;
+                        this.threshold = settings.deadair.threshold;
+                    } else {
+                        // Use defaults if no deadair settings from API
+                        this.enabled = true;
+                        this.threshold = 30;
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load stream monitor settings:', error);
+            }
+        },
+
+        async loadStats() {
+            try {
+                const response = await fetch('/api/v2/stats/deadair');
+                if (response.ok) {
+                    this.stats = await response.json();
+                }
+            } catch (error) {
+                console.warn('Stream monitor stats not available:', error);
+            }
+        },
+
+        onThresholdChange() {
+            // Visual feedback only - actual save happens via HTMX
+            this.updateDescription();
+        },
+
+        async updateDeadAir() {
+            try {
+                const response = await fetch('/api/v2/settings/deadair', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        enabled: this.enabled,
+                        threshold: this.threshold
+                    })
+                });
+
+                if (response.ok) {
+                    this.showToast(`Stream monitoring ${this.enabled ? 'enabled' : 'disabled'}`, 'success');
+
+                    if (this.enabled) {
+                        this.startMonitoring();
+                    } else {
+                        this.stopMonitoring();
+                    }
+                } else {
+                    this.showToast('Failed to update settings', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to update stream monitor settings:', error);
+                this.showToast('Network error', 'error');
+            }
+        },
+
+        startMonitoring() {
+            this.stopMonitoring(); // Clear any existing interval
+            // Real-time monitoring is now handled via WebSocket messages
+            // No need for simulation interval
+        },
+
+        stopMonitoring() {
+            // Reset silence counter when monitoring stops
+            this.currentSilence = 0;
+        },
+
+        handleWebSocketMessage(message) {
+            switch (message.type) {
+                case 'deadair_update':
+                    this.currentSilence = message.silence_time;
+                    if (this.currentSilence >= this.threshold) {
+                        this.triggerRescue();
+                    }
+                    break;
+                default:
+                    // Ignore other message types
+                    break;
+            }
+        },
+
+        triggerRescue() {
+            this.stats.rescuesTriggered++;
+            this.currentSilence = 0;
+            this.showToast('Stream engagement triggered!', 'success');
+        },
+
+        updateDescription() {
+            // This method updates the visual description based on threshold
+            // The actual logic is handled by Alpine's reactive system
+        },
+
+        // Update dashboard display with clear frequency indicators
+        getDeadAirDisplayText() {
+            const value = this.threshold;
+            if (value >= 300) {
+                return "Disabled (5+ min)";
+            } else if (value >= 120) {
+                return `${value}s (Rare)`;
+            } else if (value >= 60) {
+                return `${value}s (Normal)`;
+            } else {
+                return `${value}s (Frequent)`;
+            }
+        },
+
+        updateDeadAirDisplay(value) {
+            // Standalone function for threshold slider updates
+            this.threshold = value;
+            const displayElement = document.getElementById('deadAirDisplay');
+            if (displayElement) {
+                if (value >= 300) {
+                    displayElement.innerText = "Disabled (5+ min)";
+                } else if (value >= 120) {
+                    displayElement.innerText = `${value}s (Rare)`;
+                } else if (value >= 60) {
+                    displayElement.innerText = `${value}s (Normal)`;
+                } else {
+                    displayElement.innerText = `${value}s (Frequent)`;
+                }
+            }
+        },
+
+        showToast(message, type = 'success') {
+            if (typeof window.showToast === 'function') {
+                window.showToast(message, type);
+            }
+        }
+    };
+}
+</script>
+
+<style>
+.deadair-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.toggle-section {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.toggle-content {
+    flex: 1;
+}
+
+.toggle-title {
+    display: block;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.toggle-subtitle {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.threshold-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1.5rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.section-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.threshold-display {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.threshold-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--accent);
+}
+
+.threshold-unit {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.slider-section {
+    position: relative;
+    margin: 1rem 0;
+}
+
+.threshold-indicator {
+    position: absolute;
+    top: -2rem;
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.indicator-bubble {
+    background: var(--accent);
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    position: relative;
+}
+
+.indicator-bubble::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 4px solid transparent;
+    border-top-color: var(--accent);
+}
+
+.threshold-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.threshold-description {
+    margin-top: 0.75rem;
+}
+
+.description-content {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+}
+
+.emoji {
+    font-size: 1.25rem;
+}
+
+.desc-text {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.status-section {
+    padding: 1.5rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+
+.status-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+}
+
+.silence-monitor {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.monitor-visual {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.silence-bar {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+.silence-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.1s ease-out;
+}
+
+.silence-fill.normal {
+    background: linear-gradient(90deg, #22c55e, #16a34a);
+}
+
+.silence-fill.warning {
+    background: linear-gradient(90deg, #fbbf24, #f59e0b);
+}
+
+.silence-fill.critical {
+    background: linear-gradient(90deg, #ef4444, #dc2626);
+}
+
+.monitor-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+}
+
+.current-time {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.threshold-marker {
+    color: var(--accent);
+    font-weight: 500;
+}
+
+.monitor-status {
+    display: flex;
+    justify-content: center;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.status-indicator.monitoring {
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
+}
+
+.status-indicator.active {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: pulse 2s infinite;
+}
+
+.stats-section {
+    padding: 1.5rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+
+.stats-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 1rem;
+}
+
+.stat-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+}
+
+.stat-number {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent);
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+/* Toggle Styles */
+.toggle {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
+.toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(255, 255, 255, 0.1);
+    transition: 0.3s;
+    border-radius: 24px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+.toggle input:checked + .toggle-slider {
+    background-color: var(--accent);
+}
+
+.toggle input:checked + .toggle-slider:before {
+    transform: translateX(20px);
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+</style>

@@ -1,0 +1,34 @@
+{
+  "TTS_ENABLED": true,
+  "tts_voice": "shimmer",
+  "tts_speed": 1.25,
+  "personality": {
+    "preset": "sassy",
+    "custom_traits": {
+      "humor": 50,
+      "sarcasm": 90,
+      "helpfulness": 60,
+      "enthusiasm": 60,
+      "formality": 20,
+      "chattiness": 30,
+      "creativity": 60,
+      "empathy": 50,
+      "assertiveness": 60,
+      "curiosity": 60
+    }
+  },
+  "voice": {
+    "model": "shimmer",
+    "speed": 1.25
+  },
+  "conversation": {
+    "cooldown_seconds": 5,
+    "conversation_cooldown": 3,
+    "conversation_timeout": 30
+  },
+  "response_coordination": {
+    "timing_mode": "chat_first",
+    "dead_air_enabled": false,
+    "dead_air_threshold": 3600
+  }
+}

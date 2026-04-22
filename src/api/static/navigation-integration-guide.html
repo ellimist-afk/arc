@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TalkBot Navigation - Integration Guide</title>
+    <link rel="stylesheet" href="css/navigation-modern.css">
+    <style>
+        /* Demo styles */
+        body {
+            margin: 0;
+            background: #0B0B0D;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: #FFFFFF;
+            padding-top: 80px; /* Account for fixed navigation */
+        }
+        
+        .demo-content {
+            padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .demo-section {
+            margin-bottom: 3rem;
+            padding: 2rem;
+            background: #161619;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .demo-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #9146FF;
+        }
+        
+        .code-block {
+            background: #0E0E11;
+            border: 1px solid rgba(145, 70, 255, 0.2);
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: 'Monaco', 'Cascadia Code', monospace;
+            font-size: 0.875rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+        
+        .highlight {
+            background: rgba(145, 70, 255, 0.1);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            border: 1px solid rgba(145, 70, 255, 0.2);
+        }
+        
+        /* Icons for demo */
+        .icon {
+            width: 18px;
+            height: 18px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+    </style>
+</head>
+<body>
+    <!-- ===========================
+         Modern Navigation Implementation
+         =========================== -->
+    
+    <nav class="tbx-nav" role="navigation" aria-label="Main navigation">
+        <!-- Brand Section -->
+        <div class="tbx-nav__brand">
+            <div class="tbx-nav__logo" aria-label="TalkBot">
+                TB
+            </div>
+            <h1 class="tbx-nav__title">TalkBot</h1>
+        </div>
+        
+        <!-- Main Navigation Menu -->
+        <ul class="tbx-nav__menu" role="menubar">
+            <li role="none">
+                <a href="#dashboard" 
+                   class="tbx-nav__item tbx-nav__item--active" 
+                   role="menuitem" 
+                   aria-current="page">
+                    <svg class="tbx-nav__icon icon" viewBox="0 0 24 24">
+                        <rect x="3" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="14" width="7" height="7"></rect>
+                        <rect x="3" y="14" width="7" height="7"></rect>
+                    </svg>
+                    <span class="tbx-nav__item-text">Dashboard</span>
+                </a>
+            </li>
+            
+            <li role="none">
+                <a href="#settings" 
+                   class="tbx-nav__item" 
+                   role="menuitem">
+                    <svg class="tbx-nav__icon icon" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="m12 1 2.95 2.95L18 2l1.5 1.5L18 6.05 21 9v6l-3 2.95L19.5 19.5 18 18l-2.95 3H9l-2.95-3L4.5 19.5 3 18l3-2.95L3 12l3-3.05L4.5 7.5 6 6l2.95-3z"></path>
+                    </svg>
+                    <span class="tbx-nav__item-text">Settings</span>
+                </a>
+            </li>
+            
+            <li role="none">
+                <a href="#analytics" 
+                   class="tbx-nav__item" 
+                   role="menuitem">
+                    <svg class="tbx-nav__icon icon" viewBox="0 0 24 24">
+                        <path d="M3 3v18h18"></path>
+                        <path d="m19 9-5 5-4-4-3 3"></path>
+                    </svg>
+                    <span class="tbx-nav__item-text">Analytics</span>
+                    <span class="tbx-nav__badge" aria-label="3 new analytics reports">3</span>
+                </a>
+            </li>
+            
+            <li role="none">
+                <button class="tbx-nav__item tbx-nav__item--disabled" 
+                        role="menuitem" 
+                        disabled
+                        aria-disabled="true">
+                    <svg class="tbx-nav__icon icon" viewBox="0 0 24 24">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                        <path d="m2 17 10 5 10-5"></path>
+                        <path d="m2 12 10 5 10-5"></path>
+                    </svg>
+                    <span class="tbx-nav__item-text">Coming Soon</span>
+                </button>
+            </li>
+        </ul>
+        
+        <!-- Navigation Actions -->
+        <div class="tbx-nav__actions">
+            <!-- Status Indicator -->
+            <div class="tbx-nav__status tbx-nav__status--online" 
+                 role="status" 
+                 aria-live="polite">
+                <div class="tbx-nav__status-dot"></div>
+                Online
+            </div>
+            
+            <!-- Notification Action -->
+            <button class="tbx-nav__action" 
+                    aria-label="Notifications"
+                    title="Notifications">
+                <svg class="icon" viewBox="0 0 24 24">
+                    <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path>
+                    <path d="m13.73 21a2 2 0 0 1-3.46 0"></path>
+                </svg>
+            </button>
+            
+            <!-- User Profile -->
+            <button class="tbx-nav__profile" 
+                    aria-label="User profile menu"
+                    aria-haspopup="true">
+                <div class="tbx-nav__avatar" aria-hidden="true">JS</div>
+                <span class="tbx-nav__username">john_streamer</span>
+                <svg class="icon" viewBox="0 0 24 24">
+                    <path d="m6 9 6 6 6-6"></path>
+                </svg>
+            </button>
+        </div>
+        
+        <!-- Mobile Menu Toggle -->
+        <button class="tbx-nav__mobile-toggle" 
+                aria-label="Toggle navigation menu"
+                aria-expanded="false"
+                aria-controls="mobile-menu">
+            <svg class="icon" viewBox="0 0 24 24">
+                <line x1="4" x2="20" y1="12" y2="12"></line>
+                <line x1="4" x2="20" y1="6" y2="6"></line>
+                <line x1="4" x2="20" y1="18" y2="18"></line>
+            </svg>
+        </button>
+        
+        <!-- Mobile Menu -->
+        <div class="tbx-nav__mobile-menu" id="mobile-menu" role="menu">
+            <button class="tbx-nav__mobile-item tbx-nav__mobile-item--active" role="menuitem">
+                <svg class="icon" viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="14" width="7" height="7"></rect>
+                    <rect x="3" y="14" width="7" height="7"></rect>
+                </svg>
+                Dashboard
+            </button>
+            
+            <button class="tbx-nav__mobile-item" role="menuitem">
+                <svg class="icon" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="m12 1 2.95 2.95L18 2l1.5 1.5L18 6.05 21 9v6l-3 2.95L19.5 19.5 18 18l-2.95 3H9l-2.95-3L4.5 19.5 3 18l3-2.95L3 12l3-3.05L4.5 7.5 6 6l2.95-3z"></path>
+                </svg>
+                Settings
+            </button>
+            
+            <button class="tbx-nav__mobile-item" role="menuitem">
+                <svg class="icon" viewBox="0 0 24 24">
+                    <path d="M3 3v18h18"></path>
+                    <path d="m19 9-5 5-4-4-3 3"></path>
+                </svg>
+                Analytics
+            </button>
+        </div>
+    </nav>
+    
+    <!-- ===========================
+         Demo Content
+         =========================== -->
+    
+    <main class="demo-content">
+        <div class="demo-section">
+            <h2 class="demo-title">✅ Modern CSS Best Practices Implemented</h2>
+            <ul>
+                <li><strong>BEM Methodology:</strong> All classes follow Block__Element--Modifier naming</li>
+                <li><strong>CSS Custom Properties:</strong> Comprehensive design token system</li>
+                <li><strong>Zero !important:</strong> Proper CSS specificity without conflicts</li>
+                <li><strong>Performance Optimized:</strong> GPU acceleration and layout containment</li>
+                <li><strong>Accessibility First:</strong> ARIA labels, keyboard navigation, screen readers</li>
+                <li><strong>Responsive Design:</strong> Mobile-first approach with logical breakpoints</li>
+                <li><strong>Typography Scale:</strong> Consistent font sizing and line heights</li>
+                <li><strong>Color System:</strong> Semantic color variables with proper contrast</li>
+            </ul>
+        </div>
+        
+        <div class="demo-section">
+            <h2 class="demo-title">🔧 Integration Instructions</h2>
+            
+            <h3>1. Replace Existing CSS</h3>
+            <div class="code-block">
+&lt;!-- Remove these conflicting files --&gt;
+&lt;link rel="stylesheet" href="css/navigation-enhanced.css"&gt;
+&lt;link rel="stylesheet" href="css/navigation-effects.css"&gt;
+&lt;link rel="stylesheet" href="css/navigation-fix.css"&gt;
+
+&lt;!-- Replace with modern navigation --&gt;
+&lt;link rel="stylesheet" href="css/navigation-modern.css"&gt;
+            </div>
+            
+            <h3>2. Update HTML Structure</h3>
+            <div class="code-block">
+&lt;!-- OLD: Multiple class system --&gt;
+&lt;header class="tbx-header theme-v2"&gt;
+  &lt;a class="nav-link active"&gt;Dashboard&lt;/a&gt;
+&lt;/header&gt;
+
+&lt;!-- NEW: BEM methodology --&gt;
+&lt;nav class="tbx-nav" role="navigation"&gt;
+  &lt;a class="tbx-nav__item tbx-nav__item--active"&gt;Dashboard&lt;/a&gt;
+&lt;/nav&gt;
+            </div>
+            
+            <h3>3. JavaScript Integration</h3>
+            <div class="code-block">
+// Add active state management
+const navItems = document.querySelectorAll('.tbx-nav__item');
+navItems.forEach(item => {
+  item.addEventListener('click', (e) => {
+    // Remove active from all items
+    navItems.forEach(i => i.classList.remove('tbx-nav__item--active'));
+    // Add active to clicked item
+    e.target.classList.add('tbx-nav__item--active');
+  });
+});
+
+// Mobile menu toggle
+const mobileToggle = document.querySelector('.tbx-nav__mobile-toggle');
+const mobileMenu = document.querySelector('.tbx-nav__mobile-menu');
+
+mobileToggle.addEventListener('click', () => {
+  const isOpen = mobileMenu.classList.contains('tbx-nav__mobile-menu--open');
+  mobileMenu.classList.toggle('tbx-nav__mobile-menu--open');
+  mobileToggle.setAttribute('aria-expanded', !isOpen);
+});
+            </div>
+        </div>
+        
+        <div class="demo-section">
+            <h2 class="demo-title">🎨 Design Tokens (CSS Custom Properties)</h2>
+            <div class="highlight">
+                All styling is controlled through CSS custom properties in <code>:root</code>. 
+                This enables easy theming and consistent design across the application.
+            </div>
+            <div class="code-block">
+:root {
+  /* Navigation Colors */
+  --nav-bg-primary: #0E0E11;
+  --nav-accent: #9146FF;
+  --nav-text-primary: #FFFFFF;
+  
+  /* Spacing System */
+  --nav-space-sm: 0.5rem;
+  --nav-space-md: 0.75rem;
+  --nav-space-lg: 1rem;
+  
+  /* Typography */
+  --nav-font-size-base: 0.9375rem;
+  --nav-font-weight-medium: 500;
+  
+  /* Animation */
+  --nav-transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+            </div>
+        </div>
+        
+        <div class="demo-section">
+            <h2 class="demo-title">♿ Accessibility Features</h2>
+            <ul>
+                <li><strong>ARIA Labels:</strong> All interactive elements have proper labels</li>
+                <li><strong>Keyboard Navigation:</strong> Full support for Tab/Enter/Space</li>
+                <li><strong>Screen Readers:</strong> Semantic HTML with role attributes</li>
+                <li><strong>Focus Management:</strong> Clear focus indicators with proper contrast</li>
+                <li><strong>Reduced Motion:</strong> Respects user motion preferences</li>
+                <li><strong>High Contrast:</strong> Enhanced visibility in high contrast mode</li>
+                <li><strong>Color Blind Friendly:</strong> Not relying solely on color for information</li>
+            </ul>
+        </div>
+        
+        <div class="demo-section">
+            <h2 class="demo-title">🚀 Performance Optimizations</h2>
+            <ul>
+                <li><strong>GPU Acceleration:</strong> <code>transform: translateZ(0)</code> for smooth animations</li>
+                <li><strong>Layout Containment:</strong> <code>contain: layout</code> prevents reflows</li>
+                <li><strong>Efficient Selectors:</strong> Minimal nesting and specificity</li>
+                <li><strong>Optimized Transitions:</strong> Transform and opacity only</li>
+                <li><strong>Will-Change:</strong> Hints to browser for animation preparation</li>
+                <li><strong>Reduced Paint:</strong> Avoid triggering expensive repaints</li>
+            </ul>
+        </div>
+        
+        <div class="demo-section">
+            <h2 class="demo-title">❌ Issues Fixed</h2>
+            <ul>
+                <li class="highlight">✅ Strikethrough Effect Removed</li>
+                <li>✅ CSS Specificity Wars Eliminated</li>
+                <li>✅ !important Usage Minimized (Zero usage)</li>
+                <li>✅ File Conflicts Resolved</li>
+                <li>✅ Performance Issues Addressed</li>
+                <li>✅ Accessibility Gaps Closed</li>
+                <li>✅ Mobile Responsiveness Improved</li>
+                <li>✅ Maintainability Enhanced</li>
+            </ul>
+        </div>
+    </main>
+
+    <script>
+        // Demo functionality
+        const mobileToggle = document.querySelector('.tbx-nav__mobile-toggle');
+        const mobileMenu = document.querySelector('.tbx-nav__mobile-menu');
+        
+        mobileToggle.addEventListener('click', () => {
+            const isOpen = mobileMenu.classList.contains('tbx-nav__mobile-menu--open');
+            mobileMenu.classList.toggle('tbx-nav__mobile-menu--open');
+            mobileToggle.setAttribute('aria-expanded', !isOpen);
+        });
+        
+        // Navigation state management
+        const navItems = document.querySelectorAll('.tbx-nav__item, .tbx-nav__mobile-item');
+        navItems.forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                
+                // Remove active from all items
+                document.querySelectorAll('.tbx-nav__item, .tbx-nav__mobile-item').forEach(i => {
+                    i.classList.remove('tbx-nav__item--active', 'tbx-nav__mobile-item--active');
+                    i.removeAttribute('aria-current');
+                });
+                
+                // Add active to clicked item
+                if (item.classList.contains('tbx-nav__item')) {
+                    item.classList.add('tbx-nav__item--active');
+                } else {
+                    item.classList.add('tbx-nav__mobile-item--active');
+                }
+                
+                item.setAttribute('aria-current', 'page');
+                
+                // Close mobile menu if clicking mobile item
+                if (item.classList.contains('tbx-nav__mobile-item')) {
+                    mobileMenu.classList.remove('tbx-nav__mobile-menu--open');
+                    mobileToggle.setAttribute('aria-expanded', 'false');
+                }
+            });
+        });
+        
+        // Demo: Add floating effect on scroll
+        let scrolled = false;
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 20 && !scrolled) {
+                document.querySelector('.tbx-nav').classList.add('tbx-nav--floating');
+                scrolled = true;
+            } else if (window.scrollY <= 20 && scrolled) {
+                document.querySelector('.tbx-nav').classList.remove('tbx-nav--floating');
+                scrolled = false;
+            }
+        });
+    </script>
+</body>
+</html>

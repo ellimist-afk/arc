@@ -1,0 +1,2222 @@
+{% extends "base-v2.html" %}
+
+{% block title %}Settings - {{ streamer_id }}{% endblock %}
+
+{% block head %}
+<!-- INTENTIONAL NEGATIVE SPACE DESIGN -->
+<link rel="stylesheet" href="/static/v2/css/pages/settings-intentional-spacing.css">
+<!-- Fallback to original if needed -->
+<link rel="stylesheet" href="/static/v2/css/pages/settings.css">
+<link rel="stylesheet" href="/static/css/modal-fix.css">
+<link rel="stylesheet" href="/static/css/personality-settings-ux-fixes.css">
+<!-- UNIFIED SLIDER SYSTEM - Handles ALL slider types including tbx-range -->
+<link rel="stylesheet" href="/static/css/unified-slider-system.css">
+<!-- Preset card text overflow fixes -->
+<link rel="stylesheet" href="/static/css/preset-card-fixes.css">
+<!-- Clean Design System for better layout -->
+<link rel="stylesheet" href="/static/css/clean-design-system.css">
+<link rel="stylesheet" href="/static/css/clean-sliders.css">
+<link rel="stylesheet" href="/static/css/layout-improvements.css">
+<style>
+/* Hide any x-cloak elements until Alpine loads */
+[x-cloak] {
+    display: none !important;
+}
+
+/* Debug: Remove any potential blocking overlays */
+.fixed.inset-0:empty {
+    display: none !important;
+}
+
+/* Ensure advanced section is interactive */
+[x-show="activeSection === 'advanced'"] {
+    position: relative;
+    z-index: 1;
+    pointer-events: auto;
+}
+</style>
+<!-- Settings modules -->
+<script src="/static/js/settings/modules/ModelManager.js?v=20250125002"></script>
+
+<!-- UNIFIED SLIDER SYSTEM - Handles ALL slider types including tbx-range, Context Window, etc. -->
+<script src="/static/js/unified-slider-system.js"></script>
+
+<!-- Alpine.js Personality Sliders Component -->
+<script>
+// TalkBot Personality Sliders Component for Alpine.js
+function tbxPersonalitySliders(streamerId) {
+    return {
+        streamerId: streamerId,
+        isLoading: true,
+        traits: {
+            warmth: 0.65,
+            energy: 0.65,
+            humor: 0.55,
+            sass: 0.45,
+            verbosity: 0.5
+        },
+        traitMeta: {
+            warmth: {
+                icon: '🔥',
+                label: 'Warmth',
+                color: '#ef4444',
+                description: 'How friendly and welcoming the bot is'
+            },
+            energy: {
+                icon: '⚡',
+                label: 'Energy', 
+                color: '#f59e0b',
+                description: 'How enthusiastic and animated responses are'
+            },
+            humor: {
+                icon: '😄',
+                label: 'Humor',
+                color: '#10b981', 
+                description: 'How often the bot makes jokes and funny comments'
+            },
+            sass: {
+                icon: '😏',
+                label: 'Sass',
+                color: '#8b5cf6',
+                description: 'How much attitude and snark the bot shows'
+            },
+            verbosity: {
+                icon: '💬',
+                label: 'Verbosity',
+                color: '#06b6d4',
+                description: 'How detailed and lengthy responses are'
+            }
+        },
+        hasChanges: false,
+        isSaving: false,
+        saveSuccess: false,
+        saveError: null,
+        hasUnsavedChanges: false,
+        
+        init() {
+            console.log('[TBX Personality Sliders] Initializing for streamer:', streamerId);
+            this.loadTraits();
+            this.$nextTick(() => {
+                // Force refresh sliders after Alpine.js is ready
+                if (window.refreshSliders) {
+                    window.refreshSliders();
+                }
+                
+                // Add event listeners for slider events
+                this.setupSliderListeners();
+            });
+        },
+        
+        async loadTraits() {
+            this.isLoading = true;
+            try {
+                const response = await fetch(`/api/v2/personality/current/${this.streamerId}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.traits) {
+                        this.traits = { ...this.traits, ...data.traits };
+                        console.log('[TBX Personality Sliders] Loaded traits:', this.traits);
+                    }
+                }
+            } catch (error) {
+                console.error('[TBX Personality Sliders] Failed to load traits:', error);
+            } finally {
+                this.isLoading = false;
+                
+                // Refresh sliders after loading data
+                this.$nextTick(() => {
+                    if (window.refreshSliders) {
+                        window.refreshSliders();
+                    }
+                });
+            }
+        },
+        
+        updateTrait(trait, value) {
+            console.log(`[TBX Personality Sliders] Updating ${trait} to ${value}`);
+            const numericValue = parseFloat(value);
+            
+            if (this.traits[trait] !== numericValue) {
+                this.traits[trait] = numericValue;
+                this.hasChanges = true;
+                this.hasUnsavedChanges = true;
+                this.saveSuccess = false;
+                this.saveError = null;
+                
+                // Debounced auto-save
+                this.debouncedSave();
+                
+                // Dispatch event for preset system
+                this.$dispatch('trait:changed', { trait, value: numericValue });
+            }
+        },
+        
+        setupSliderListeners() {
+            // Listen for unified slider system events
+            document.addEventListener('slider:input', (e) => {
+                const slider = e.detail.slider;
+                const value = e.detail.value;
+                
+                // Find which trait this slider belongs to
+                const sliderEl = slider.element;
+                const traitContainer = sliderEl.closest('[data-trait]');
+                if (traitContainer) {
+                    const trait = traitContainer.dataset.trait;
+                    if (this.traits.hasOwnProperty(trait)) {
+                        this.updateTrait(trait, value);
+                    }
+                }
+            });
+            
+            document.addEventListener('slider:change', (e) => {
+                console.log('[TBX Personality Sliders] Slider change event:', e.detail);
+            });
+        },
+        
+        debouncedSave() {
+            if (this.saveTimer) {
+                clearTimeout(this.saveTimer);
+            }
+            
+            this.saveTimer = setTimeout(() => {
+                this.saveSettings();
+            }, 1000); // 1 second debounce
+        },
+        
+        async saveSettings() {
+            if (this.isSaving) return;
+            
+            this.isSaving = true;
+            this.saveError = null;
+            
+            try {
+                const response = await fetch(`/api/v2/personality-v2/traits/${this.streamerId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(this.traits)
+                });
+                
+                if (response.ok) {
+                    this.saveSuccess = true;
+                    this.hasChanges = false;
+                    this.hasUnsavedChanges = false;
+                    console.log('[TBX Personality Sliders] Settings saved successfully');
+                    
+                    // Clear success message after 3 seconds
+                    setTimeout(() => {
+                        this.saveSuccess = false;
+                    }, 3000);
+                } else {
+                    throw new Error('Failed to save');
+                }
+            } catch (error) {
+                console.error('[TBX Personality Sliders] Save failed:', error);
+                this.saveError = 'Failed to save personality settings';
+            } finally {
+                this.isSaving = false;
+            }
+        },
+        
+        async resetToDefaults() {
+            if (!confirm('Reset all personality traits to default values?')) {
+                return;
+            }
+            
+            // Reset to defaults
+            this.traits = {
+                warmth: 0.65,
+                energy: 0.65,
+                humor: 0.55,
+                sass: 0.45,
+                verbosity: 0.5
+            };
+            
+            this.hasChanges = true;
+            await this.saveSettings();
+            
+            // Refresh sliders to show new values
+            this.$nextTick(() => {
+                if (window.refreshSliders) {
+                    window.refreshSliders();
+                }
+            });
+        }
+    };
+}
+
+// Make it globally available
+window.tbxPersonalitySliders = tbxPersonalitySliders;
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="tbx-page-container" x-data="settingsPage()">
+    <!-- Page Header -->
+    <div class="tbx-page-header">
+        <div class="tbx-header-content">
+            <h1 class="tbx-page-title">Bot Settings</h1>
+            <p class="tbx-page-subtitle">Configure your TalkBot assistant for {{ streamer_id }}</p>
+        </div>
+        
+        <div class="tbx-header-actions">
+            <!-- Save Status -->
+            <div class="tbx-save-status" x-show="saveStatus">
+                <span class="tbx-status-indicator" :class="saveStatus"></span>
+                <span x-text="saveMessage">All changes saved</span>
+            </div>
+            
+            <!-- Import/Export -->
+            <button @click="exportSettings()" class="tbx-button tbx-button-secondary">
+                <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                </svg>
+                Export
+            </button>
+            
+            <button @click="importSettings()" class="tbx-button tbx-button-secondary">
+                <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                </svg>
+                Import
+            </button>
+            
+            <!-- Reset Button -->
+            <button @click="resetToDefaults()" class="tbx-button tbx-button-danger">
+                <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                Reset
+            </button>
+        </div>
+    </div>
+
+    <!-- Simplified Settings Navigation - 3 Essential Tabs -->
+    <div class="tbx-settings-nav">
+        <button @click="activeSection = 'setup'" 
+                :class="{'tbx-nav-active': activeSection === 'setup'}" 
+                class="tbx-nav-item">
+            <svg class="tbx-nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
+            </svg>
+            Basic Setup
+        </button>
+        
+        <button @click="activeSection = 'personality'" 
+                :class="{'tbx-nav-active': activeSection === 'personality'}" 
+                class="tbx-nav-item">
+            <svg class="tbx-nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            Bot Personality
+        </button>
+        
+        <button @click="activeSection = 'advanced'" 
+                :class="{'tbx-nav-active': activeSection === 'advanced'}" 
+                class="tbx-nav-item">
+            <svg class="tbx-nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+            </svg>
+            Advanced
+        </button>
+    </div>
+
+    <!-- Settings Content -->
+    <div class="tbx-settings-content">
+        <!-- Basic Setup Section -->
+        <div x-show="activeSection === 'setup'" class="tbx-section">
+            <div class="tbx-section-header">
+                <h2 class="tbx-section-title">Basic Setup</h2>
+                <p class="tbx-section-subtitle">Get your bot connected and ready to use</p>
+            </div>
+            
+            <!-- Connection Status Card -->
+            <div class="tbx-content-card">
+                <div class="tbx-card-header">
+                    <h3 class="tbx-card-title">Connection Status</h3>
+                    <p class="tbx-card-description">Current status of your bot's connections</p>
+                </div>
+                
+                <div class="tbx-connection-status">
+                    <div class="tbx-status-item">
+                        <div class="tbx-status-indicator tbx-status-success"></div>
+                        <span>Twitch Account</span>
+                        <span class="tbx-status-label">Connected</span>
+                    </div>
+                    <div class="tbx-status-item" :class="settings.api_keys?.openai ? 'tbx-status-success' : 'tbx-status-warning'">
+                        <div class="tbx-status-indicator" :class="settings.api_keys?.openai ? 'tbx-status-success' : 'tbx-status-warning'"></div>
+                        <span>OpenAI API</span>
+                        <span class="tbx-status-label" x-text="settings.api_keys?.openai ? 'Connected' : 'Needs Setup'"></span>
+                    </div>
+                    <div class="tbx-status-item tbx-status-success">
+                        <div class="tbx-status-indicator tbx-status-success"></div>
+                        <span>Bot Service</span>
+                        <span class="tbx-status-label">Running</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- API Keys Setup -->
+            <div class="tbx-content-card">
+                <div class="tbx-card-header">
+                    <h3 class="tbx-card-title">API Keys</h3>
+                    <p class="tbx-card-description">Connect your bot to external services</p>
+                </div>
+                
+                <div class="tbx-settings-group">
+                    <!-- OpenAI API Key -->
+                    <div class="tbx-setting-item">
+                        <label class="tbx-setting-label">
+                            OpenAI API Key
+                            <span class="tbx-required">Required</span>
+                        </label>
+                        <p class="tbx-setting-description">Your bot needs this to generate AI responses. Get your key from OpenAI.</p>
+                        <div class="tbx-api-key-input">
+                            <input type="password" 
+                                   class="tbx-input"
+                                   :type="showApiKeys.openai ? 'text' : 'password'"
+                                   placeholder="sk-..."
+                                   :value="settings.api_keys?.openai || ''"
+                                   @input="updateApiKey('openai', $event.target.value)">
+                            <button type="button" 
+                                    class="tbx-toggle-visibility" 
+                                    @click="showApiKeys.openai = !showApiKeys.openai"
+                                    :title="showApiKeys.openai ? 'Hide API key' : 'Show API key'">
+                                <svg x-show="!showApiKeys.openai" class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                </svg>
+                                <svg x-show="showApiKeys.openai" class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Twitch Client ID -->
+                    <div class="tbx-setting-item">
+                        <label class="tbx-setting-label">
+                            Twitch Client ID
+                            <span class="tbx-optional">Optional</span>
+                        </label>
+                        <p class="tbx-setting-description">For advanced Twitch features. Most users don't need this.</p>
+                        <div class="tbx-api-key-input">
+                            <input type="password"
+                                   class="tbx-input"
+                                   :type="showApiKeys.twitch_client ? 'text' : 'password'"
+                                   placeholder="Enter Twitch Client ID..."
+                                   :value="settings.api_keys?.twitch_client_id || ''"
+                                   @input="updateApiKey('twitch_client_id', $event.target.value)">
+                            <button type="button" 
+                                    class="tbx-toggle-visibility" 
+                                    @click="showApiKeys.twitch_client = !showApiKeys.twitch_client">
+                                <svg x-show="!showApiKeys.twitch_client" class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                </svg>
+                                <svg x-show="showApiKeys.twitch_client" class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Test Connection Button -->
+                <div class="tbx-card-actions">
+                    <button @click="testApiConnection()" 
+                            :disabled="testingApi"
+                            class="tbx-btn tbx-btn-primary">
+                        <span x-show="!testingApi">Test Connections</span>
+                        <span x-show="testingApi">Testing...</span>
+                    </button>
+                    
+                    <div x-show="apiTestResults" class="tbx-test-results">
+                        <div class="tbx-test-item" :class="apiTestResults.openai ? 'tbx-test-success' : 'tbx-test-error'">
+                            <span>OpenAI:</span> 
+                            <span x-text="apiTestResults.openai ? 'Connected' : 'Failed'"></span>
+                        </div>
+                        <div class="tbx-test-item" :class="apiTestResults.twitch ? 'tbx-test-success' : 'tbx-test-error'">
+                            <span>Twitch:</span> 
+                            <span x-text="apiTestResults.twitch ? 'Connected' : 'Failed'"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bot Personality Section -->
+        <div x-show="activeSection === 'personality'" class="tbx-section">
+            <div class="tbx-section-header">
+                <h2 class="tbx-section-title">Bot Personality</h2>
+                <p class="tbx-section-subtitle">Choose how your bot behaves and responds to viewers</p>
+            </div>
+            
+            <!-- Personality Styles -->
+            <div class="tbx-content-card">
+                <div class="tbx-card-header">
+                    <h3 class="tbx-card-title">Personality Styles</h3>
+                    <p class="tbx-card-description">Pick a style that fits your stream, or customize your own</p>
+                </div>
+            <div class="tbx-preset-section" x-data="presetSection()">
+                
+                <!-- Loading State -->
+                <div x-show="isLoading" class="tbx-loading-state">
+                    <div class="tbx-spinner"></div>
+                    <span>Loading presets...</span>
+                </div>
+                
+                <!-- Primary Preset Grid -->
+                <div x-show="!isLoading" class="tbx-primary-presets">
+                    <div class="tbx-preset-grid tbx-preset-grid-primary">
+                        <!-- The 6 main presets -->
+                        <template x-for="preset in primaryPresets" :key="preset.id">
+                            <button @click="applyPreset(preset.id)" 
+                                    :class="{'tbx-preset-card': true, 'tbx-preset-active': activePreset === preset.id}"
+                                    :data-preset="preset.id"
+                                    :aria-label="`Apply ${preset.name} personality preset: ${preset.description}`">
+                                <div class="tbx-preset-icon" x-text="getPresetIcon(preset.id)"></div>
+                                <div class="tbx-preset-name" x-text="preset.name"></div>
+                                <div class="tbx-preset-desc" x-text="preset.description"></div>
+                                <div x-show="activePreset === preset.id" class="tbx-preset-active-indicator">
+                                    <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                </div>
+                            </button>
+                        </template>
+                        
+                        <!-- Custom Preset Card with Enhanced State Display -->
+                        <div class="tbx-custom-preset-card" :class="{'tbx-preset-active': activePreset === 'custom' || isDropdownPresetActive}">
+                            <button @click="setCustomMode()" 
+                                    class="tbx-custom-preset-button"
+                                    :class="{'tbx-preset-active': activePreset === 'custom' || isDropdownPresetActive}"
+                                    aria-label="Use custom personality configuration">
+                                <div class="tbx-preset-icon">⭐</div>
+                                <div class="tbx-preset-name">Custom</div>
+                                
+                                <!-- Dynamic description based on active dropdown personality -->
+                                <div class="tbx-preset-desc" x-text="customPresetDescription">Your personalized settings</div>
+                                
+                                <!-- Active personality name display -->
+                                <div x-show="activeDropdownPersonality" class="tbx-active-personality-name" x-text="activeDropdownPersonality"></div>
+                                <div x-show="activePreset === 'custom' || isDropdownPresetActive" class="tbx-preset-active-indicator">
+                                    <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                </div>
+                            </button>
+                            
+                            <!-- Custom Preset Actions -->
+                            <div x-show="activePreset === 'custom'" x-transition class="tbx-custom-actions">
+                                <button @click="saveCustomPreset()" class="tbx-custom-action-btn" title="Save current settings as custom preset">
+                                    <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
+                                    </svg>
+                                </button>
+                                <button @click="loadCustomPreset()" class="tbx-custom-action-btn" title="Load saved custom preset">
+                                    <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Additional Presets Dropdown with Enhanced State Display -->
+                    <div x-show="additionalPresets.length > 0" class="tbx-additional-presets">
+                        <details class="tbx-preset-dropdown" x-ref="presetDropdown" :class="{'tbx-dropdown-has-active': isDropdownPresetActive}">
+                            <summary class="tbx-dropdown-trigger">
+                                <span class="tbx-dropdown-label">
+                                    <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                    </svg>
+                                    <span x-text="dropdownTriggerText">More Presets</span>
+                                    <span class="tbx-preset-count" x-text="`(${additionalPresets.length})`"></span>
+                                </span>
+                                
+                                <!-- Active indicator for dropdown -->
+                                <div x-show="isDropdownPresetActive" class="tbx-dropdown-active-indicator">
+                                    <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                </div>
+                            </summary>
+                            
+                            <div class="tbx-dropdown-content">
+                                <div class="tbx-dropdown-header">
+                                    <h4>Additional Personality Presets</h4>
+                                    <p>Specialized personalities for different streaming styles</p>
+                                </div>
+                                
+                                <div class="tbx-preset-list">
+                                    <template x-for="preset in additionalPresets" :key="preset.id">
+                                        <button @click="applyDropdownPreset(preset); $refs.presetDropdown.open = false" 
+                                                class="tbx-preset-list-item"
+                                                :class="{'tbx-preset-list-active': isPresetActive(preset.id)}"
+                                                :aria-label="`Apply ${preset.name} personality preset: ${preset.description}`">
+                                            <div class="tbx-preset-list-icon" x-text="getPresetIcon(preset.id)"></div>
+                                            <div class="tbx-preset-list-content">
+                                                <div class="tbx-preset-list-name" x-text="preset.name"></div>
+                                                <div class="tbx-preset-list-desc" x-text="preset.description"></div>
+                                            </div>
+                                            <div x-show="isPresetActive(preset.id)" class="tbx-preset-list-indicator">
+                                                <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                                </svg>
+                                            </div>
+                                        </button>
+                                    </template>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                </div>
+                
+                <!-- No presets fallback -->
+                <div x-show="!isLoading && primaryPresets.length === 0 && additionalPresets.length === 0" class="tbx-empty-state">
+                    <p class="tbx-text-muted">No personality presets available. Check your connection and try refreshing.</p>
+                    <button @click="loadPresets()" class="tbx-button tbx-button-secondary">
+                        <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        Retry Loading
+                    </button>
+                </div>
+            </div>
+            </div>
+            
+            <!-- Personality Sliders Component - Card Layout -->
+            <div class="tbx-content-card">
+                <div class="tbx-card-header">
+                    <h3 class="tbx-card-title">Personality Traits</h3>
+                    <p class="tbx-card-description">Fine-tune your bot's personality characteristics with precision controls</p>
+                </div>
+            <div class="tbx-personality-sliders-container" 
+                 x-data="tbxPersonalitySliders('{{ streamer_id }}')" 
+                 data-auto-save="true">
+                
+                <!-- Loading State -->
+                <div x-show="isLoading" class="tbx-loading-state">
+                    <div class="tbx-spinner"></div>
+                    <span>Loading personality settings...</span>
+                </div>
+                
+                <!-- Personality Sliders -->
+                <div x-show="!isLoading" class="tbx-personality-sliders">
+                    <template x-for="(traitInfo, trait) in traitMeta" :key="trait">
+                        <div class="tbx-trait-slider" :data-trait="trait">
+                            <div class="tbx-trait-header">
+                                <div class="tbx-trait-label">
+                                    <span x-text="traitInfo.icon" class="tbx-trait-icon"></span>
+                                    <span x-text="traitInfo.label" class="tbx-trait-name"></span>
+                                </div>
+                                <span x-text="Math.round(traits[trait] * 100) + '%'" class="tbx-trait-value"></span>
+                            </div>
+                            
+                            <div class="tbx-slider-container">
+                                <div class="slider-progress-fill" 
+                                     :style="`width: ${traits[trait] * 100}%; background-color: ${traitInfo.color}`">
+                                </div>
+                                <input type="range" 
+                                       :value="traits[trait]" 
+                                       @input="updateTrait(trait, $event.target.value)"
+                                       min="0" max="1" step="0.01" 
+                                       class="tbx-range"
+                                       :aria-label="`${traitInfo.label} level`">
+                            </div>
+                            
+                            <p x-text="traitInfo.description" class="tbx-trait-description"></p>
+                        </div>
+                    </template>
+                </div>
+                
+                <!-- Save Status -->
+                <div x-show="hasChanges || saveSuccess || saveError" class="tbx-save-status">
+                    <div x-show="isSaving" class="tbx-status-item tbx-status-saving">
+                        <div class="tbx-spinner-small"></div>
+                        <span>Saving changes...</span>
+                    </div>
+                    
+                    <div x-show="saveSuccess" class="tbx-status-item tbx-status-success">
+                        <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                        <span>Changes saved successfully</span>
+                    </div>
+                    
+                    <div x-show="saveError" class="tbx-status-item tbx-status-error">
+                        <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <span x-text="saveError">Failed to save changes</span>
+                    </div>
+                    
+                    <div x-show="hasUnsavedChanges && !isSaving" class="tbx-status-item tbx-status-pending">
+                        <div class="tbx-status-indicator"></div>
+                        <span>Unsaved changes</span>
+                    </div>
+                </div>
+                
+                <!-- Quick Actions -->
+                <div class="tbx-personality-actions">
+                    <button @click="resetToDefaults()" 
+                            :disabled="isSaving"
+                            class="tbx-button tbx-button-secondary">
+                        <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        Reset to Defaults
+                    </button>
+                    
+                    <button @click="saveSettings()" 
+                            :disabled="!hasChanges || isSaving"
+                            class="tbx-button tbx-button-primary">
+                        <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path>
+                        </svg>
+                        Save Changes
+                    </button>
+                </div>
+                
+                <!-- Accessibility: Live Region for Screen Readers -->
+                <div id="personality-live-region" 
+                     class="sr-only" 
+                     aria-live="polite" 
+                     aria-atomic="true"></div>
+            </div>
+            </div>
+        </div>
+
+        <!-- Audio Section -->
+        <div x-show="activeSection === 'audio'" class="tbx-section">
+            <div class="tbx-section-header">
+                <h2 class="tbx-section-title">Audio Settings</h2>
+                <p class="tbx-section-subtitle">Configure voice and audio output</p>
+            </div>
+            
+            <div class="tbx-settings-group">
+                <!-- Voice Model -->
+                <div class="tbx-setting-item">
+                    <label class="tbx-setting-label">Voice Model</label>
+                    <select x-model="settings.audio.voice_model" @change="saveSettings('audio')" class="tbx-select tbx-select-full">
+                        <option value="nova">Nova (Natural)</option>
+                        <option value="alloy">Alloy (Neutral)</option>
+                        <option value="echo">Echo (Warm)</option>
+                        <option value="fable">Fable (British)</option>
+                        <option value="onyx">Onyx (Deep)</option>
+                        <option value="shimmer">Shimmer (Soft)</option>
+                    </select>
+                </div>
+                
+                <!-- Speaking Rate -->
+                <div class="tbx-setting-item">
+                    <label class="tbx-setting-label">Speaking Rate</label>
+                    <div class="tbx-slider-container">
+                        <input type="range" 
+                               x-model="settings.audio.speaking_rate" 
+                               @input="saveSettings('audio')"
+                               min="0.5" max="2.0" step="0.1" 
+                               class="tbx-range">
+                        <span class="tbx-range-value" x-text="settings.audio.speaking_rate + 'x'">1.0x</span>
+                    </div>
+                </div>
+                
+                <!-- Volume -->
+                <div class="tbx-setting-item">
+                    <label class="tbx-setting-label">Volume</label>
+                    <div class="tbx-slider-container">
+                        <input type="range" 
+                               x-model="settings.audio.volume" 
+                               @input="saveSettings('audio')"
+                               min="0" max="100" step="5" 
+                               class="tbx-range">
+                        <span class="tbx-range-value" x-text="settings.audio.volume + '%'">100%</span>
+                    </div>
+                </div>
+                
+                <!-- Audio Format -->
+                <div class="tbx-setting-item">
+                    <label class="tbx-setting-label">Audio Format</label>
+                    <select x-model="settings.audio.format" @change="saveSettings('audio')" class="tbx-select tbx-select-full">
+                        <option value="mp3">MP3 (Smaller size)</option>
+                        <option value="opus">Opus (Best quality)</option>
+                        <option value="aac">AAC (Compatible)</option>
+                        <option value="flac">FLAC (Lossless)</option>
+                    </select>
+                </div>
+                
+                <!-- Enable TTS -->
+                <div class="tbx-setting-item">
+                    <div class="tbx-toggle-setting">
+                        <div>
+                            <label class="tbx-setting-label">Enable Text-to-Speech</label>
+                            <p class="tbx-setting-desc">Bot will speak responses out loud</p>
+                        </div>
+                        <label class="tbx-toggle">
+                            <input type="checkbox" 
+                                   x-model="settings.audio.tts_enabled" 
+                                   @change="saveSettings('audio')">
+                            <span class="tbx-toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Section -->
+        <div x-show="activeSection === 'chat'" class="tbx-section">
+            <div class="tbx-section-header">
+                <h2 class="tbx-section-title">Chat Settings</h2>
+                <p class="tbx-section-subtitle">Configure chat behavior and responses</p>
+            </div>
+            
+            <div class="tbx-settings-group">
+                <!-- Response Mode -->
+                <div class="tbx-setting-item">
+                    <label class="tbx-setting-label">Response Mode</label>
+                    <select x-model="settings.chat.response_mode" @change="saveSettings('chat')" class="tbx-select tbx-select-full">
+                        <option value="automatic">Automatic</option>
+                        <option value="always">Always Respond</option>
+                        <option value="mentioned">Only When Mentioned</option>
+                        <option value="smart">Smart Detection</option>
+                    </select>
+                </div>
+                
+                <!-- Response Delay -->
+                <div class="tbx-setting-item">
+                    <label class="tbx-setting-label">Response Delay</label>
+                    <div class="tbx-slider-container">
+                        <input type="range" 
+                               x-model="settings.chat.response_delay" 
+                               @input="saveSettings('chat')"
+                               min="0" max="5000" step="100" 
+                               class="tbx-range">
+                        <span class="tbx-range-value" x-text="(settings.chat.response_delay / 1000).toFixed(1) + 's'">0.5s</span>
+                    </div>
+                </div>
+                
+                <!-- Max Message Length -->
+                <div class="tbx-setting-item">
+                    <label class="tbx-setting-label">Max Message Length</label>
+                    <input type="number" 
+                           x-model="settings.chat.max_message_length" 
+                           @change="saveSettings('chat')"
+                           min="50" max="500" 
+                           class="tbx-input tbx-input-number">
+                </div>
+                
+                <!-- Emote Usage -->
+                <div class="tbx-setting-item">
+                    <div class="tbx-toggle-setting">
+                        <div>
+                            <label class="tbx-setting-label">Use Emotes</label>
+                            <p class="tbx-setting-desc">Include Twitch emotes in responses</p>
+                        </div>
+                        <label class="tbx-toggle">
+                            <input type="checkbox" 
+                                   x-model="settings.chat.use_emotes" 
+                                   @change="saveSettings('chat')">
+                            <span class="tbx-toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- Mention Users -->
+                <div class="tbx-setting-item">
+                    <div class="tbx-toggle-setting">
+                        <div>
+                            <label class="tbx-setting-label">Mention Users</label>
+                            <p class="tbx-setting-desc">Include @username in responses</p>
+                        </div>
+                        <label class="tbx-toggle">
+                            <input type="checkbox" 
+                                   x-model="settings.chat.mention_users" 
+                                   @change="saveSettings('chat')">
+                            <span class="tbx-toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Memory Section -->
+        <div x-show="activeSection === 'memory'" class="tbx-section">
+            <div class="tbx-section-header">
+                <h2 class="tbx-section-title">Memory Settings</h2>
+                <p class="tbx-section-subtitle">Configure how the bot remembers viewers and conversations</p>
+            </div>
+            
+            <div class="tbx-settings-group">
+                <!-- Enable Memory -->
+                <div class="tbx-setting-item">
+                    <div class="tbx-toggle-setting">
+                        <div>
+                            <label class="tbx-setting-label">Enable Memory System</label>
+                            <p class="tbx-setting-desc">Bot will remember viewers and past conversations</p>
+                        </div>
+                        <label class="tbx-toggle">
+                            <input type="checkbox" 
+                                   x-model="settings.memory.enabled" 
+                                   @change="saveSettings('memory')">
+                            <span class="tbx-toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- Memory Duration -->
+                <div class="tbx-setting-item">
+                    <label class="tbx-setting-label">Memory Duration</label>
+                    <select x-model="settings.memory.duration" @change="saveSettings('memory')" class="tbx-select tbx-select-full">
+                        <option value="7">1 Week</option>
+                        <option value="30">1 Month</option>
+                        <option value="90">3 Months</option>
+                        <option value="180">6 Months</option>
+                        <option value="365">1 Year</option>
+                        <option value="-1">Forever</option>
+                    </select>
+                </div>
+                
+                <!-- Context Window -->
+                <div class="tbx-setting-item">
+                    <label class="tbx-setting-label">Context Window</label>
+                    <div class="tbx-slider-container">
+                        <input type="range" 
+                               x-model="settings.memory.context_window" 
+                               @input="saveSettings('memory')"
+                               min="5" max="50" step="5" 
+                               class="tbx-range">
+                        <span class="tbx-range-value" x-text="settings.memory.context_window + ' messages'">20 messages</span>
+                    </div>
+                </div>
+                
+                <!-- Privacy Mode -->
+                <div class="tbx-setting-item">
+                    <div class="tbx-toggle-setting">
+                        <div>
+                            <label class="tbx-setting-label">Privacy Mode</label>
+                            <p class="tbx-setting-desc">Viewers can opt-out with !forget command</p>
+                        </div>
+                        <label class="tbx-toggle">
+                            <input type="checkbox" 
+                                   x-model="settings.memory.privacy_mode" 
+                                   @change="saveSettings('memory')">
+                            <span class="tbx-toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- Memory Stats -->
+                <div class="tbx-memory-stats">
+                    <h3 class="tbx-subsection-title">Memory Statistics</h3>
+                    <div class="tbx-stats-grid">
+                        <div class="tbx-stat-card">
+                            <div class="tbx-stat-value" x-text="memoryStats.total_memories">0</div>
+                            <div class="tbx-stat-label">Total Memories</div>
+                        </div>
+                        <div class="tbx-stat-card">
+                            <div class="tbx-stat-value" x-text="memoryStats.unique_viewers">0</div>
+                            <div class="tbx-stat-label">Unique Viewers</div>
+                        </div>
+                        <div class="tbx-stat-card">
+                            <div class="tbx-stat-value" x-text="memoryStats.storage_used">0 MB</div>
+                            <div class="tbx-stat-label">Storage Used</div>
+                        </div>
+                        <div class="tbx-stat-card">
+                            <div class="tbx-stat-value" x-text="memoryStats.opted_out">0</div>
+                            <div class="tbx-stat-label">Opted Out</div>
+                        </div>
+                    </div>
+                    
+                    <div class="tbx-memory-actions">
+                        <button @click="clearMemory()" class="tbx-button tbx-button-danger">Clear All Memory</button>
+                        <button @click="exportMemory()" class="tbx-button tbx-button-secondary">Export Memory</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- API Keys Section -->
+        <div x-show="activeSection === 'api'" class="tbx-section">
+            <div class="tbx-section-header">
+                <h2 class="tbx-section-title">API Keys</h2>
+                <p class="tbx-section-subtitle">Manage your external service API keys</p>
+            </div>
+            
+            <div class="tbx-settings-group">
+                <!-- OpenAI API Key -->
+                <div class="tbx-setting-item">
+                    <label class="tbx-setting-label">OpenAI API Key</label>
+                    <div class="tbx-api-key-input">
+                        <input :type="showApiKeys.openai ? 'text' : 'password'" 
+                               x-model="settings.api.openai_key" 
+                               @change="saveSettings('api')"
+                               placeholder="sk-..." 
+                               class="tbx-input tbx-input-secret">
+                        <button @click="showApiKeys.openai = !showApiKeys.openai" class="tbx-reveal-button">
+                            <svg x-show="!showApiKeys.openai" class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                            </svg>
+                            <svg x-show="showApiKeys.openai" class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <p class="tbx-setting-desc">Required for AI responses and text-to-speech</p>
+                </div>
+                
+                <!-- Twitch Client ID -->
+                <div class="tbx-setting-item">
+                    <label class="tbx-setting-label">Twitch Client ID</label>
+                    <div class="tbx-api-key-input">
+                        <input :type="showApiKeys.twitch_client ? 'text' : 'password'" 
+                               x-model="settings.api.twitch_client_id" 
+                               @change="saveSettings('api')"
+                               placeholder="Your Twitch Client ID" 
+                               class="tbx-input tbx-input-secret">
+                        <button @click="showApiKeys.twitch_client = !showApiKeys.twitch_client" class="tbx-reveal-button">
+                            <svg x-show="!showApiKeys.twitch_client" class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                            </svg>
+                            <svg x-show="showApiKeys.twitch_client" class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <p class="tbx-setting-desc">Required for Twitch API integration</p>
+                </div>
+                
+                <!-- Twitch Client Secret -->
+                <div class="tbx-setting-item">
+                    <label class="tbx-setting-label">Twitch Client Secret</label>
+                    <div class="tbx-api-key-input">
+                        <input :type="showApiKeys.twitch_secret ? 'text' : 'password'" 
+                               x-model="settings.api.twitch_client_secret" 
+                               @change="saveSettings('api')"
+                               placeholder="Your Twitch Client Secret" 
+                               class="tbx-input tbx-input-secret">
+                        <button @click="showApiKeys.twitch_secret = !showApiKeys.twitch_secret" class="tbx-reveal-button">
+                            <svg x-show="!showApiKeys.twitch_secret" class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                            </svg>
+                            <svg x-show="showApiKeys.twitch_secret" class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <p class="tbx-setting-desc">Keep this secret and never share it</p>
+                </div>
+                
+                <!-- Test Connection -->
+                <div class="tbx-api-test">
+                    <button @click="testApiConnections()" class="tbx-button tbx-button-primary">
+                        <svg class="tbx-icon" :class="{'tbx-animate-spin': testingApi}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        Test Connections
+                    </button>
+                    
+                    <div x-show="apiTestResults" class="tbx-test-results">
+                        <div class="tbx-test-item" :class="apiTestResults.openai ? 'tbx-test-success' : 'tbx-test-error'">
+                            <span>OpenAI:</span> 
+                            <span x-text="apiTestResults.openai ? 'Connected' : 'Failed'"></span>
+                        </div>
+                        <div class="tbx-test-item" :class="apiTestResults.twitch ? 'tbx-test-success' : 'tbx-test-error'">
+                            <span>Twitch:</span> 
+                            <span x-text="apiTestResults.twitch ? 'Connected' : 'Failed'"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Advanced Section -->
+        <div x-show="activeSection === 'advanced'" class="tbx-section">
+            <div class="tbx-section-header">
+                <h2 class="tbx-section-title">Advanced Settings</h2>
+                <p class="tbx-section-subtitle">Technical settings for fine-tuning your bot</p>
+            </div>
+            
+            <!-- Audio Settings -->
+            <div class="tbx-content-card">
+                <div class="tbx-card-header">
+                    <h3 class="tbx-card-title">Voice & Audio</h3>
+                    <p class="tbx-card-description">Control when and how your bot speaks</p>
+                </div>
+                
+                <div class="tbx-settings-group">
+                    <!-- Voice Enable/Disable -->
+                    <div class="tbx-setting-item">
+                        <label class="tbx-setting-label">Voice Responses</label>
+                        <p class="tbx-setting-description">Enable text-to-speech for bot responses</p>
+                        <div class="tbx-toggle-switch">
+                            <input type="checkbox" 
+                                   id="voice-enabled" 
+                                   x-model="settings.audio.enabled"
+                                   @change="saveSettings('audio')"
+                                   class="tbx-toggle">
+                            <label for="voice-enabled" class="tbx-toggle-label"></label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Chat Settings -->
+            <div class="tbx-content-card">
+                <div class="tbx-card-header">
+                    <h3 class="tbx-card-title">Chat Behavior</h3>
+                    <p class="tbx-card-description">Control how often your bot responds</p>
+                </div>
+                
+                <div class="tbx-settings-group">
+                    <!-- Response Timing -->
+                    <div class="tbx-setting-item">
+                        <label class="tbx-setting-label">Response Speed</label>
+                        <p class="tbx-setting-description">How often the bot responds to chat messages</p>
+                        <div class="tbx-setting-options">
+                            <label class="tbx-radio-option">
+                                <input type="radio" name="response_frequency" value="high" x-model="settings.chat.response_frequency" @change="saveSettings('chat')">
+                                <span class="tbx-radio-label">Very Active (responds often)</span>
+                            </label>
+                            <label class="tbx-radio-option">
+                                <input type="radio" name="response_frequency" value="medium" x-model="settings.chat.response_frequency" @change="saveSettings('chat')">
+                                <span class="tbx-radio-label">Moderate (balanced responses)</span>
+                            </label>
+                            <label class="tbx-radio-option">
+                                <input type="radio" name="response_frequency" value="low" x-model="settings.chat.response_frequency" @change="saveSettings('chat')">
+                                <span class="tbx-radio-label">Quiet (responds less often)</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Memory Settings -->
+            <div class="tbx-content-card">
+                <div class="tbx-card-header">
+                    <h3 class="tbx-card-title">Chat Memory</h3>
+                    <p class="tbx-card-description">How much chat history the bot remembers</p>
+                </div>
+                
+                <div class="tbx-settings-group">
+                    <!-- Context Window -->
+                    <div class="tbx-setting-item">
+                        <label class="tbx-setting-label">Chat Memory Length</label>
+                        <p class="tbx-setting-description">Number of recent messages the bot can remember for context</p>
+                        <div class="tbx-slider-container">
+                            <input type="range" 
+                                   min="5" 
+                                   max="50" 
+                                   step="5"
+                                   class="tbx-range"
+                                   x-model="settings.memory.context_window_size"
+                                   @change="saveSettings('memory')">
+                            <div class="tbx-slider-value">
+                                <span x-text="settings.memory.context_window_size || 20"></span> messages
+                            </div>
+                        </div>
+                        <div class="tbx-slider-labels">
+                            <span>5 (Less context)</span>
+                            <span>50 (More context)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Technical Settings -->
+            <div class="tbx-content-card">
+                <div class="tbx-card-header">
+                    <h3 class="tbx-card-title">Technical Settings</h3>
+                    <p class="tbx-card-description">Advanced technical configuration</p>
+                </div>
+            
+            <div class="tbx-settings-group">
+                <!-- Rate Limiting -->
+                <div class="tbx-setting-item">
+                    <label class="tbx-setting-label">Rate Limiting</label>
+                    <div class="tbx-slider-container">
+                        <input type="range" 
+                               x-model="settings.advanced.rate_limit" 
+                               @input="saveSettings('advanced')"
+                               min="1" max="20" step="1" 
+                               class="tbx-range">
+                        <span class="tbx-range-value" x-text="settings.advanced.rate_limit + ' msg/min'">5 msg/min</span>
+                    </div>
+                    <p class="tbx-setting-desc">Maximum messages per minute to prevent spam</p>
+                </div>
+                
+                <!-- Context Length -->
+                <div class="tbx-setting-item">
+                    <label class="tbx-setting-label">Context Length</label>
+                    <select x-model="settings.advanced.context_length" @change="saveSettings('advanced')" class="tbx-select tbx-select-full">
+                        <option value="4096">4K tokens (Fast)</option>
+                        <option value="8192">8K tokens (Balanced)</option>
+                        <option value="16384">16K tokens (Deep)</option>
+                        <option value="32768">32K tokens (Maximum)</option>
+                    </select>
+                </div>
+                
+                <!-- Modern AI Model Selection -->
+                <div class="tbx-setting-item" x-data="modelSelector()">
+                    <label class="tbx-setting-label">
+                        AI Model
+                        <span class="text-xs text-gray-500 ml-2">(15+ models available)</span>
+                    </label>
+                    
+                    <!-- Model Selection Dropdown -->
+                    <select x-model="currentModel" :disabled="loading" class="tbx-select tbx-select-full">
+                        <optgroup label="Premium Models">
+                            <option value="gpt-4o">GPT-4o (Most Capable + Realtime)</option>
+                            <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet (Latest)</option>
+                            <option value="grok-2-1212">Grok 2 (Real-time Data)</option>
+                            <option value="claude-3-opus-20240229">Claude 3 Opus (Most Intelligent)</option>
+                        </optgroup>
+                        
+                        <optgroup label="Fast & Efficient">
+                            <option value="gpt-4o-mini">GPT-4o Mini (Best Value)</option>
+                            <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku (Lightning Fast)</option>
+                            <option value="gemini-1.5-flash">Gemini 1.5 Flash (Efficient)</option>
+                        </optgroup>
+                        
+                        <optgroup label="Balanced Models">
+                            <option value="gpt-4-turbo">GPT-4 Turbo (Reasoning)</option>
+                            <option value="claude-3-sonnet-20240229">Claude 3 Sonnet (Balanced)</option>
+                            <option value="gemini-1.5-pro">Gemini 1.5 Pro (Long Context)</option>
+                        </optgroup>
+                        
+                        <optgroup label="Specialized">
+                            <option value="gpt-4o-realtime-preview">GPT-4o Realtime (Ultra-Low Latency)</option>
+                            <option value="grok-2-vision-1212">Grok 2 Vision (Image Understanding)</option>
+                        </optgroup>
+                        
+                        <optgroup label="Legacy">
+                            <option value="gpt-3.5-turbo">GPT-3.5 Turbo (Legacy)</option>
+                        </optgroup>
+                        
+                        <optgroup label="Local Models" x-show="$store.settings?.state?.models?.ollamaAvailable">
+                            <template x-for="model in $store.settings?.state?.models?.ollamaModels || []" :key="model">
+                                <option :value="model" x-text="`${model} (Local)`"></option>
+                            </template>
+                        </optgroup>
+                    </select>
+                    
+                    <!-- Model Info Display -->
+                    <div x-show="currentModel" 
+                         class="mt-3 p-4 rounded-xl border transition-all duration-200"
+                         style="background: linear-gradient(135deg, var(--tbx-surface-elevated, #1a1a1a) 0%, var(--tbx-surface-raised, #232323) 100%); 
+                                border-color: var(--tbx-border-subtle, #333333);">
+                        <!-- Header with icon, name and cost -->
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-3">
+                                <span class="text-2xl" x-text="getModelInfo(currentModel).icon || '🤖'"></span>
+                                <div>
+                                    <span class="font-semibold text-base" 
+                                          style="color: var(--tbx-text-primary, #ffffff);" 
+                                          x-text="getModelInfo(currentModel).name || currentModel"></span>
+                                </div>
+                            </div>
+                            <span class="text-xs px-2.5 py-1 rounded-full font-medium" 
+                                  style="background: var(--tbx-brand-primary-alpha, rgba(59, 130, 246, 0.1)); 
+                                         color: var(--tbx-brand-primary, #3b82f6);" 
+                                  x-text="getModelInfo(currentModel).cost || '$'"></span>
+                        </div>
+                        
+                        <!-- Description -->
+                        <p class="text-sm mb-3" 
+                           style="color: var(--tbx-text-secondary, #999999);" 
+                           x-text="getModelInfo(currentModel).description || 'AI model for chat responses'"></p>
+                        
+                        <!-- Stats and Features -->
+                        <div class="flex flex-wrap items-center gap-4 text-xs">
+                            <div class="flex items-center gap-1.5">
+                                <span style="color: var(--tbx-text-muted, #666666);">Speed:</span>
+                                <span style="color: var(--tbx-info, #3b82f6);" 
+                                      class="font-medium" 
+                                      x-text="getModelInfo(currentModel).speed || 'Variable'"></span>
+                            </div>
+                            <div class="flex items-center gap-1.5">
+                                <span style="color: var(--tbx-text-muted, #666666);">Quality:</span>
+                                <span style="color: var(--tbx-success, #10b981);" 
+                                      class="font-medium" 
+                                      x-text="getModelInfo(currentModel).quality || 'Good'"></span>
+                            </div>
+                            <div x-show="supportsRealtime(currentModel)" 
+                                 class="flex items-center gap-1.5">
+                                <div class="w-2 h-2 bg-orange-400 rounded-full animate-pulse"></div>
+                                <span class="text-orange-400 font-medium">Realtime Voice</span>
+                            </div>
+                            <div x-show="supportsVoice(currentModel) && !supportsRealtime(currentModel)" 
+                                 class="flex items-center gap-1.5">
+                                <div class="w-2 h-2 bg-blue-400 rounded-full"></div>
+                                <span style="color: var(--tbx-info, #3b82f6);" class="font-medium">Voice Support</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Loading State -->
+                    <div x-show="loading" class="mt-2 text-sm text-gray-500">
+                        <span class="animate-pulse">Switching model...</span>
+                    </div>
+                </div>
+                
+                <!-- Realtime Mode Toggle -->
+                <div class="tbx-setting-item" x-data="realtimeToggle()">
+                    <div class="tbx-toggle-setting">
+                        <div class="tbx-toggle-content">
+                            <label class="tbx-setting-label">
+                                Realtime Voice Mode
+                                <span x-show="!available" class="text-xs text-amber-600">(Not available with current model)</span>
+                            </label>
+                            <p class="tbx-setting-description">
+                                Ultra-low latency voice conversations. Requires compatible model (GPT-4o, GPT-4o Realtime).
+                            </p>
+                        </div>
+                        <div class="tbx-toggle">
+                            <input type="checkbox" 
+                                   x-model="enabled" 
+                                   @change="toggle()" 
+                                   :disabled="!available || loading">
+                            <span class="tbx-toggle-slider" :class="{ 'opacity-50': !available }"></span>
+                        </div>
+                    </div>
+                    
+                    <!-- Realtime Status -->
+                    <div x-show="available" class="mt-2 text-sm">
+                        <div x-show="enabled" class="text-green-600">
+                            &#10003; Realtime mode enabled - Ultra-low latency voice
+                        </div>
+                        <div x-show="!enabled" class="text-gray-500">
+                            &#9679; Realtime mode disabled - Standard voice processing
+                        </div>
+                    </div>
+                    
+                    <div x-show="loading" class="mt-2 text-sm text-gray-500">
+                        <span class="animate-pulse">Updating realtime mode...</span>
+                    </div>
+                </div>
+                
+                <!-- Debug Mode -->
+                <div class="tbx-setting-item">
+                    <div class="tbx-toggle-setting">
+                        <div>
+                            <label class="tbx-setting-label">Debug Mode</label>
+                            <p class="tbx-setting-desc">Enable detailed logging for troubleshooting</p>
+                        </div>
+                        <label class="tbx-toggle">
+                            <input type="checkbox" 
+                                   x-model="settings.advanced.debug_mode" 
+                                   @change="saveSettings('advanced')">
+                            <span class="tbx-toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- Experimental Features -->
+                <div class="tbx-setting-item">
+                    <div class="tbx-toggle-setting">
+                        <div>
+                            <label class="tbx-setting-label">Experimental Features</label>
+                            <p class="tbx-setting-desc">Enable beta features (may be unstable)</p>
+                        </div>
+                        <label class="tbx-toggle">
+                            <input type="checkbox" 
+                                   x-model="settings.advanced.experimental" 
+                                   @change="saveSettings('advanced')">
+                            <span class="tbx-toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Hidden file input for import -->
+    <input type="file" 
+           x-ref="importFile" 
+           @change="handleImport($event)" 
+           accept=".json"
+           style="display: none;">
+</div>
+
+<script>
+// Preset Section Component
+function presetSection() {
+    return {
+        // Data
+        availablePresets: [],
+        primaryPresets: [],
+        additionalPresets: [],
+        customPresets: [],
+        activePreset: null,
+        activeDropdownPersonality: null,
+        isLoading: true,
+        
+        // Define the 6 primary preset IDs
+        primaryPresetIds: ['chill', 'cozy', 'roast', 'hype', 'sage', 'chaos_goblin'],
+        
+        // Custom preset management
+        savedCustomPresets: [],
+        
+        // Preset icons mapping (updated with correct emoji assignments)
+        presetIcons: {
+            'chill': '😎',
+            'cozy': '☕',
+            'roast': '🔥',
+            'hype': '⚡',
+            'sage': '🧙',
+            'wise': '🧙', // Alternative name for sage
+            'chaos_goblin': '😈',
+            'chaos': '😈', // Alternative name for chaos_goblin
+            'savage': '💀',
+            'existential_poet': '🌌',
+            'robot': '🤖',
+            'definitely_human': '🤖',
+            'gordon_ramsay': '👨‍🍳',
+            'sports_caster': '🎙️',
+            'self_aware': '🤔',
+            'gentle_teacher': '👩‍🏫',
+            'cryptid_observer': '👽',
+            'anime_protagonist': '⚡',
+            'retro_arcade_master': '🕹️',
+            'ai_trapped': '🔒',
+            'uwu_egirl': '💖',
+            'default': '✨',
+            'custom': '⭐'
+        },
+        
+        async init() {
+            await this.loadPresets();
+            await this.loadCustomPresets();
+            this.setupEventListeners();
+        },
+        
+        async loadPresets() {
+            this.isLoading = true;
+            try {
+                const response = await fetch('/api/v2/personality-v2/all');
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Process built-in presets
+                    this.availablePresets = Object.entries(data.built_in_presets || {}).map(([id, preset]) => ({
+                        id,
+                        name: preset.name,
+                        description: preset.description,
+                        type: 'built_in'
+                    }));
+                    
+                    // Separate primary and additional presets
+                    this.categorizePresets();
+                    
+                    console.log('[PresetSection] Loaded presets:', {
+                        total: this.availablePresets.length,
+                        primary: this.primaryPresets.length,
+                        additional: this.additionalPresets.length
+                    });
+                }
+            } catch (error) {
+                console.error('[PresetSection] Failed to load presets:', error);
+            } finally {
+                this.isLoading = false;
+            }
+        },
+        
+        categorizePresets() {
+            // Reset arrays
+            this.primaryPresets = [];
+            this.additionalPresets = [];
+            
+            // First deduplicate by name to avoid duplicate "Definitely Human" entries
+            const uniquePresets = [];
+            const seenNames = new Set();
+            
+            this.availablePresets.forEach(preset => {
+                const normalizedName = preset.name.toLowerCase();
+                if (!seenNames.has(normalizedName)) {
+                    seenNames.add(normalizedName);
+                    uniquePresets.push(preset);
+                }
+            });
+            
+            // Find primary presets in order from deduplicated list
+            this.primaryPresetIds.forEach(primaryId => {
+                const preset = uniquePresets.find(p => 
+                    p.id === primaryId || 
+                    p.name.toLowerCase() === primaryId.toLowerCase() ||
+                    (primaryId === 'sage' && p.name.toLowerCase() === 'wise') ||
+                    (primaryId === 'chaos_goblin' && (p.name.toLowerCase().includes('chaos') || p.id.includes('chaos')))
+                );
+                if (preset) {
+                    this.primaryPresets.push(preset);
+                }
+            });
+            
+            // Add remaining presets to additional (from deduplicated list)
+            this.additionalPresets = uniquePresets.filter(preset => 
+                !this.primaryPresets.some(primary => primary.id === preset.id)
+            );
+        },
+        
+        async loadCustomPresets() {
+            try {
+                // Load saved custom presets from localStorage
+                const saved = localStorage.getItem('talkbot_custom_presets');
+                if (saved) {
+                    this.savedCustomPresets = JSON.parse(saved);
+                }
+            } catch (error) {
+                console.error('[PresetSection] Failed to load custom presets:', error);
+            }
+        },
+        
+        getPresetIcon(presetId) {
+            return this.presetIcons[presetId] || this.presetIcons[presetId.toLowerCase()] || this.presetIcons.default;
+        },
+        
+        applyPreset(presetId) {
+            // Find the personality sliders component and trigger preset application
+            const personalitySlidersEl = document.querySelector('[x-data*="tbxPersonalitySliders"]');
+            if (personalitySlidersEl) {
+                personalitySlidersEl.dispatchEvent(new CustomEvent('apply-preset', {
+                    detail: { preset: presetId }
+                }));
+                console.log(`[PresetSection] Applied preset: ${presetId}`);
+                
+                // Update active state immediately for better UX
+                this.activePreset = presetId;
+            } else {
+                console.warn('[PresetSection] Personality sliders component not found');
+            }
+        },
+        
+        setCustomMode() {
+            this.activePreset = 'custom';
+            this.activeDropdownPersonality = null;
+            // Dispatch event to let other components know we're in custom mode
+            this.$dispatch('preset:custom-mode', { active: true });
+            console.log('[PresetSection] Switched to custom mode');
+        },
+        
+        applyDropdownPreset(preset) {
+            // Apply the preset via personality sliders
+            const personalitySlidersEl = document.querySelector('[x-data*="tbxPersonalitySliders"]');
+            if (personalitySlidersEl) {
+                personalitySlidersEl.dispatchEvent(new CustomEvent('apply-preset', {
+                    detail: { preset: preset.id }
+                }));
+                
+                // Update local state to show dropdown selection
+                this.activePreset = 'custom';
+                this.activeDropdownPersonality = preset.name;
+                
+                // Announce to screen readers
+                this.announce(`Applied ${preset.name} personality from additional presets`);
+                
+                console.log(`[PresetSection] Applied dropdown preset: ${preset.name}`);
+            }
+        },
+        
+        isPresetActive(presetId) {
+            // Check if this preset is currently active (either as main or dropdown)
+            return this.activePreset === presetId || 
+                   (this.activeDropdownPersonality && 
+                    this.additionalPresets.find(p => p.id === presetId && p.name === this.activeDropdownPersonality));
+        },
+        
+        async saveCustomPreset() {
+            try {
+                // For now, use a simple prompt. In a full implementation, 
+                // this would be a proper modal dialog
+                const presetName = prompt('Enter a name for your custom preset:');
+                if (!presetName) return;
+                
+                // Create custom preset object
+                const customPreset = {
+                    id: `custom_${Date.now()}`,
+                    name: presetName,
+                    description: 'Custom personality configuration',
+                    type: 'custom',
+                    timestamp: Date.now(),
+                    // Note: In a real implementation, we'd get actual trait values here
+                    traits: {
+                        warmth: 0.65,
+                        energy: 0.65,
+                        humor: 0.55,
+                        sass: 0.45,
+                        verbosity: 0.5
+                    }
+                };
+                
+                this.savedCustomPresets.push(customPreset);
+                localStorage.setItem('talkbot_custom_presets', JSON.stringify(this.savedCustomPresets));
+                
+                // Show success notification
+                this.showNotification(`Custom preset "${presetName}" saved successfully!`, 'success');
+                
+            } catch (error) {
+                console.error('[PresetSection] Failed to save custom preset:', error);
+                this.showNotification('Failed to save custom preset', 'error');
+            }
+        },
+        
+        async loadCustomPreset() {
+            try {
+                if (this.savedCustomPresets.length === 0) {
+                    this.showNotification('No custom presets saved yet', 'info');
+                    return;
+                }
+                
+                // For now, use a simple selection. In a full implementation,
+                // this would be a proper dropdown or modal
+                const presetNames = this.savedCustomPresets.map((p, i) => `${i}: ${p.name}`);
+                const selection = prompt(`Select custom preset:\n${presetNames.join('\n')}\n\nEnter number:`);
+                
+                const index = parseInt(selection);
+                if (isNaN(index) || index < 0 || index >= this.savedCustomPresets.length) {
+                    this.showNotification('Invalid selection', 'error');
+                    return;
+                }
+                
+                const customPreset = this.savedCustomPresets[index];
+                
+                // Apply the custom preset (would need to implement trait application)
+                this.showNotification(`Loaded custom preset "${customPreset.name}"`, 'success');
+                
+            } catch (error) {
+                console.error('[PresetSection] Failed to load custom preset:', error);
+                this.showNotification('Failed to load custom preset', 'error');
+            }
+        },
+        
+        setupEventListeners() {
+            // Listen for preset applied events to update active state
+            document.addEventListener('preset:applied', (e) => {
+                const appliedPreset = e.detail.preset;
+                
+                // Check if it's a main preset or dropdown preset
+                const isMainPreset = this.primaryPresets.some(p => p.id === appliedPreset || p.name === appliedPreset);
+                const dropdownPreset = this.additionalPresets.find(p => p.id === appliedPreset || p.name === appliedPreset);
+                
+                if (isMainPreset) {
+                    this.activePreset = appliedPreset;
+                    this.activeDropdownPersonality = null;
+                } else if (dropdownPreset) {
+                    this.activePreset = 'custom';
+                    this.activeDropdownPersonality = dropdownPreset.name;
+                } else {
+                    this.activePreset = appliedPreset;
+                    this.activeDropdownPersonality = null;
+                }
+                
+                console.log('[PresetSection] Active preset updated:', this.activePreset, 'Dropdown:', this.activeDropdownPersonality);
+            });
+            
+            // Listen for trait changes to switch to custom mode
+            document.addEventListener('trait:changed', (e) => {
+                if (this.activePreset !== 'custom' || this.activeDropdownPersonality) {
+                    this.activePreset = 'custom';
+                    this.activeDropdownPersonality = null;
+                    console.log('[PresetSection] Switched to custom mode due to trait change');
+                }
+            });
+        },
+        
+        showNotification(message, type = 'info') {
+            // Simple notification - in a real implementation this would use the app's notification system
+            console.log(`[${type.toUpperCase()}] ${message}`);
+            
+            // Create a temporary visual notification
+            const notification = document.createElement('div');
+            notification.className = `tbx-notification tbx-notification-${type}`;
+            notification.textContent = message;
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 12px 24px;
+                border-radius: 8px;
+                color: white;
+                font-weight: 500;
+                z-index: 1000;
+                animation: slideIn 0.3s ease-out;
+                background: ${type === 'success' ? '#22c55e' : type === 'error' ? '#ef4444' : type === 'warning' ? '#f59e0b' : '#3b82f6'};
+            `;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease-in';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        },
+        
+        // Computed Properties for Enhanced UI State
+        get isDropdownPresetActive() {
+            return !!this.activeDropdownPersonality;
+        },
+        
+        get customPresetDescription() {
+            if (this.activeDropdownPersonality) {
+                return `Using: ${this.activeDropdownPersonality}`;
+            }
+            return 'Your personalized settings';
+        },
+        
+        get dropdownTriggerText() {
+            if (this.activeDropdownPersonality) {
+                return `Active: ${this.activeDropdownPersonality}`;
+            }
+            return 'More Presets';
+        },
+        
+        announce(message) {
+            // Announce to screen readers via live region
+            const liveRegion = document.getElementById('personality-live-region');
+            if (liveRegion) {
+                liveRegion.textContent = message;
+            }
+            
+            // Also log for debugging
+            console.log(`[PresetSection] Announced: ${message}`);
+        }
+    };
+}
+
+// Main Settings Page Component
+function settingsPage() {
+    return {
+        // State
+        activeSection: 'setup',
+        saveStatus: null,
+        saveMessage: 'All changes saved',
+        testingApi: false,
+        apiTestResults: null,
+        showApiKeys: {
+            openai: false,
+            twitch_client: false,
+            twitch_secret: false
+        },
+        
+        // Settings data
+        settings: {
+            personality: {},
+            audio: {
+                voice_model: 'nova',
+                speaking_rate: 1.0,
+                volume: 100,
+                format: 'mp3',
+                tts_enabled: true
+            },
+            chat: {
+                response_mode: 'automatic',
+                response_delay: 500,
+                max_message_length: 200,
+                use_emotes: true,
+                mention_users: true
+            },
+            memory: {
+                enabled: true,
+                duration: 30,
+                context_window: 20,
+                privacy_mode: true
+            },
+            api: {
+                openai_key: '',
+                twitch_client_id: '',
+                twitch_client_secret: ''
+            },
+            advanced: {
+                rate_limit: 5,
+                context_length: 8192,
+                model: 'gpt-4-turbo',
+                debug_mode: false,
+                experimental: false
+            }
+        },
+        
+        // Memory statistics
+        memoryStats: {
+            total_memories: 0,
+            unique_viewers: 0,
+            storage_used: '0 MB',
+            opted_out: 0
+        },
+        
+        // Debounce timer
+        saveTimer: null,
+        
+        // Initialize
+        async init() {
+            // Initialize ModelManager
+            if (window.ModelManager) {
+                try {
+                    this.modelManager = new window.ModelManager({
+                        core: null,
+                        state: window.StateManager || { state: { models: { current: 'gpt-4o-mini', available: [], realtimeEnabled: false } } },
+                        api: null,
+                        streamerId: '{{ streamer_id }}'
+                    });
+                    await this.modelManager.init();
+                    console.log('[Settings] ModelManager initialized');
+                } catch (error) {
+                    console.error('[Settings] ModelManager init failed:', error);
+                }
+            }
+            
+            await this.loadSettings();
+            await this.loadMemoryStats();
+        },
+        
+        // Load settings
+        async loadSettings() {
+            try {
+                const response = await fetch('/api/v2/settings/consolidated/{{ streamer_id }}');
+                if (response.ok) {
+                    const data = await response.json();
+                    // Merge with defaults - ensure nested objects exist
+                    Object.keys(data).forEach(key => {
+                        if (this.settings[key]) {
+                            // Ensure data[key] is an object and not null before merging
+                            const settingsValue = data[key] || {};
+                            this.settings[key] = { ...this.settings[key], ...settingsValue };
+                        }
+                    });
+                    
+                    // Ensure critical nested objects exist to prevent null property reading errors
+                    if (!this.settings.api) {
+                        this.settings.api = { openai_key: '', twitch_client_id: '', twitch_client_secret: '' };
+                    }
+                    if (!this.settings.personality) {
+                        this.settings.personality = {};
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load settings:', error);
+                this.showNotification('Failed to load settings', 'error');
+            }
+        },
+        
+        // Save settings with debouncing
+        saveSettings(section) {
+            // Clear existing timer
+            if (this.saveTimer) {
+                clearTimeout(this.saveTimer);
+            }
+            
+            // Show saving status
+            this.saveStatus = 'saving';
+            this.saveMessage = 'Saving...';
+            
+            // Debounce save
+            this.saveTimer = setTimeout(async () => {
+                try {
+                    // Map section-specific settings to individual endpoints
+                    let endpoint = '';
+                    let method = 'POST';
+                    let body = {};
+                    
+                    switch(section) {
+                        case 'personality':
+                            // Use personality-v2 endpoint for personality traits
+                            endpoint = `/api/v2/personality-v2/traits/{{ streamer_id }}`;
+                            method = 'POST';
+                            body = {
+                                warmth: this.settings.personality.warmth || 0.5,
+                                energy: this.settings.personality.energy || 0.5,
+                                humor: this.settings.personality.humor || 0.5,
+                                sass: this.settings.personality.sass || 0.5,
+                                verbosity: this.settings.personality.verbosity || 0.5
+                            };
+                            break;
+                        case 'audio':
+                            // Use voice endpoint for audio settings
+                            endpoint = `/api/v2/settings/voice?streamer_id={{ streamer_id }}`;
+                            method = 'PUT';
+                            body = { enabled: this.settings.audio.tts_enabled };
+                            break;
+                        case 'chat':
+                            // Use cooldowns endpoint for chat settings
+                            endpoint = `/api/v2/settings/cooldowns?streamer_id={{ streamer_id }}`;
+                            method = 'PUT';
+                            body = {
+                                high: 3,
+                                med: 8,
+                                low: Math.floor(this.settings.chat.response_delay / 1000) || 60
+                            };
+                            break;
+                        case 'memory':
+                            endpoint = `/api/v2/settings/memory?streamer_id={{ streamer_id }}`;
+                            method = 'PUT';
+                            body = { context_window_size: this.settings.memory.context_window || 20 };
+                            break;
+                        case 'advanced':
+                            // Use model endpoint for advanced settings
+                            endpoint = `/api/v2/settings/model?streamer_id={{ streamer_id }}`;
+                            method = 'PUT';
+                            body = { model: this.settings.advanced.model };
+                            break;
+                        default:
+                            // For other sections, skip saving for now
+                            this.saveStatus = 'saved';
+                            this.saveMessage = 'Settings saved locally';
+                            return;
+                    }
+                    
+                    const response = await fetch(endpoint, {
+                        method: method, // Use the correct method for each endpoint
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(body)
+                    });
+                    
+                    if (response.ok) {
+                        this.saveStatus = 'saved';
+                        this.saveMessage = 'All changes saved';
+                        
+                        // Clear status after 3 seconds
+                        setTimeout(() => {
+                            this.saveStatus = null;
+                        }, 3000);
+                    } else {
+                        throw new Error('Failed to save');
+                    }
+                } catch (error) {
+                    console.error('Failed to save settings:', error);
+                    this.saveStatus = 'error';
+                    this.saveMessage = 'Failed to save';
+                    this.showNotification('Failed to save settings', 'error');
+                }
+            }, 500); // 500ms debounce
+        },
+        
+        // Apply preset
+        async applyPreset(preset) {
+            try {
+                const response = await fetch(`/api/v2/settings/personality/preset/{{ streamer_id }}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ preset: preset })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    this.settings.personality = data.settings;
+                    this.showNotification(`Applied ${preset} preset`, 'success');
+                    
+                    // Trigger personality sliders update when integrated
+                    this.$dispatch('preset-applied', { preset: preset });
+                }
+            } catch (error) {
+                console.error('Failed to apply preset:', error);
+                this.showNotification('Failed to apply preset', 'error');
+            }
+        },
+        
+        // Export settings
+        async exportSettings() {
+            try {
+                const dataStr = JSON.stringify(this.settings, null, 2);
+                const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+                
+                const exportFileDefaultName = `talkbot_settings_${Date.now()}.json`;
+                
+                const linkElement = document.createElement('a');
+                linkElement.setAttribute('href', dataUri);
+                linkElement.setAttribute('download', exportFileDefaultName);
+                linkElement.click();
+                
+                this.showNotification('Settings exported successfully', 'success');
+            } catch (error) {
+                console.error('Failed to export settings:', error);
+                this.showNotification('Failed to export settings', 'error');
+            }
+        },
+        
+        // Import settings
+        importSettings() {
+            this.$refs.importFile.click();
+        },
+        
+        // Handle import
+        async handleImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            try {
+                const text = await file.text();
+                const imported = JSON.parse(text);
+                
+                // Validate and merge
+                Object.keys(imported).forEach(key => {
+                    if (this.settings[key]) {
+                        this.settings[key] = { ...this.settings[key], ...imported[key] };
+                    }
+                });
+                
+                // Save all sections
+                for (const section of Object.keys(this.settings)) {
+                    await this.saveSettings(section);
+                }
+                
+                this.showNotification('Settings imported successfully', 'success');
+            } catch (error) {
+                console.error('Failed to import settings:', error);
+                this.showNotification('Invalid settings file', 'error');
+            }
+            
+            // Reset file input
+            event.target.value = '';
+        },
+        
+        // Reset to defaults
+        async resetToDefaults() {
+            if (!confirm('Are you sure you want to reset all settings to defaults? This cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/v2/settings/reset/{{ streamer_id }}`, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    await this.loadSettings();
+                    this.showNotification('Settings reset to defaults', 'success');
+                }
+            } catch (error) {
+                console.error('Failed to reset settings:', error);
+                this.showNotification('Failed to reset settings', 'error');
+            }
+        },
+        
+        // Test API connections
+        async testApiConnections() {
+            this.testingApi = true;
+            this.apiTestResults = null;
+            
+            try {
+                const response = await fetch('/api/v2/settings/test-api', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        openai_key: this.settings.api.openai_key,
+                        twitch_client_id: this.settings.api.twitch_client_id,
+                        twitch_client_secret: this.settings.api.twitch_client_secret
+                    })
+                });
+                
+                if (response.ok) {
+                    this.apiTestResults = await response.json();
+                }
+            } catch (error) {
+                console.error('Failed to test API connections:', error);
+                this.apiTestResults = {
+                    openai: false,
+                    twitch: false
+                };
+            } finally {
+                this.testingApi = false;
+            }
+        },
+        
+        // Load memory statistics
+        async loadMemoryStats() {
+            try {
+                const response = await fetch('/api/v2/memory/stats/{{ streamer_id }}');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.memoryStats = {
+                        total_memories: data.total_memories || 0,
+                        unique_viewers: data.unique_viewers || 0,
+                        storage_used: `${(data.storage_size_mb || 0).toFixed(1)} MB`,
+                        opted_out: data.opted_out_viewers || 0
+                    };
+                }
+            } catch (error) {
+                console.error('Failed to load memory stats:', error);
+            }
+        },
+        
+        // Clear memory
+        async clearMemory() {
+            if (!confirm('Are you sure you want to clear all memory data? This cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/v2/memory/clear/{{ streamer_id }}', {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    await this.loadMemoryStats();
+                    this.showNotification('Memory cleared successfully', 'success');
+                }
+            } catch (error) {
+                console.error('Failed to clear memory:', error);
+                this.showNotification('Failed to clear memory', 'error');
+            }
+        },
+        
+        // Export memory
+        async exportMemory() {
+            try {
+                const response = await fetch('/api/v2/memory/export/{{ streamer_id }}');
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `memory_export_${Date.now()}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    
+                    this.showNotification('Memory exported successfully', 'success');
+                }
+            } catch (error) {
+                console.error('Failed to export memory:', error);
+                this.showNotification('Failed to export memory', 'error');
+            }
+        },
+        
+        // Show notification
+        showNotification(message, type = 'info') {
+            // This will be replaced with the actual notification component from Thread 2
+            console.log(`[${type.toUpperCase()}] ${message}`);
+            
+            // Create a temporary visual notification for now
+            const notification = document.createElement('div');
+            notification.className = `tbx-notification tbx-notification-${type}`;
+            notification.textContent = message;
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 12px 24px;
+                border-radius: 8px;
+                color: white;
+                font-weight: 500;
+                z-index: 1000;
+                animation: slideIn 0.3s ease-out;
+                background: ${type === 'success' ? '#22c55e' : type === 'error' ? '#ef4444' : type === 'warning' ? '#f59e0b' : '#3b82f6'};
+            `;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease-in';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+    };
+}
+
+// Initialize global state for Alpine.js
+document.addEventListener('alpine:init', () => {
+    // Set up global state store for settings
+    Alpine.store('settings', {
+        state: {
+            models: {
+                current: 'gpt-4o-mini',
+                available: [
+                    'gpt-4o-mini', 'gpt-4o', 'gpt-4o-realtime-preview', 'gpt-4-turbo', 'gpt-3.5-turbo',
+                    'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229', 'claude-3-sonnet-20240229',
+                    'grok-2-1212', 'grok-2-vision-1212',
+                    'gemini-1.5-pro', 'gemini-1.5-flash'
+                ],
+                realtimeEnabled: false,
+                ollamaAvailable: false,
+                ollamaModels: []
+            }
+        }
+    });
+    
+    console.log('[Settings] Alpine.js stores initialized');
+});
+
+// Add notification animations
+if (!document.getElementById('notification-styles')) {
+    const style = document.createElement('style');
+    style.id = 'notification-styles';
+    style.textContent = `
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slideOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(100%); opacity: 0; }
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+// Debug: Find and fix blocking elements
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(() => {
+        const allElements = document.querySelectorAll('*');
+        const blockingElements = [];
+        
+        allElements.forEach(el => {
+            const styles = window.getComputedStyle(el);
+            const rect = el.getBoundingClientRect();
+            
+            // Check for large elements with fixed/absolute positioning
+            if ((styles.position === 'fixed' || styles.position === 'absolute') &&
+                rect.width > 200 && rect.height > 200 &&
+                styles.display !== 'none' && styles.visibility !== 'hidden') {
+                
+                // Check if it's oval-shaped (large border-radius)
+                const isOval = styles.borderRadius && 
+                              (styles.borderRadius.includes('50%') || 
+                               parseInt(styles.borderRadius) > 100);
+                
+                if (isOval || rect.width > window.innerWidth * 0.5) {
+                    blockingElements.push({
+                        element: el,
+                        class: el.className,
+                        id: el.id,
+                        width: rect.width,
+                        height: rect.height,
+                        borderRadius: styles.borderRadius,
+                        position: styles.position,
+                        zIndex: styles.zIndex
+                    });
+                    
+                    console.warn('Found potential blocking element:', {
+                        class: el.className,
+                        id: el.id,
+                        width: rect.width,
+                        height: rect.height,
+                        borderRadius: styles.borderRadius
+                    });
+                }
+            }
+        });
+        
+        if (blockingElements.length > 0) {
+            console.error('BLOCKING ELEMENTS DETECTED:', blockingElements);
+            // Automatically disable pointer events for blocking elements
+            blockingElements.forEach(item => {
+                if (item.element && !item.element.contains(document.activeElement)) {
+                    item.element.style.pointerEvents = 'none';
+                    console.log('Disabled pointer events for blocking element:', item.class || item.id);
+                }
+            });
+        }
+    }, 1000); // Wait 1 second for page to fully load
+});
+</script>
+{% endblock %}

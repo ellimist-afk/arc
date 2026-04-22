@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Command Builder - TalkBot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <link rel="stylesheet" href="/static/css/theme.css">
+</head>
+<body class="bg-background text-primary">
+    <div class="container mx-auto p-6" x-data="commandBuilder()">
+        <h1 class="text-3xl font-bold mb-8 bg-gradient-to-r from-accent to-purple-500 bg-clip-text text-transparent">
+            Chat Command Builder 🛠️
+        </h1>
+
+        <!-- Command List and Builder Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Left: Existing Commands -->
+            <div class="lg:col-span-1">
+                <div class="card p-6">
+                    <h2 class="text-xl font-semibold mb-4">Your Commands</h2>
+                    <div class="mb-4">
+                        <input type="text"
+                               x-model="searchQuery"
+                               placeholder="Search commands..."
+                               class="input-field w-full">
+                    </div>
+
+                    <div class="space-y-2 max-h-96 overflow-y-auto" id="commandList">
+                        <template x-for="command in filteredCommands" :key="command.id">
+                            <div @click="selectCommand(command)"
+                                 :class="{'ring-2 ring-accent': selectedCommand?.id === command.id}"
+                                 class="bg-surface rounded-lg p-3 cursor-pointer hover:bg-surface/80 transition-all">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <code class="text-accent font-mono text-sm" x-text="command.trigger"></code>
+                                        <p class="text-xs text-secondary mt-1" x-text="command.description"></p>
+                                    </div>
+                                    <div class="flex items-center space-x-2">
+                                        <span :class="command.enabled ? 'bg-green-500' : 'bg-red-500'"
+                                              class="w-2 h-2 rounded-full"></span>
+                                        <button @click.stop="deleteCommand(command.id)"
+                                                class="text-red-400 hover:text-red-300">
+                                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                    <button @click="createNewCommand()"
+                            class="btn-primary w-full mt-4">
+                        + New Command
+                    </button>
+                </div>
+
+                <!-- Command Templates -->
+                <div class="card p-6 mt-6">
+                    <h3 class="text-lg font-semibold mb-4">Quick Templates</h3>
+                    <div class="space-y-2">
+                        <template x-for="template in commandTemplates">
+                            <button @click="applyTemplate(template)"
+                                    class="w-full text-left bg-surface rounded-lg p-3 hover:bg-surface/80 transition-all">
+                                <div class="flex items-center">
+                                    <span class="text-xl mr-3" x-text="template.icon"></span>
+                                    <div>
+                                        <p class="font-medium" x-text="template.name"></p>
+                                        <p class="text-xs text-secondary" x-text="template.description"></p>
+                                    </div>
+                                </div>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Command Editor -->
+            <div class="lg:col-span-2">
+                <div class="card p-6" x-show="editingCommand">
+                    <h2 class="text-xl font-semibold mb-6">
+                        <span x-text="editingCommand?.id ? 'Edit Command' : 'Create Command'"></span>
+                    </h2>
+
+                    <!-- Basic Settings -->
+                    <div class="space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium mb-2">Command Trigger</label>
+                                <input type="text"
+                                       x-model="editingCommand.trigger"
+                                       placeholder="!command"
+                                       class="input-field w-full font-mono">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-2">Command Type</label>
+                                <select x-model="editingCommand.type"
+                                        @change="onTypeChange()"
+                                        class="input-field w-full">
+                                    <option value="simple">Simple Response</option>
+                                    <option value="random">Random Response</option>
+                                    <option value="counter">Counter</option>
+                                    <option value="api">API Call</option>
+                                    <option value="conditional">Conditional</option>
+                                    <option value="ai">AI Generated</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium mb-2">Description</label>
+                            <input type="text"
+                                   x-model="editingCommand.description"
+                                   placeholder="What does this command do?"
+                                   class="input-field w-full">
+                        </div>
+
+                        <!-- Type-specific Configuration -->
+                        <!-- Simple Response -->
+                        <div x-show="editingCommand.type === 'simple'" x-transition>
+                            <label class="block text-sm font-medium mb-2">Response Message</label>
+                            <textarea x-model="editingCommand.response"
+                                      placeholder="The bot will say this..."
+                                      rows="3"
+                                      class="input-field w-full"></textarea>
+                            <p class="text-xs text-secondary mt-1">Variables: {user}, {channel}, {count}, {target}</p>
+                        </div>
+
+                        <!-- Random Response -->
+                        <div x-show="editingCommand.type === 'random'" x-transition>
+                            <label class="block text-sm font-medium mb-2">Response Options</label>
+                            <div class="space-y-2" id="responseList">
+                                <template x-for="(response, index) in editingCommand.responses" :key="index">
+                                    <div class="flex gap-2">
+                                        <input type="text"
+                                               x-model="editingCommand.responses[index]"
+                                               placeholder="Possible response..."
+                                               class="input-field flex-1">
+                                        <button @click="removeResponse(index)"
+                                                class="btn-secondary px-3">
+                                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </template>
+                            </div>
+                            <button @click="addResponse()" class="btn-secondary mt-2">
+                                + Add Response Option
+                            </button>
+                        </div>
+
+                        <!-- Counter -->
+                        <div x-show="editingCommand.type === 'counter'" x-transition>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Counter Name</label>
+                                    <input type="text"
+                                           x-model="editingCommand.counterName"
+                                           placeholder="deaths"
+                                           class="input-field w-full">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Initial Value</label>
+                                    <input type="number"
+                                           x-model="editingCommand.initialValue"
+                                           placeholder="0"
+                                           class="input-field w-full">
+                                </div>
+                            </div>
+                            <div class="mt-4">
+                                <label class="block text-sm font-medium mb-2">Display Format</label>
+                                <input type="text"
+                                       x-model="editingCommand.format"
+                                       placeholder="Current {counter} count: {value}"
+                                       class="input-field w-full">
+                            </div>
+                            <div class="mt-4 grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Increment Command</label>
+                                    <input type="text"
+                                           x-model="editingCommand.incrementTrigger"
+                                           placeholder="!deaths+"
+                                           class="input-field w-full font-mono">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-2">Reset Command</label>
+                                    <input type="text"
+                                           x-model="editingCommand.resetTrigger"
+                                           placeholder="!deaths-reset"
+                                           class="input-field w-full font-mono">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- API Call -->
+                        <div x-show="editingCommand.type === 'api'" x-transition>
+                            <div>
+                                <label class="block text-sm font-medium mb-2">API Endpoint</label>
+                                <input type="text"
+                                       x-model="editingCommand.apiUrl"
+                                       placeholder="https://api.example.com/endpoint"
+                                       class="input-field w-full">
+                            </div>
+                            <div class="mt-4">
+                                <label class="block text-sm font-medium mb-2">Response Format</label>
+                                <textarea x-model="editingCommand.apiFormat"
+                                          placeholder="The result is: {response.data.value}"
+                                          rows="2"
+                                          class="input-field w-full"></textarea>
+                            </div>
+                        </div>
+
+                        <!-- Conditional -->
+                        <div x-show="editingCommand.type === 'conditional'" x-transition>
+                            <div class="bg-surface/50 rounded-lg p-4">
+                                <h4 class="font-medium mb-3">Conditions</h4>
+                                <div class="space-y-3">
+                                    <template x-for="(condition, index) in editingCommand.conditions" :key="index">
+                                        <div class="flex gap-2 items-center">
+                                            <select x-model="condition.type" class="input-field">
+                                                <option value="user">User is</option>
+                                                <option value="role">Role is</option>
+                                                <option value="time">Time is</option>
+                                                <option value="random">Random chance</option>
+                                            </select>
+                                            <input type="text"
+                                                   x-model="condition.value"
+                                                   placeholder="Value..."
+                                                   class="input-field flex-1">
+                                            <input type="text"
+                                                   x-model="condition.response"
+                                                   placeholder="Then say..."
+                                                   class="input-field flex-1">
+                                            <button @click="removeCondition(index)" class="text-red-400">
+                                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </template>
+                                </div>
+                                <button @click="addCondition()" class="btn-secondary mt-3">
+                                    + Add Condition
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- AI Generated -->
+                        <div x-show="editingCommand.type === 'ai'" x-transition>
+                            <div>
+                                <label class="block text-sm font-medium mb-2">AI Prompt</label>
+                                <textarea x-model="editingCommand.aiPrompt"
+                                          placeholder="Generate a response about {topic} in the style of {personality}"
+                                          rows="3"
+                                          class="input-field w-full"></textarea>
+                            </div>
+                            <div class="mt-4">
+                                <label class="block text-sm font-medium mb-2">Context</label>
+                                <select x-model="editingCommand.aiContext" class="input-field w-full">
+                                    <option value="chat">Recent chat context</option>
+                                    <option value="stream">Stream information</option>
+                                    <option value="user">User history</option>
+                                    <option value="none">No additional context</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Permissions & Cooldown -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium mb-2">Permissions</label>
+                                <select x-model="editingCommand.permissions" class="input-field w-full">
+                                    <option value="everyone">Everyone</option>
+                                    <option value="subscriber">Subscribers Only</option>
+                                    <option value="vip">VIPs Only</option>
+                                    <option value="moderator">Moderators Only</option>
+                                    <option value="broadcaster">Broadcaster Only</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-2">Cooldown (seconds)</label>
+                                <input type="number"
+                                       x-model="editingCommand.cooldown"
+                                       min="0"
+                                       placeholder="30"
+                                       class="input-field w-full">
+                            </div>
+                        </div>
+
+                        <!-- Advanced Options -->
+                        <div class="bg-surface/50 rounded-lg p-4">
+                            <h4 class="font-medium mb-3">Advanced Options</h4>
+                            <div class="space-y-3">
+                                <label class="flex items-center">
+                                    <input type="checkbox" x-model="editingCommand.enabled" class="mr-2">
+                                    <span>Command Enabled</span>
+                                </label>
+                                <label class="flex items-center">
+                                    <input type="checkbox" x-model="editingCommand.whisperResponse" class="mr-2">
+                                    <span>Send response as whisper</span>
+                                </label>
+                                <label class="flex items-center">
+                                    <input type="checkbox" x-model="editingCommand.announceInChat" class="mr-2">
+                                    <span>Announce in chat when used</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Test Command -->
+                        <div class="bg-gradient-to-r from-purple-500/10 to-accent/10 rounded-lg p-4 border border-accent/30">
+                            <h4 class="font-medium mb-3">Test Your Command</h4>
+                            <div class="flex gap-2">
+                                <input type="text"
+                                       x-model="testInput"
+                                       :placeholder="`${editingCommand.trigger} test message`"
+                                       class="input-field flex-1">
+                                <button @click="testCommand()" class="btn-secondary">
+                                    Test Command
+                                </button>
+                            </div>
+                            <div x-show="testResult" x-transition class="mt-3">
+                                <p class="text-sm text-secondary">Bot would respond:</p>
+                                <p class="font-mono text-accent" x-text="testResult"></p>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="flex justify-between">
+                            <button @click="cancelEdit()" class="btn-secondary">
+                                Cancel
+                            </button>
+                            <div class="space-x-2">
+                                <button @click="saveAsDraft()" class="btn-secondary">
+                                    Save as Draft
+                                </button>
+                                <button @click="saveCommand()" class="btn-primary">
+                                    <span x-text="editingCommand?.id ? 'Update Command' : 'Create Command'"></span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Empty State -->
+                <div class="card p-12 text-center" x-show="!editingCommand">
+                    <svg class="w-24 h-24 mx-auto mb-4 text-secondary opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                    </svg>
+                    <h3 class="text-xl font-semibold mb-2">No Command Selected</h3>
+                    <p class="text-secondary mb-6">Create a new command or select an existing one to edit</p>
+                    <button @click="createNewCommand()" class="btn-primary">
+                        Create Your First Command
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function commandBuilder() {
+        return {
+            commands: [],
+            editingCommand: null,
+            selectedCommand: null,
+            searchQuery: '',
+            testInput: '',
+            testResult: '',
+            streamerId: 'test_streamer', // TODO: Get from context
+
+            commandTemplates: [
+                {
+                    icon: '🎱',
+                    name: '8-Ball',
+                    description: 'Magic 8-ball predictions',
+                    template: {
+                        trigger: '!8ball',
+                        type: 'random',
+                        responses: [
+                            'Yes, definitely!',
+                            'My sources say no',
+                            'Ask again later',
+                            'Outlook not so good',
+                            'Most likely'
+                        ]
+                    }
+                },
+                {
+                    icon: '💀',
+                    name: 'Death Counter',
+                    description: 'Track deaths in game',
+                    template: {
+                        trigger: '!deaths',
+                        type: 'counter',
+                        counterName: 'deaths',
+                        format: 'Deaths this stream: {value}',
+                        incrementTrigger: '!death+',
+                        resetTrigger: '!deathreset'
+                    }
+                },
+                {
+                    icon: '🎯',
+                    name: 'Shoutout',
+                    description: 'Shoutout another streamer',
+                    template: {
+                        trigger: '!so',
+                        type: 'simple',
+                        response: 'Check out {target} at twitch.tv/{target} - they are amazing!',
+                        permissions: 'moderator'
+                    }
+                },
+                {
+                    icon: '🤖',
+                    name: 'AI Joke',
+                    description: 'Generate a joke with AI',
+                    template: {
+                        trigger: '!joke',
+                        type: 'ai',
+                        aiPrompt: 'Tell a short, family-friendly joke about streaming or gaming',
+                        aiContext: 'none'
+                    }
+                }
+            ],
+
+            init() {
+                this.loadCommands();
+                this.initSortable();
+            },
+
+            get filteredCommands() {
+                if (!this.searchQuery) return this.commands;
+                const query = this.searchQuery.toLowerCase();
+                return this.commands.filter(cmd =>
+                    cmd.trigger.toLowerCase().includes(query) ||
+                    cmd.description.toLowerCase().includes(query)
+                );
+            },
+
+            async loadCommands() {
+                try {
+                    const response = await fetch(`/api/commands/${this.streamerId}`, {
+                        headers: {
+                            'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
+                        }
+                    });
+                    if (response.ok) {
+                        this.commands = await response.json();
+                    }
+                } catch (error) {
+                    console.error('Failed to load commands:', error);
+                }
+            },
+
+            createNewCommand() {
+                this.editingCommand = {
+                    trigger: '',
+                    type: 'simple',
+                    description: '',
+                    response: '',
+                    responses: [],
+                    conditions: [],
+                    permissions: 'everyone',
+                    cooldown: 30,
+                    enabled: true,
+                    whisperResponse: false,
+                    announceInChat: false
+                };
+                this.selectedCommand = null;
+            },
+
+            selectCommand(command) {
+                this.selectedCommand = command;
+                this.editingCommand = { ...command };
+            },
+
+            applyTemplate(template) {
+                this.editingCommand = { ...template.template, enabled: true };
+            },
+
+            onTypeChange() {
+                // Initialize type-specific fields
+                switch(this.editingCommand.type) {
+                    case 'random':
+                        if (!this.editingCommand.responses) {
+                            this.editingCommand.responses = [''];
+                        }
+                        break;
+                    case 'counter':
+                        if (!this.editingCommand.counterName) {
+                            this.editingCommand.counterName = '';
+                            this.editingCommand.initialValue = 0;
+                            this.editingCommand.format = '{counter}: {value}';
+                        }
+                        break;
+                    case 'conditional':
+                        if (!this.editingCommand.conditions) {
+                            this.editingCommand.conditions = [];
+                        }
+                        break;
+                }
+            },
+
+            addResponse() {
+                if (!this.editingCommand.responses) {
+                    this.editingCommand.responses = [];
+                }
+                this.editingCommand.responses.push('');
+            },
+
+            removeResponse(index) {
+                this.editingCommand.responses.splice(index, 1);
+            },
+
+            addCondition() {
+                if (!this.editingCommand.conditions) {
+                    this.editingCommand.conditions = [];
+                }
+                this.editingCommand.conditions.push({
+                    type: 'user',
+                    value: '',
+                    response: ''
+                });
+            },
+
+            removeCondition(index) {
+                this.editingCommand.conditions.splice(index, 1);
+            },
+
+            async saveCommand() {
+                try {
+                    const url = this.editingCommand.id
+                        ? `/api/commands/${this.streamerId}/${this.editingCommand.id}`
+                        : `/api/commands/${this.streamerId}`;
+
+                    const method = this.editingCommand.id ? 'PUT' : 'POST';
+
+                    const response = await fetch(url, {
+                        method,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
+                        },
+                        body: JSON.stringify(this.editingCommand)
+                    });
+
+                    if (response.ok) {
+                        Toast.success('Command saved successfully!');
+                        await this.loadCommands();
+                        this.editingCommand = null;
+                    } else {
+                        Toast.error('Failed to save command');
+                    }
+                } catch (error) {
+                    console.error('Error saving command:', error);
+                    Toast.error('Error saving command');
+                }
+            },
+
+            saveAsDraft() {
+                this.editingCommand.enabled = false;
+                this.saveCommand();
+            },
+
+            async deleteCommand(id) {
+                if (!confirm('Are you sure you want to delete this command?')) return;
+
+                try {
+                    const response = await fetch(`/api/commands/${this.streamerId}/${id}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
+                        }
+                    });
+
+                    if (response.ok) {
+                        Toast.success('Command deleted');
+                        await this.loadCommands();
+                        if (this.selectedCommand?.id === id) {
+                            this.editingCommand = null;
+                            this.selectedCommand = null;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error deleting command:', error);
+                    Toast.error('Error deleting command');
+                }
+            },
+
+            cancelEdit() {
+                this.editingCommand = null;
+                this.selectedCommand = null;
+            },
+
+            async testCommand() {
+                // Simulate command execution
+                this.testResult = 'Testing...';
+
+                // Mock response based on type
+                setTimeout(() => {
+                    switch(this.editingCommand.type) {
+                        case 'simple':
+                            this.testResult = this.editingCommand.response
+                                .replace('{user}', 'TestUser')
+                                .replace('{channel}', 'YourChannel')
+                                .replace('{target}', 'TargetUser');
+                            break;
+                        case 'random':
+                            const responses = this.editingCommand.responses.filter(r => r);
+                            this.testResult = responses[Math.floor(Math.random() * responses.length)];
+                            break;
+                        case 'counter':
+                            this.testResult = this.editingCommand.format
+                                .replace('{counter}', this.editingCommand.counterName)
+                                .replace('{value}', '42');
+                            break;
+                        case 'ai':
+                            this.testResult = 'AI would generate: "Why did the streamer cross the road? To get to the other VOD!"';
+                            break;
+                        default:
+                            this.testResult = 'Command would execute here';
+                    }
+                }, 500);
+            },
+
+            initSortable() {
+                // Make response list sortable
+                const responseList = document.getElementById('responseList');
+                if (responseList) {
+                    new Sortable(responseList, {
+                        animation: 150,
+                        handle: '.drag-handle',
+                        ghostClass: 'opacity-50'
+                    });
+                }
+            }
+        };
+    }
+    </script>
+</body>
+</html>

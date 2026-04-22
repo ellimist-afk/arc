@@ -1,0 +1,166 @@
+/* Card Overlap Fix for Settings Page
+ * Ensures proper spacing between all cards and content sections
+ * Prevents overlapping issues in grid layouts
+ * Works for both V1 and V2 settings pages
+ */
+
+/* Ensure content cards have proper spacing (V2) */
+.tbx-content-card {
+    margin-bottom: 24px !important;
+    position: relative;
+    z-index: 1;
+    overflow: visible;
+    /* Ensure cards don't collapse */
+    min-height: auto;
+    display: block;
+}
+
+/* Fix for preset grid spacing */
+.tbx-preset-grid {
+    display: grid !important;
+    gap: 24px !important;
+    margin-bottom: 32px !important;
+    /* Prevent grid items from overlapping */
+    grid-auto-rows: minmax(min-content, max-content);
+}
+
+/* Ensure all card types have proper spacing (V1) */
+.tbx-card {
+    margin-bottom: 24px !important;
+    position: relative;
+    z-index: 1;
+    overflow: visible;
+    min-height: auto;
+    display: block;
+}
+
+/* Ensure preset cards have proper dimensions (V2) */
+.tbx-preset-card {
+    position: relative !important;
+    min-height: 150px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 20px !important;
+    gap: 8px !important;
+    /* Prevent overflow */
+    overflow: hidden;
+    /* Ensure proper stacking */
+    z-index: 1;
+}
+
+/* Fix V1 preset buttons spacing */
+.tbx-preset-btn {
+    margin-bottom: 0 !important;
+    position: relative;
+    z-index: 1;
+}
+
+/* V1 preset container grid fix */
+.preset-container {
+    display: grid;
+    gap: 16px !important;
+    margin-bottom: 24px;
+}
+
+/* Model cards spacing */
+.model-card {
+    margin-bottom: 16px !important;
+    position: relative;
+    z-index: 1;
+}
+
+/* Section spacing to prevent overlap */
+.tbx-section {
+    margin-bottom: 32px;
+    position: relative;
+    z-index: 1;
+}
+
+/* Ensure proper spacing for personality traits */
+.tbx-personality-traits {
+    display: grid !important;
+    gap: 32px !important;
+    margin-top: 16px !important;
+}
+
+.tbx-trait-item {
+    margin-bottom: 0 !important;
+    position: relative;
+    z-index: 1;
+}
+
+/* Settings group spacing */
+.tbx-settings-group {
+    margin-bottom: 24px;
+}
+
+.tbx-setting-item {
+    margin-bottom: 16px;
+    position: relative;
+    z-index: 1;
+}
+
+/* Card header spacing */
+.tbx-card-header {
+    margin-bottom: 20px !important;
+}
+
+/* Ensure navigation doesn't overlap content */
+.tbx-settings-nav {
+    margin-bottom: 32px !important;
+    position: relative;
+    z-index: 10;
+}
+
+/* Page header spacing */
+.tbx-page-header {
+    margin-bottom: 32px !important;
+}
+
+/* Toast notifications should be above everything */
+.tbx-toast {
+    z-index: 9999 !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .tbx-preset-grid {
+        grid-template-columns: 1fr !important;
+        gap: 20px !important;
+    }
+    
+    .tbx-content-card {
+        margin-bottom: 20px !important;
+    }
+    
+    .tbx-personality-traits {
+        gap: 24px !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .tbx-preset-grid {
+        gap: 16px !important;
+    }
+    
+    .tbx-content-card {
+        margin-bottom: 16px !important;
+    }
+    
+    .tbx-personality-traits {
+        gap: 20px !important;
+    }
+}
+
+/* Debug helper - uncomment to see card boundaries */
+/*
+.tbx-content-card,
+.tbx-preset-card,
+.tbx-trait-item,
+.tbx-setting-item {
+    border: 2px solid red !important;
+    background: rgba(255, 0, 0, 0.05) !important;
+}
+*/

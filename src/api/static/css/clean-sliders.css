@@ -1,0 +1,384 @@
+/**
+ * Clean Slider Styles
+ * 
+ * Simplified, professional slider design without glowing effects
+ * Consistent styling across all slider types
+ * Better visual feedback and usability
+ */
+
+/* ============================================
+   Base Slider Styles
+   ============================================ */
+.slider-group {
+    margin-bottom: var(--space-6);
+}
+
+.slider-container {
+    position: relative;
+    margin-bottom: var(--space-4);
+}
+
+.slider-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-3);
+}
+
+.slider-label {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.slider-value {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--accent-primary);
+    padding: var(--space-1) var(--space-2);
+    background: var(--accent-primary-subtle);
+    border-radius: var(--radius-sm);
+    min-width: 60px;
+    text-align: center;
+}
+
+.slider-description {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    margin-top: var(--space-2);
+}
+
+/* ============================================
+   Range Input Styling
+   ============================================ */
+input[type="range"],
+.tbx-range,
+.range-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 8px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    outline: none;
+    transition: all var(--transition-base);
+}
+
+input[type="range"]:hover,
+.tbx-range:hover,
+.range-slider:hover {
+    border-color: var(--border-hover);
+}
+
+input[type="range"]:focus,
+.tbx-range:focus,
+.range-slider:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px var(--accent-primary-subtle);
+}
+
+/* Track Progress Fill */
+.slider-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.slider-progress {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 8px;
+    background: var(--accent-primary);
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+    pointer-events: none;
+    transition: width var(--transition-base);
+}
+
+.slider-progress.full {
+    border-radius: var(--radius-sm);
+}
+
+/* Webkit Thumb (Chrome, Safari, Edge) */
+input[type="range"]::-webkit-slider-thumb,
+.tbx-range::-webkit-slider-thumb,
+.range-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    background: white;
+    border: 2px solid var(--accent-primary);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    position: relative;
+    z-index: 2;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover,
+.tbx-range::-webkit-slider-thumb:hover,
+.range-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 8px var(--accent-primary-subtle);
+}
+
+input[type="range"]::-webkit-slider-thumb:active,
+.tbx-range::-webkit-slider-thumb:active,
+.range-slider::-webkit-slider-thumb:active {
+    transform: scale(0.95);
+}
+
+/* Firefox Thumb */
+input[type="range"]::-moz-range-thumb,
+.tbx-range::-moz-range-thumb,
+.range-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: white;
+    border: 2px solid var(--accent-primary);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    position: relative;
+    z-index: 2;
+}
+
+input[type="range"]::-moz-range-thumb:hover,
+.tbx-range::-moz-range-thumb:hover,
+.range-slider::-moz-range-thumb:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 8px var(--accent-primary-subtle);
+}
+
+input[type="range"]::-moz-range-thumb:active,
+.tbx-range::-moz-range-thumb:active,
+.range-slider::-moz-range-thumb:active {
+    transform: scale(0.95);
+}
+
+/* ============================================
+   Slider Variants
+   ============================================ */
+
+/* Personality Sliders */
+.personality-slider .slider-progress {
+    background: linear-gradient(90deg, var(--accent-primary), var(--accent-primary-hover));
+}
+
+.personality-slider.warmth .slider-progress {
+    background: linear-gradient(90deg, #ef4444, #f97316);
+}
+
+.personality-slider.energy .slider-progress {
+    background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.personality-slider.humor .slider-progress {
+    background: linear-gradient(90deg, #10b981, #34d399);
+}
+
+.personality-slider.sass .slider-progress {
+    background: linear-gradient(90deg, #8b5cf6, #a78bfa);
+}
+
+.personality-slider.verbosity .slider-progress {
+    background: linear-gradient(90deg, #06b6d4, #0ea5e9);
+}
+
+/* System Sliders */
+.system-slider .slider-progress {
+    background: var(--neutral-500);
+}
+
+/* Memory Sliders */
+.memory-slider .slider-progress {
+    background: var(--color-info);
+}
+
+/* Audio Sliders */
+.audio-slider .slider-progress {
+    background: var(--color-success);
+}
+
+/* ============================================
+   Disabled State
+   ============================================ */
+input[type="range"]:disabled,
+.tbx-range:disabled,
+.range-slider:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+input[type="range"]:disabled::-webkit-slider-thumb,
+.tbx-range:disabled::-webkit-slider-thumb,
+.range-slider:disabled::-webkit-slider-thumb {
+    cursor: not-allowed;
+}
+
+input[type="range"]:disabled::-moz-range-thumb,
+.tbx-range:disabled::-moz-range-thumb,
+.range-slider:disabled::-moz-range-thumb {
+    cursor: not-allowed;
+}
+
+/* ============================================
+   Slider Grid Layout
+   ============================================ */
+.sliders-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: var(--space-6);
+}
+
+@media (max-width: 768px) {
+    .sliders-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ============================================
+   Slider Card Component
+   ============================================ */
+.slider-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    transition: all var(--transition-base);
+}
+
+.slider-card:hover {
+    border-color: var(--border-hover);
+}
+
+.slider-card-title {
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--space-3);
+}
+
+.slider-card-subtitle {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    margin-bottom: var(--space-4);
+}
+
+/* ============================================
+   Slider Presets
+   ============================================ */
+.slider-presets {
+    display: flex;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+}
+
+.slider-preset {
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.slider-preset:hover {
+    color: var(--text-primary);
+    border-color: var(--border-hover);
+}
+
+.slider-preset.active {
+    color: white;
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+}
+
+/* ============================================
+   Toggle Switch Slider
+   ============================================ */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 48px;
+    height: 24px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    transition: var(--transition-base);
+    border-radius: 24px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 2px;
+    bottom: 2px;
+    background-color: white;
+    transition: var(--transition-base);
+    border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+    background-color: var(--accent-primary);
+    border-color: var(--accent-primary);
+}
+
+input:checked + .toggle-slider:before {
+    transform: translateX(24px);
+}
+
+/* ============================================
+   Slider Tooltip
+   ============================================ */
+.slider-tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%) translateY(-8px);
+    padding: var(--space-1) var(--space-2);
+    background: var(--neutral-900);
+    color: white;
+    font-size: var(--text-xs);
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+}
+
+.slider-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 4px solid transparent;
+    border-top-color: var(--neutral-900);
+}
+
+input[type="range"]:hover ~ .slider-tooltip,
+input[type="range"]:focus ~ .slider-tooltip {
+    opacity: 1;
+}

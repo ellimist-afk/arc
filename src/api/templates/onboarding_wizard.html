@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TalkBot Setup Wizard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <link rel="stylesheet" href="/static/css/theme.css">
+</head>
+<body class="bg-background text-primary">
+    <div class="min-h-screen flex items-center justify-center p-4">
+        <div class="max-w-2xl w-full" x-data="onboardingWizard()">
+            <!-- Progress Bar -->
+            <div class="mb-8">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-sm text-secondary">Step <span x-text="currentStep"></span> of 6</span>
+                    <span class="text-sm text-accent" x-text="stepTitles[currentStep - 1]"></span>
+                </div>
+                <div class="h-2 bg-surface rounded-full overflow-hidden">
+                    <div class="h-full bg-gradient-to-r from-accent to-purple-500 transition-all duration-500"
+                         :style="`width: ${(currentStep / 6) * 100}%`"></div>
+                </div>
+            </div>
+
+            <!-- Wizard Card -->
+            <div class="card p-8">
+                <!-- Step 1: Welcome -->
+                <div x-show="currentStep === 1" x-transition>
+                    <div class="text-center mb-8">
+                        <h1 class="text-4xl font-bold mb-4 bg-gradient-to-r from-accent to-purple-500 bg-clip-text text-transparent">
+                            Welcome to TalkBot! 🎉
+                        </h1>
+                        <p class="text-lg text-secondary">Let's get your AI co-host set up in just a few minutes</p>
+                    </div>
+
+                    <div class="space-y-6">
+                        <div class="bg-surface/50 rounded-lg p-6">
+                            <h3 class="font-semibold mb-3">What we'll set up:</h3>
+                            <ul class="space-y-2 text-secondary">
+                                <li class="flex items-center">
+                                    <svg class="w-5 h-5 mr-3 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                                    </svg>
+                                    Connect to your Twitch channel
+                                </li>
+                                <li class="flex items-center">
+                                    <svg class="w-5 h-5 mr-3 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                                    </svg>
+                                    Configure AI personality
+                                </li>
+                                <li class="flex items-center">
+                                    <svg class="w-5 h-5 mr-3 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                                    </svg>
+                                    Set up voice features (optional)
+                                </li>
+                                <li class="flex items-center">
+                                    <svg class="w-5 h-5 mr-3 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                                    </svg>
+                                    Create custom commands
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="flex items-center justify-center">
+                            <button @click="nextStep()" class="btn-primary px-8 py-3 text-lg">
+                                Let's Get Started →
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Twitch Connection -->
+                <div x-show="currentStep === 2" x-transition>
+                    <h2 class="text-2xl font-bold mb-6">Connect Your Twitch Channel</h2>
+
+                    <div class="space-y-6">
+                        <div>
+                            <label class="block text-sm font-medium mb-2">Twitch Username</label>
+                            <input type="text"
+                                   x-model="formData.twitchUsername"
+                                   class="input-field w-full"
+                                   placeholder="your_channel_name">
+                            <p class="text-xs text-secondary mt-1">This is your Twitch channel name</p>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium mb-2">Bot Account Name</label>
+                            <input type="text"
+                                   x-model="formData.botUsername"
+                                   class="input-field w-full"
+                                   placeholder="your_bot_name">
+                            <p class="text-xs text-secondary mt-1">The account your bot will use to send messages</p>
+                        </div>
+
+                        <div class="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                            <h4 class="font-semibold mb-2 flex items-center">
+                                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                                </svg>
+                                Need OAuth Token?
+                            </h4>
+                            <p class="text-sm text-secondary mb-3">Click below to generate an OAuth token for your bot</p>
+                            <a href="https://twitchtokengenerator.com/" target="_blank"
+                               class="btn-secondary inline-block">
+                                Generate OAuth Token →
+                            </a>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium mb-2">OAuth Token</label>
+                            <input type="password"
+                                   x-model="formData.oauthToken"
+                                   class="input-field w-full"
+                                   placeholder="oauth:your_token_here">
+                            <p class="text-xs text-secondary mt-1">Keep this secure! It grants access to your channel</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3: Personality Selection -->
+                <div x-show="currentStep === 3" x-transition>
+                    <h2 class="text-2xl font-bold mb-6">Choose Your Bot's Personality</h2>
+
+                    <div class="space-y-6">
+                        <p class="text-secondary">Select a base personality for your co-host. You can customize it later!</p>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <template x-for="personality in personalities">
+                                <div @click="selectPersonality(personality.id)"
+                                     :class="{'ring-2 ring-accent': formData.personality === personality.id}"
+                                     class="bg-surface rounded-lg p-4 cursor-pointer hover:bg-surface/80 transition-all">
+                                    <div class="flex items-start">
+                                        <span class="text-2xl mr-3" x-text="personality.emoji"></span>
+                                        <div class="flex-1">
+                                            <h4 class="font-semibold" x-text="personality.name"></h4>
+                                            <p class="text-sm text-secondary mt-1" x-text="personality.description"></p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+
+                        <div class="bg-surface/50 rounded-lg p-4">
+                            <h4 class="font-semibold mb-2">🎨 Want to create a custom personality?</h4>
+                            <p class="text-sm text-secondary">You can fine-tune personality traits or create your own after setup!</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 4: Voice Features -->
+                <div x-show="currentStep === 4" x-transition>
+                    <h2 class="text-2xl font-bold mb-6">Voice Features (Optional)</h2>
+
+                    <div class="space-y-6">
+                        <div class="bg-surface/50 rounded-lg p-4">
+                            <div class="flex items-center justify-between mb-4">
+                                <h4 class="font-semibold">Enable Text-to-Speech</h4>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" x-model="formData.enableTTS" class="sr-only peer">
+                                    <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
+                                </label>
+                            </div>
+                            <p class="text-sm text-secondary">Your bot can speak responses using AI voice synthesis</p>
+                        </div>
+
+                        <div x-show="formData.enableTTS" x-transition>
+                            <label class="block text-sm font-medium mb-2">OpenAI API Key</label>
+                            <input type="password"
+                                   x-model="formData.openaiKey"
+                                   class="input-field w-full"
+                                   placeholder="sk-...">
+                            <p class="text-xs text-secondary mt-1">Required for voice features. Get one at platform.openai.com</p>
+                        </div>
+
+                        <div x-show="formData.enableTTS" x-transition>
+                            <label class="block text-sm font-medium mb-2">Select Voice</label>
+                            <select x-model="formData.voiceModel" class="input-field w-full">
+                                <option value="alloy">Alloy (Neutral)</option>
+                                <option value="echo">Echo (Male)</option>
+                                <option value="fable">Fable (British)</option>
+                                <option value="onyx">Onyx (Deep)</option>
+                                <option value="nova">Nova (Female)</option>
+                                <option value="shimmer">Shimmer (Soft)</option>
+                            </select>
+                        </div>
+
+                        <div class="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
+                            <h4 class="font-semibold mb-2 flex items-center">
+                                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                                </svg>
+                                OBS Integration Required
+                            </h4>
+                            <p class="text-sm text-secondary">To hear the voice on stream, you'll need to set up OBS browser source (we'll show you how)</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 5: Initial Commands -->
+                <div x-show="currentStep === 5" x-transition>
+                    <h2 class="text-2xl font-bold mb-6">Set Up Your First Commands</h2>
+
+                    <div class="space-y-6">
+                        <p class="text-secondary">Enable some starter commands for your viewers. You can add more later!</p>
+
+                        <div class="space-y-3">
+                            <template x-for="command in defaultCommands">
+                                <div class="bg-surface rounded-lg p-4">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex-1">
+                                            <div class="flex items-center">
+                                                <code class="text-accent font-mono" x-text="command.trigger"></code>
+                                                <label class="ml-auto relative inline-flex items-center cursor-pointer">
+                                                    <input type="checkbox"
+                                                           :checked="command.enabled"
+                                                           @change="toggleCommand(command.id)"
+                                                           class="sr-only peer">
+                                                    <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
+                                                </label>
+                                            </div>
+                                            <p class="text-sm text-secondary mt-1" x-text="command.description"></p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+
+                        <div class="bg-gradient-to-r from-purple-500/10 to-accent/10 rounded-lg p-4 border border-accent/30">
+                            <h4 class="font-semibold mb-2">💡 Pro Tip</h4>
+                            <p class="text-sm text-secondary">Commands help viewers interact with your bot. Start with a few and add more as you learn what your community enjoys!</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 6: Review & Launch -->
+                <div x-show="currentStep === 6" x-transition>
+                    <h2 class="text-2xl font-bold mb-6">Ready to Launch! 🚀</h2>
+
+                    <div class="space-y-6">
+                        <div class="bg-surface/50 rounded-lg p-6">
+                            <h3 class="font-semibold mb-4">Your Configuration</h3>
+                            <dl class="space-y-3">
+                                <div class="flex justify-between">
+                                    <dt class="text-secondary">Channel:</dt>
+                                    <dd class="font-mono" x-text="formData.twitchUsername"></dd>
+                                </div>
+                                <div class="flex justify-between">
+                                    <dt class="text-secondary">Bot Account:</dt>
+                                    <dd class="font-mono" x-text="formData.botUsername"></dd>
+                                </div>
+                                <div class="flex justify-between">
+                                    <dt class="text-secondary">Personality:</dt>
+                                    <dd x-text="getPersonalityName(formData.personality)"></dd>
+                                </div>
+                                <div class="flex justify-between">
+                                    <dt class="text-secondary">Voice Enabled:</dt>
+                                    <dd x-text="formData.enableTTS ? 'Yes' : 'No'"></dd>
+                                </div>
+                                <div class="flex justify-between">
+                                    <dt class="text-secondary">Commands:</dt>
+                                    <dd x-text="getEnabledCommandsCount() + ' active'"></dd>
+                                </div>
+                            </dl>
+                        </div>
+
+                        <div class="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+                            <h4 class="font-semibold mb-2">✅ Next Steps After Setup</h4>
+                            <ol class="list-decimal list-inside space-y-1 text-sm text-secondary">
+                                <li>Make your bot a moderator in your channel (type /mod bot_name)</li>
+                                <li x-show="formData.enableTTS">Set up OBS browser source for voice output</li>
+                                <li>Test the bot with a simple message in chat</li>
+                                <li>Customize personality and commands as needed</li>
+                            </ol>
+                        </div>
+
+                        <div class="flex items-center justify-center">
+                            <button @click="completeSetup()"
+                                    class="btn-primary px-8 py-3 text-lg bg-gradient-to-r from-accent to-purple-500">
+                                Launch TalkBot! 🎉
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Navigation -->
+                <div class="flex justify-between mt-8" x-show="currentStep > 1 && currentStep < 6">
+                    <button @click="prevStep()" class="btn-secondary">
+                        ← Previous
+                    </button>
+                    <button @click="nextStep()"
+                            :disabled="!canProceed()"
+                            :class="{'opacity-50 cursor-not-allowed': !canProceed()}"
+                            class="btn-primary">
+                        Next →
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function onboardingWizard() {
+        return {
+            currentStep: 1,
+            stepTitles: ['Welcome', 'Twitch Setup', 'Personality', 'Voice', 'Commands', 'Launch'],
+            formData: {
+                twitchUsername: '',
+                botUsername: '',
+                oauthToken: '',
+                personality: 'friendly',
+                enableTTS: false,
+                openaiKey: '',
+                voiceModel: 'nova',
+                commands: []
+            },
+            personalities: [
+                { id: 'friendly', name: 'Friendly', emoji: '😊', description: 'Warm and welcoming, perfect for community building' },
+                { id: 'hype', name: 'Hype', emoji: '⚡', description: 'High energy, great for gaming and action streams' },
+                { id: 'chill', name: 'Chill', emoji: '😎', description: 'Laid back and relaxed, ideal for variety content' },
+                { id: 'savage', name: 'Savage', emoji: '🔥', description: 'Witty roasts and playful banter' },
+                { id: 'sage', name: 'Sage', emoji: '🧙', description: 'Wise and thoughtful, great for educational content' },
+                { id: 'genz', name: 'Gen Z', emoji: '💯', description: 'Modern slang and trendy responses' }
+            ],
+            defaultCommands: [
+                { id: 'joke', trigger: '!joke', description: 'Tell a random joke', enabled: true },
+                { id: 'explain', trigger: '!explain', description: 'Explain what just happened on stream', enabled: true },
+                { id: 'roast', trigger: '!roast', description: 'Playfully roast the user', enabled: false },
+                { id: 'advice', trigger: '!advice', description: 'Give life advice', enabled: true },
+                { id: 'fact', trigger: '!fact', description: 'Share an interesting fact', enabled: true },
+                { id: 'motivate', trigger: '!motivate', description: 'Provide motivation', enabled: false }
+            ],
+
+            selectPersonality(id) {
+                this.formData.personality = id;
+            },
+
+            toggleCommand(id) {
+                const command = this.defaultCommands.find(c => c.id === id);
+                if (command) {
+                    command.enabled = !command.enabled;
+                }
+            },
+
+            getPersonalityName(id) {
+                const personality = this.personalities.find(p => p.id === id);
+                return personality ? personality.name : 'Unknown';
+            },
+
+            getEnabledCommandsCount() {
+                return this.defaultCommands.filter(c => c.enabled).length;
+            },
+
+            canProceed() {
+                switch(this.currentStep) {
+                    case 2:
+                        return this.formData.twitchUsername &&
+                               this.formData.botUsername &&
+                               this.formData.oauthToken;
+                    case 3:
+                        return this.formData.personality;
+                    case 4:
+                        return !this.formData.enableTTS || this.formData.openaiKey;
+                    default:
+                        return true;
+                }
+            },
+
+            nextStep() {
+                if (this.currentStep < 6 && this.canProceed()) {
+                    this.currentStep++;
+                }
+            },
+
+            prevStep() {
+                if (this.currentStep > 1) {
+                    this.currentStep--;
+                }
+            },
+
+            async completeSetup() {
+                try {
+                    // Prepare the configuration
+                    const config = {
+                        twitch_username: this.formData.twitchUsername,
+                        bot_username: this.formData.botUsername,
+                        oauth_token: this.formData.oauthToken,
+                        personality: this.formData.personality,
+                        enable_tts: this.formData.enableTTS,
+                        openai_key: this.formData.openaiKey,
+                        voice_model: this.formData.voiceModel,
+                        enabled_commands: this.defaultCommands.filter(c => c.enabled).map(c => c.id)
+                    };
+
+                    // Save configuration
+                    const response = await fetch('/api/onboarding/complete', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
+                        },
+                        body: JSON.stringify(config)
+                    });
+
+                    if (response.ok) {
+                        Toast.success('Setup complete! Redirecting to dashboard...');
+                        setTimeout(() => {
+                            window.location.href = '/dashboard';
+                        }, 2000);
+                    } else {
+                        Toast.error('Setup failed. Please check your configuration.');
+                    }
+                } catch (error) {
+                    console.error('Setup error:', error);
+                    Toast.error('An error occurred during setup.');
+                }
+            }
+        };
+    }
+    </script>
+</body>
+</html>

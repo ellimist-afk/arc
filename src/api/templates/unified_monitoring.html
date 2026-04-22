@@ -1,0 +1,494 @@
+{% extends "base.html" %}
+
+{% block title %}System Monitoring - TalkBot{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="unifiedMonitoring()">
+
+    <!-- Page Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold text-white">System Monitoring</h1>
+            <p class="text-gray-400 mt-1">Unified health, resilience, and performance monitoring</p>
+        </div>
+
+        <!-- Auto-refresh Toggle -->
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2">
+                <span class="text-sm text-gray-400">Auto-refresh:</span>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" x-model="autoRefresh" @change="toggleAutoRefresh()" class="sr-only">
+                    <div class="w-11 h-6 bg-gray-600 rounded-full relative transition-colors duration-300 ease-in-out"
+                         :class="autoRefresh ? 'bg-blue-600' : 'bg-gray-600'">
+                        <div class="w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform duration-300 ease-in-out"
+                             :class="autoRefresh ? 'translate-x-5' : 'translate-x-0.5'"></div>
+                    </div>
+                </label>
+            </div>
+
+            <button class="btn-secondary" @click="refreshAll()">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                Refresh All
+            </button>
+        </div>
+    </div>
+
+    <!-- Overall Health Status -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div class="card p-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-400">Overall Health</p>
+                    <p class="text-2xl font-bold" :class="getHealthTextClass(systemHealth.overall)" x-text="systemHealth.overall.toUpperCase()">HEALTHY</p>
+                </div>
+                <div class="w-12 h-12 rounded-full flex items-center justify-center" :class="getHealthBgClass(systemHealth.overall)">
+                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <div class="card p-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-400">Resilience</p>
+                    <p class="text-2xl font-bold" :class="getHealthTextClass(systemHealth.resilience)" x-text="systemHealth.resilience.toUpperCase()">ACTIVE</p>
+                </div>
+                <div class="w-12 h-12 rounded-full flex items-center justify-center" :class="getHealthBgClass(systemHealth.resilience)">
+                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <div class="card p-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-400">Self-Healing</p>
+                    <p class="text-2xl font-bold" :class="getHealthTextClass(systemHealth.selfHealing)" x-text="systemHealth.selfHealing.toUpperCase()">ACTIVE</p>
+                </div>
+                <div class="w-12 h-12 rounded-full flex items-center justify-center" :class="getHealthBgClass(systemHealth.selfHealing)">
+                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <div class="card p-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-400">Uptime</p>
+                    <p class="text-2xl font-bold text-blue-400" x-text="formatUptime(systemHealth.uptime)">2h 34m</p>
+                </div>
+                <div class="w-12 h-12 rounded-full flex items-center justify-center bg-blue-500/20">
+                    <svg class="w-6 h-6 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Monitoring Tabs -->
+    <div class="bg-gray-800 rounded-lg overflow-hidden">
+        <!-- Tab Navigation -->
+        <div class="border-b border-gray-700">
+            <nav class="flex space-x-8 px-6" aria-label="Tabs">
+                <button @click="activeTab = 'overview'"
+                        class="py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap"
+                        :class="activeTab === 'overview' ? 'border-blue-500 text-blue-400' : 'border-transparent text-gray-400 hover:text-gray-300'">
+                    System Overview
+                </button>
+                <button @click="activeTab = 'resilience'"
+                        class="py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap"
+                        :class="activeTab === 'resilience' ? 'border-blue-500 text-blue-400' : 'border-transparent text-gray-400 hover:text-gray-300'">
+                    Resilience & Circuit Breakers
+                </button>
+                <button @click="activeTab = 'selfhealing'"
+                        class="py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap"
+                        :class="activeTab === 'selfhealing' ? 'border-blue-500 text-blue-400' : 'border-transparent text-gray-400 hover:text-gray-300'">
+                    Self-Healing
+                </button>
+                <button @click="activeTab = 'performance'"
+                        class="py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap"
+                        :class="activeTab === 'performance' ? 'border-blue-500 text-blue-400' : 'border-transparent text-gray-400 hover:text-gray-300'">
+                    Performance
+                </button>
+                <button @click="activeTab = 'logs'"
+                        class="py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap"
+                        :class="activeTab === 'logs' ? 'border-blue-500 text-blue-400' : 'border-transparent text-gray-400 hover:text-gray-300'">
+                    Recent Events
+                </button>
+            </nav>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="p-6">
+            <!-- System Overview Tab -->
+            <div x-show="activeTab === 'overview'" class="space-y-6">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Services Status -->
+                    <div class="bg-gray-900 rounded-lg p-6">
+                        <h3 class="text-lg font-semibold text-white mb-4">Services Status</h3>
+                        <div class="space-y-3">
+                            <template x-for="service in services" :key="service.name">
+                                <div class="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-3 h-3 rounded-full" :class="service.healthy ? 'bg-green-500' : 'bg-red-500'"></div>
+                                        <span class="text-white" x-text="service.name"></span>
+                                    </div>
+                                    <span class="text-sm" :class="service.healthy ? 'text-green-400' : 'text-red-400'" x-text="service.status"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Key Metrics -->
+                    <div class="bg-gray-900 rounded-lg p-6">
+                        <h3 class="text-lg font-semibold text-white mb-4">Key Metrics</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="text-center">
+                                <p class="text-2xl font-bold text-blue-400" x-text="metrics.requestsPerMin">0</p>
+                                <p class="text-sm text-gray-400">Requests/min</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-2xl font-bold text-green-400" x-text="metrics.avgResponseTime + 'ms'">0ms</p>
+                                <p class="text-sm text-gray-400">Avg Response</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-2xl font-bold text-purple-400" x-text="metrics.activeConnections">0</p>
+                                <p class="text-sm text-gray-400">Active Connections</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-2xl font-bold text-yellow-400" x-text="metrics.errorRate + '%'">0%</p>
+                                <p class="text-sm text-gray-400">Error Rate</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resilience Tab -->
+            <div x-show="activeTab === 'resilience'" class="space-y-6">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Circuit Breakers -->
+                    <div class="bg-gray-900 rounded-lg p-6">
+                        <h3 class="text-lg font-semibold text-white mb-4">Circuit Breakers</h3>
+                        <div class="space-y-4">
+                            <template x-for="breaker in circuitBreakers" :key="breaker.name">
+                                <div class="p-4 bg-gray-800 rounded-lg">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <span class="font-medium text-white" x-text="breaker.name"></span>
+                                        <span class="px-2 py-1 rounded text-xs font-medium"
+                                              :class="getBreakerStatusClass(breaker.state)"
+                                              x-text="breaker.state.toUpperCase()"></span>
+                                    </div>
+                                    <div class="text-sm text-gray-400">
+                                        <span>Failures: </span><span x-text="breaker.failures"></span>
+                                        <span class="ml-4">Success Rate: </span><span x-text="breaker.successRate + '%'"></span>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Fallback Strategies -->
+                    <div class="bg-gray-900 rounded-lg p-6">
+                        <h3 class="text-lg font-semibold text-white mb-4">Fallback Strategies</h3>
+                        <div class="space-y-3">
+                            <template x-for="strategy in fallbackStrategies" :key="strategy.name">
+                                <div class="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
+                                    <div>
+                                        <span class="text-white" x-text="strategy.name"></span>
+                                        <p class="text-sm text-gray-400" x-text="strategy.description"></p>
+                                    </div>
+                                    <span class="px-2 py-1 rounded text-xs font-medium"
+                                          :class="strategy.active ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'"
+                                          x-text="strategy.active ? 'ACTIVE' : 'STANDBY'"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Self-Healing Tab -->
+            <div x-show="activeTab === 'selfhealing'" class="space-y-6">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Auto-Recovery Status -->
+                    <div class="bg-gray-900 rounded-lg p-6">
+                        <h3 class="text-lg font-semibold text-white mb-4">Auto-Recovery</h3>
+                        <div class="space-y-4">
+                            <template x-for="recovery in recoveryActions" :key="recovery.type">
+                                <div class="p-4 bg-gray-800 rounded-lg">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <span class="font-medium text-white" x-text="recovery.type"></span>
+                                        <span class="text-sm text-gray-400" x-text="'Last: ' + recovery.lastTriggered"></span>
+                                    </div>
+                                    <div class="text-sm text-gray-400" x-text="recovery.description"></div>
+                                    <div class="mt-2 text-xs">
+                                        <span class="text-green-400">Success: </span><span x-text="recovery.successCount"></span>
+                                        <span class="ml-4 text-red-400">Failed: </span><span x-text="recovery.failCount"></span>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Health Checks -->
+                    <div class="bg-gray-900 rounded-lg p-6">
+                        <h3 class="text-lg font-semibold text-white mb-4">Health Checks</h3>
+                        <div class="space-y-3">
+                            <template x-for="check in healthChecks" :key="check.name">
+                                <div class="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-3 h-3 rounded-full" :class="check.passing ? 'bg-green-500' : 'bg-red-500'"></div>
+                                        <div>
+                                            <span class="text-white" x-text="check.name"></span>
+                                            <p class="text-sm text-gray-400" x-text="check.lastCheck"></p>
+                                        </div>
+                                    </div>
+                                    <span class="text-sm" :class="check.passing ? 'text-green-400' : 'text-red-400'"
+                                          x-text="check.status"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Performance Tab -->
+            <div x-show="activeTab === 'performance'" class="space-y-6">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Response Times -->
+                    <div class="bg-gray-900 rounded-lg p-6">
+                        <h3 class="text-lg font-semibold text-white mb-4">Response Times</h3>
+                        <canvas id="responseTimeChart" width="400" height="200"></canvas>
+                    </div>
+
+                    <!-- Throughput -->
+                    <div class="bg-gray-900 rounded-lg p-6">
+                        <h3 class="text-lg font-semibold text-white mb-4">Request Throughput</h3>
+                        <canvas id="throughputChart" width="400" height="200"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Events Tab -->
+            <div x-show="activeTab === 'logs'" class="space-y-6">
+                <div class="bg-gray-900 rounded-lg p-6">
+                    <h3 class="text-lg font-semibold text-white mb-4">Recent System Events</h3>
+                    <div class="space-y-2 max-h-96 overflow-y-auto">
+                        <template x-for="event in recentEvents" :key="event.id">
+                            <div class="p-3 bg-gray-800 rounded-lg">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-2 h-2 rounded-full" :class="getEventTypeClass(event.type)"></div>
+                                        <span class="text-white text-sm" x-text="event.message"></span>
+                                    </div>
+                                    <span class="text-xs text-gray-400" x-text="event.timestamp"></span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function unifiedMonitoring() {
+    return {
+        activeTab: 'overview',
+        autoRefresh: true,
+        refreshInterval: null,
+
+        systemHealth: {
+            overall: 'healthy',
+            resilience: 'active',
+            selfHealing: 'active',
+            uptime: 3600 // seconds
+        },
+
+        services: [
+            { name: 'API Server', healthy: true, status: 'Running' },
+            { name: 'Database', healthy: true, status: 'Connected' },
+            { name: 'Redis Cache', healthy: true, status: 'Active' },
+            { name: 'WebSocket Hub', healthy: true, status: 'Connected' },
+            { name: 'LLM Service', healthy: true, status: 'Available' },
+            { name: 'Memory System', healthy: true, status: 'Operational' }
+        ],
+
+        metrics: {
+            requestsPerMin: 0,
+            avgResponseTime: 0,
+            activeConnections: 0,
+            errorRate: 0
+        },
+
+        circuitBreakers: [
+            { name: 'LLM Primary', state: 'closed', failures: 0, successRate: 98.5 },
+            { name: 'LLM Fallback', state: 'closed', failures: 0, successRate: 95.2 },
+            { name: 'Database', state: 'closed', failures: 0, successRate: 99.8 },
+            { name: 'Cache', state: 'closed', failures: 1, successRate: 99.1 }
+        ],
+
+        fallbackStrategies: [
+            { name: 'LLM Fallback Chain', description: 'GPT-4o → GPT-4o-mini → Template', active: true },
+            { name: 'Cache Fallback', description: 'Redis → In-memory → Skip', active: true },
+            { name: 'Database Fallback', description: 'Primary → Readonly → Cache', active: false }
+        ],
+
+        recoveryActions: [
+            { type: 'Service Restart', description: 'Auto-restart failed services', lastTriggered: '2h ago', successCount: 12, failCount: 1 },
+            { type: 'Circuit Reset', description: 'Reset circuit breakers', lastTriggered: '45m ago', successCount: 8, failCount: 0 },
+            { type: 'Cache Clear', description: 'Clear corrupted cache', lastTriggered: 'Never', successCount: 0, failCount: 0 }
+        ],
+
+        healthChecks: [
+            { name: 'API Health', passing: true, status: 'OK', lastCheck: '30s ago' },
+            { name: 'Database Connection', passing: true, status: 'Connected', lastCheck: '1m ago' },
+            { name: 'LLM Availability', passing: true, status: 'Available', lastCheck: '45s ago' },
+            { name: 'Memory Usage', passing: true, status: 'Normal', lastCheck: '2m ago' }
+        ],
+
+        recentEvents: [
+            { id: 1, type: 'info', message: 'System health check completed successfully', timestamp: '2m ago' },
+            { id: 2, type: 'warning', message: 'High response time detected on LLM service', timestamp: '5m ago' },
+            { id: 3, type: 'success', message: 'Circuit breaker reset for cache service', timestamp: '8m ago' },
+            { id: 4, type: 'info', message: 'Auto-refresh enabled for monitoring dashboard', timestamp: '12m ago' }
+        ],
+
+        init() {
+            this.loadData();
+            if (this.autoRefresh) {
+                this.startAutoRefresh();
+            }
+        },
+
+        async loadData() {
+            try {
+                // Load system health
+                const healthResponse = await fetch('/api/v2/health');
+                if (healthResponse.ok) {
+                    const healthData = await healthResponse.json();
+                    this.updateSystemHealth(healthData);
+                }
+
+                // Load performance metrics
+                const metricsResponse = await fetch('/api/v2/monitoring/performance');
+                if (metricsResponse.ok) {
+                    const metricsData = await metricsResponse.json();
+                    this.updateMetrics(metricsData);
+                }
+            } catch (error) {
+                console.error('Failed to load monitoring data:', error);
+            }
+        },
+
+        updateSystemHealth(data) {
+            // Update based on API response
+            this.systemHealth.overall = data.status || 'healthy';
+            this.systemHealth.uptime = data.uptime || this.systemHealth.uptime;
+        },
+
+        updateMetrics(data) {
+            this.metrics.requestsPerMin = data.requests_per_minute || 0;
+            this.metrics.avgResponseTime = data.avg_response_time || 0;
+            this.metrics.activeConnections = data.active_connections || 0;
+            this.metrics.errorRate = data.error_rate || 0;
+        },
+
+        refreshAll() {
+            this.loadData();
+        },
+
+        toggleAutoRefresh() {
+            if (this.autoRefresh) {
+                this.startAutoRefresh();
+            } else {
+                this.stopAutoRefresh();
+            }
+        },
+
+        startAutoRefresh() {
+            this.refreshInterval = timerManager.setInterval(() => {
+                this.loadData();
+            }, 10000); // 10 seconds
+        },
+
+        stopAutoRefresh() {
+            if (this.refreshInterval) {
+                timerManager.clearInterval(this.refreshInterval);
+                this.refreshInterval = null;
+            }
+        },
+
+        formatUptime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            return `${hours}h ${minutes}m`;
+        },
+
+        getHealthTextClass(status) {
+            switch (status.toLowerCase()) {
+                case 'healthy':
+                case 'active':
+                case 'ok': return 'text-green-400';
+                case 'warning': return 'text-yellow-400';
+                case 'error':
+                case 'unhealthy': return 'text-red-400';
+                default: return 'text-gray-400';
+            }
+        },
+
+        getHealthBgClass(status) {
+            switch (status.toLowerCase()) {
+                case 'healthy':
+                case 'active':
+                case 'ok': return 'bg-green-500/20 text-green-400';
+                case 'warning': return 'bg-yellow-500/20 text-yellow-400';
+                case 'error':
+                case 'unhealthy': return 'bg-red-500/20 text-red-400';
+                default: return 'bg-gray-500/20 text-gray-400';
+            }
+        },
+
+        getBreakerStatusClass(state) {
+            switch (state.toLowerCase()) {
+                case 'closed': return 'bg-green-500/20 text-green-400';
+                case 'open': return 'bg-red-500/20 text-red-400';
+                case 'half-open': return 'bg-yellow-500/20 text-yellow-400';
+                default: return 'bg-gray-500/20 text-gray-400';
+            }
+        },
+
+        getEventTypeClass(type) {
+            switch (type.toLowerCase()) {
+                case 'success': return 'bg-green-500';
+                case 'warning': return 'bg-yellow-500';
+                case 'error': return 'bg-red-500';
+                case 'info':
+                default: return 'bg-blue-500';
+            }
+        }
+    }
+}
+</script>
+
+<style>
+.card {
+    @apply bg-gray-800 rounded-lg border border-gray-700;
+}
+
+.btn-secondary {
+    @apply bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center text-sm font-medium transition-colors;
+}
+</style>
+{% endblock %}

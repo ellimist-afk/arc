@@ -1,0 +1,11 @@
+{
+  "flags": {
+    "raider_welcome": true,
+    "raider_vod_analysis": false,
+    "advanced_personality": true,
+    "context_caching": true,
+    "voice_commands": true,
+    "web_ui": true,
+    "monitoring": true
+  }
+}

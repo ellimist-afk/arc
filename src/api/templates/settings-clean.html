@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - TalkBot</title>
+    <link rel="stylesheet" href="/static/css/clean-design-system.css">
+    <link rel="stylesheet" href="/static/css/clean-sliders.css">
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="container nav-container">
+            <div class="nav-brand">TalkBot</div>
+            <div class="nav-menu">
+                <a href="/dashboard" class="nav-link">Dashboard</a>
+                <a href="/settings" class="nav-link active">Settings</a>
+                <a href="/analytics" class="nav-link">Analytics</a>
+                <a href="/memory" class="nav-link">Memory</a>
+                <a href="/visualizer" class="nav-link">Visualizer</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container" style="padding-top: var(--space-8); padding-bottom: var(--space-8);" x-data="settingsApp()">
+        <!-- Page Header -->
+        <div class="mb-8">
+            <h1>Settings</h1>
+            <p>Configure your bot's behavior and preferences</p>
+        </div>
+
+        <!-- Settings Tabs -->
+        <div class="flex gap-2 mb-6" style="border-bottom: 1px solid var(--border-default); padding-bottom: -1px;">
+            <button @click="activeTab = 'personality'" 
+                    :class="activeTab === 'personality' ? 'text-primary border-b-2' : 'text-secondary'"
+                    class="btn btn-ghost" style="border-radius: 0; border-color: var(--accent-primary);">
+                Personality
+            </button>
+            <button @click="activeTab = 'audio'" 
+                    :class="activeTab === 'audio' ? 'text-primary border-b-2' : 'text-secondary'"
+                    class="btn btn-ghost" style="border-radius: 0; border-color: var(--accent-primary);">
+                Audio
+            </button>
+            <button @click="activeTab = 'chat'" 
+                    :class="activeTab === 'chat' ? 'text-primary border-b-2' : 'text-secondary'"
+                    class="btn btn-ghost" style="border-radius: 0; border-color: var(--accent-primary);">
+                Chat
+            </button>
+            <button @click="activeTab = 'memory'" 
+                    :class="activeTab === 'memory' ? 'text-primary border-b-2' : 'text-secondary'"
+                    class="btn btn-ghost" style="border-radius: 0; border-color: var(--accent-primary);">
+                Memory
+            </button>
+            <button @click="activeTab = 'system'" 
+                    :class="activeTab === 'system' ? 'text-primary border-b-2' : 'text-secondary'"
+                    class="btn btn-ghost" style="border-radius: 0; border-color: var(--accent-primary);">
+                System
+            </button>
+        </div>
+
+        <!-- Personality Tab -->
+        <div x-show="activeTab === 'personality'" x-transition>
+            <div class="card mb-6">
+                <div class="card-header">
+                    <h3 class="card-title">Personality Presets</h3>
+                </div>
+                <div class="card-body">
+                    <div class="slider-presets mb-6">
+                        <button @click="loadPreset('friendly')" class="slider-preset" :class="currentPreset === 'friendly' && 'active'">
+                            Friendly
+                        </button>
+                        <button @click="loadPreset('professional')" class="slider-preset" :class="currentPreset === 'professional' && 'active'">
+                            Professional
+                        </button>
+                        <button @click="loadPreset('entertaining')" class="slider-preset" :class="currentPreset === 'entertaining' && 'active'">
+                            Entertaining
+                        </button>
+                        <button @click="loadPreset('supportive')" class="slider-preset" :class="currentPreset === 'supportive' && 'active'">
+                            Supportive
+                        </button>
+                        <button @click="loadPreset('custom')" class="slider-preset" :class="currentPreset === 'custom' && 'active'">
+                            Custom
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-6">
+                        <!-- Warmth Slider -->
+                        <div class="slider-container personality-slider warmth">
+                            <div class="slider-header">
+                                <span class="slider-label">Warmth</span>
+                                <span class="slider-value" x-text="traits.warmth + '%'"></span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <div class="slider-progress" :style="`width: ${traits.warmth}%`"></div>
+                                <input type="range" min="0" max="100" x-model="traits.warmth" class="tbx-range">
+                            </div>
+                            <p class="slider-description">How friendly and approachable the bot appears</p>
+                        </div>
+
+                        <!-- Energy Slider -->
+                        <div class="slider-container personality-slider energy">
+                            <div class="slider-header">
+                                <span class="slider-label">Energy</span>
+                                <span class="slider-value" x-text="traits.energy + '%'"></span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <div class="slider-progress" :style="`width: ${traits.energy}%`"></div>
+                                <input type="range" min="0" max="100" x-model="traits.energy" class="tbx-range">
+                            </div>
+                            <p class="slider-description">The enthusiasm and excitement level</p>
+                        </div>
+
+                        <!-- Humor Slider -->
+                        <div class="slider-container personality-slider humor">
+                            <div class="slider-header">
+                                <span class="slider-label">Humor</span>
+                                <span class="slider-value" x-text="traits.humor + '%'"></span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <div class="slider-progress" :style="`width: ${traits.humor}%`"></div>
+                                <input type="range" min="0" max="100" x-model="traits.humor" class="tbx-range">
+                            </div>
+                            <p class="slider-description">How often the bot attempts to be funny</p>
+                        </div>
+
+                        <!-- Sass Slider -->
+                        <div class="slider-container personality-slider sass">
+                            <div class="slider-header">
+                                <span class="slider-label">Sass</span>
+                                <span class="slider-value" x-text="traits.sass + '%'"></span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <div class="slider-progress" :style="`width: ${traits.sass}%`"></div>
+                                <input type="range" min="0" max="100" x-model="traits.sass" class="tbx-range">
+                            </div>
+                            <p class="slider-description">Playful attitude and witty comebacks</p>
+                        </div>
+
+                        <!-- Verbosity Slider -->
+                        <div class="slider-container personality-slider verbosity">
+                            <div class="slider-header">
+                                <span class="slider-label">Verbosity</span>
+                                <span class="slider-value" x-text="traits.verbosity + '%'"></span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <div class="slider-progress" :style="`width: ${traits.verbosity}%`"></div>
+                                <input type="range" min="0" max="100" x-model="traits.verbosity" class="tbx-range">
+                            </div>
+                            <p class="slider-description">Length and detail of responses</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer flex justify-between">
+                    <button @click="resetPersonality()" class="btn btn-secondary">Reset to Default</button>
+                    <button @click="saveSettings('personality')" class="btn btn-primary">Save Changes</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Audio Tab -->
+        <div x-show="activeTab === 'audio'" x-transition>
+            <div class="card mb-6">
+                <div class="card-header">
+                    <h3 class="card-title">Text-to-Speech Settings</h3>
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="form-label">Enable Text-to-Speech</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" x-model="audio.tts_enabled">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <p class="form-helper">Bot will speak responses out loud when enabled</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Voice Model</label>
+                        <select x-model="audio.voice" class="form-select">
+                            <option value="nova">Nova (Natural)</option>
+                            <option value="alloy">Alloy (Neutral)</option>
+                            <option value="echo">Echo (Warm)</option>
+                            <option value="fable">Fable (British)</option>
+                            <option value="onyx">Onyx (Deep)</option>
+                            <option value="shimmer">Shimmer (Soft)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Speaking Rate</label>
+                        <div class="slider-container audio-slider">
+                            <div class="slider-header">
+                                <span class="slider-label">Speed</span>
+                                <span class="slider-value" x-text="audio.speed + 'x'"></span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <div class="slider-progress" :style="`width: ${(audio.speed - 0.5) * 100}%`"></div>
+                                <input type="range" min="0.5" max="1.5" step="0.1" x-model="audio.speed" class="tbx-range">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Volume</label>
+                        <div class="slider-container audio-slider">
+                            <div class="slider-header">
+                                <span class="slider-label">Volume</span>
+                                <span class="slider-value" x-text="audio.volume + '%'"></span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <div class="slider-progress" :style="`width: ${audio.volume}%`"></div>
+                                <input type="range" min="0" max="100" x-model="audio.volume" class="tbx-range">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer flex justify-end">
+                    <button @click="saveSettings('audio')" class="btn btn-primary">Save Audio Settings</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Tab -->
+        <div x-show="activeTab === 'chat'" x-transition>
+            <div class="card mb-6">
+                <div class="card-header">
+                    <h3 class="card-title">Chat Response Settings</h3>
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="form-label">Response Delay</label>
+                        <div class="slider-container system-slider">
+                            <div class="slider-header">
+                                <span class="slider-label">Delay</span>
+                                <span class="slider-value" x-text="chat.response_delay + 's'"></span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <div class="slider-progress" :style="`width: ${(chat.response_delay / 10) * 100}%`"></div>
+                                <input type="range" min="0" max="10" step="0.5" x-model="chat.response_delay" class="tbx-range">
+                            </div>
+                            <p class="slider-description">Time to wait before responding to messages</p>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Dead Air Threshold</label>
+                        <div class="slider-container system-slider">
+                            <div class="slider-header">
+                                <span class="slider-label">Threshold</span>
+                                <span class="slider-value" x-text="chat.dead_air + 's'"></span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <div class="slider-progress" :style="`width: ${(chat.dead_air / 300) * 100}%`"></div>
+                                <input type="range" min="30" max="300" step="10" x-model="chat.dead_air" class="tbx-range">
+                            </div>
+                            <p class="slider-description">Time of silence before bot initiates conversation</p>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Turbo Mode</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" x-model="chat.turbo_mode">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <p class="form-helper">Faster responses with reduced processing</p>
+                    </div>
+                </div>
+                <div class="card-footer flex justify-end">
+                    <button @click="saveSettings('chat')" class="btn btn-primary">Save Chat Settings</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Memory Tab -->
+        <div x-show="activeTab === 'memory'" x-transition>
+            <div class="card mb-6">
+                <div class="card-header">
+                    <h3 class="card-title">Memory Configuration</h3>
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="form-label">Context Window Size</label>
+                        <div class="slider-container memory-slider">
+                            <div class="slider-header">
+                                <span class="slider-label">Messages</span>
+                                <span class="slider-value" x-text="memory.context_window"></span>
+                            </div>
+                            <div class="slider-wrapper">
+                                <div class="slider-progress" :style="`width: ${(memory.context_window / 100) * 100}%`"></div>
+                                <input type="range" min="10" max="100" step="5" x-model="memory.context_window" class="tbx-range">
+                            </div>
+                            <p class="slider-description">Number of recent messages to consider for context</p>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Memory System</label>
+                        <select x-model="memory.system" class="form-select">
+                            <option value="v2">V2 PostgreSQL (Recommended)</option>
+                            <option value="v1">V1 Legacy</option>
+                            <option value="dual">Dual Write (Migration)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Auto-Save Memories</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" x-model="memory.auto_save">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <p class="form-helper">Automatically save important conversations</p>
+                    </div>
+
+                    <div class="alert alert-info">
+                        <strong>Memory Stats:</strong> 1,247 entries stored • 89MB used • Last cleanup: 2 hours ago
+                    </div>
+                </div>
+                <div class="card-footer flex justify-between">
+                    <button class="btn btn-secondary">Clear Memory</button>
+                    <button @click="saveSettings('memory')" class="btn btn-primary">Save Memory Settings</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Tab -->
+        <div x-show="activeTab === 'system'" x-transition>
+            <div class="card mb-6">
+                <div class="card-header">
+                    <h3 class="card-title">System Configuration</h3>
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="form-label">Streamer ID</label>
+                        <input type="text" x-model="system.streamer_id" class="form-input" readonly>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Channel Name</label>
+                        <input type="text" x-model="system.channel_name" class="form-input">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">API Model</label>
+                        <select x-model="system.api_model" class="form-select">
+                            <option value="gpt-4">GPT-4 (Best quality)</option>
+                            <option value="gpt-3.5-turbo">GPT-3.5 Turbo (Faster)</option>
+                            <option value="claude-3">Claude 3 (Alternative)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Debug Mode</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" x-model="system.debug_mode">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <p class="form-helper">Enable verbose logging for troubleshooting</p>
+                    </div>
+                </div>
+                <div class="card-footer flex justify-end">
+                    <button @click="saveSettings('system')" class="btn btn-primary">Save System Settings</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Notification -->
+        <div x-show="showToast" x-transition
+             class="fixed" style="top: 20px; right: 20px; z-index: 1000;">
+            <div :class="toastType === 'success' ? 'alert-success' : 'alert-error'" 
+                 class="alert flex items-center gap-2" style="min-width: 300px;">
+                <span x-text="toastMessage"></span>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        function settingsApp() {
+            return {
+                activeTab: 'personality',
+                currentPreset: 'custom',
+                showToast: false,
+                toastMessage: '',
+                toastType: 'success',
+                
+                // Settings data
+                traits: {
+                    warmth: 75,
+                    energy: 60,
+                    humor: 85,
+                    sass: 40,
+                    verbosity: 50
+                },
+                
+                audio: {
+                    tts_enabled: true,
+                    voice: 'nova',
+                    speed: 1.0,
+                    volume: 80
+                },
+                
+                chat: {
+                    response_delay: 2,
+                    dead_air: 120,
+                    turbo_mode: false
+                },
+                
+                memory: {
+                    context_window: 50,
+                    system: 'v2',
+                    auto_save: true
+                },
+                
+                system: {
+                    streamer_id: 'confusedamish',
+                    channel_name: 'confusedamish',
+                    api_model: 'gpt-4',
+                    debug_mode: false
+                },
+                
+                loadPreset(preset) {
+                    this.currentPreset = preset;
+                    const presets = {
+                        friendly: { warmth: 90, energy: 70, humor: 60, sass: 20, verbosity: 50 },
+                        professional: { warmth: 50, energy: 40, humor: 30, sass: 10, verbosity: 60 },
+                        entertaining: { warmth: 70, energy: 85, humor: 90, sass: 60, verbosity: 70 },
+                        supportive: { warmth: 95, energy: 60, humor: 40, sass: 15, verbosity: 65 },
+                        custom: this.traits
+                    };
+                    
+                    if (presets[preset]) {
+                        this.traits = { ...presets[preset] };
+                    }
+                },
+                
+                resetPersonality() {
+                    this.loadPreset('friendly');
+                },
+                
+                async saveSettings(section) {
+                    // Simulate save operation
+                    this.showToast = false;
+                    
+                    setTimeout(() => {
+                        this.toastMessage = `${section.charAt(0).toUpperCase() + section.slice(1)} settings saved successfully`;
+                        this.toastType = 'success';
+                        this.showToast = true;
+                        
+                        setTimeout(() => {
+                            this.showToast = false;
+                        }, 3000);
+                    }, 500);
+                }
+            }
+        }
+    </script>
+</body>
+</html>

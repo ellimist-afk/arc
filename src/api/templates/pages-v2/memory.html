@@ -1,0 +1,725 @@
+{% extends "base-v2.html" %}
+
+{% block title %}Memory Management - {{ streamer_id }}{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/static/v2/css/pages/settings.css">
+<link rel="stylesheet" href="/static/v2/css/pages/analytics.css">
+<style>
+.memory-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.memory-chart-container {
+    height: 300px;
+    background: var(--surface-elevated);
+    border-radius: var(--radius-lg);
+    padding: 1rem;
+    margin-bottom: 2rem;
+}
+
+.conversation-timeline {
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 1rem;
+    background: var(--surface-elevated);
+    border-radius: var(--radius-lg);
+}
+
+.memory-entry {
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    background: var(--surface-muted);
+    border-radius: var(--radius-md);
+    border-left: 3px solid var(--accent);
+}
+
+.memory-search-filters {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    align-items: end;
+}
+
+.memory-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+.progress-indicator {
+    width: 100%;
+    height: 4px;
+    background: var(--surface-muted);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 0.5rem;
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent-bright));
+    transition: width 0.3s ease;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tbx-page-container" x-data="memoryManagementPage('{{ streamer_id }}')" x-init="init()">
+    <!-- Page Header -->
+    <div class="tbx-page-header">
+        <div class="tbx-header-content">
+            <h1 class="tbx-page-title">Memory Management</h1>
+            <p class="tbx-page-subtitle">Manage conversation history and memory system for {{ streamer_id }}</p>
+        </div>
+        
+        <div class="tbx-header-actions">
+            <!-- Quick Actions Dropdown -->
+            <div class="relative" x-data="{ open: false }">
+                <button @click="open = !open" class="tbx-button-secondary">
+                    Quick Actions
+                    <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </button>
+                
+                <div x-show="open" @click.away="open = false" x-transition
+                     class="absolute right-0 mt-2 w-48 rounded-lg shadow-lg bg-gray-800 border border-gray-700 z-50">
+                    <a href="/ui/v2/analytics/{{ streamer_id }}" class="block px-4 py-2 text-sm hover:bg-gray-700 rounded-t-lg">
+                        📊 Analytics
+                    </a>
+                    <a href="/ui/v2/insights/{{ streamer_id }}" class="block px-4 py-2 text-sm hover:bg-gray-700 rounded-b-lg">
+                        🔮 AI Insights
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Memory System Status -->
+            <div class="flex items-center gap-2 px-3 py-1 rounded-full"
+                 :class="memoryStatus === 'healthy' ? 'bg-green-500/20' : 'bg-red-500/20'">
+                <div class="w-2 h-2 rounded-full"
+                     :class="memoryStatus === 'healthy' ? 'bg-green-500' : 'bg-red-500'"></div>
+                <span class="text-sm font-medium"
+                      :class="memoryStatus === 'healthy' ? 'text-green-400' : 'text-red-400'"
+                      x-text="memoryStatus === 'healthy' ? 'Memory Healthy' : 'Memory Issues'">
+                    Memory Healthy
+                </span>
+            </div>
+            
+            <!-- Export Button -->
+            <button @click="exportMemories()" class="tbx-button tbx-button-secondary" :disabled="isLoading">
+                <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                </svg>
+                Export
+            </button>
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    <div x-show="isLoading" class="flex items-center justify-center py-12">
+        <div class="text-center">
+            <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-gray-700 border-t-accent"></div>
+            <p class="mt-4 text-secondary">Loading memory data...</p>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div x-show="!isLoading" x-transition class="space-y-6">
+        
+        <!-- Memory Statistics Grid -->
+        <div class="memory-stats-grid">
+            <div class="tbx-card">
+                <div class="tbx-metric">
+                    <span class="tbx-metric-value" x-text="stats.totalMemories || 0">0</span>
+                    <span class="tbx-metric-label">Total Memories</span>
+                </div>
+            </div>
+            
+            <div class="tbx-card">
+                <div class="tbx-metric">
+                    <span class="tbx-metric-value" x-text="formatBytes(stats.memorySize || 0)">0 KB</span>
+                    <span class="tbx-metric-label">Memory Usage</span>
+                </div>
+            </div>
+            
+            <div class="tbx-card">
+                <div class="tbx-metric">
+                    <span class="tbx-metric-value" x-text="stats.conversationCount || 0">0</span>
+                    <span class="tbx-metric-label">Conversations</span>
+                </div>
+            </div>
+            
+            <div class="tbx-card">
+                <div class="tbx-metric">
+                    <span class="tbx-metric-value" x-text="formatDuration(stats.longestConversation || 0)">0m</span>
+                    <span class="tbx-metric-label">Longest Chat</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Memory Usage Chart -->
+        <div class="tbx-card">
+            <h2 class="text-lg font-semibold mb-4">Memory Usage Over Time</h2>
+            <div class="memory-chart-container">
+                <canvas id="memoryChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+
+        <!-- Memory Search and Filtering -->
+        <div class="tbx-card">
+            <h2 class="text-lg font-semibold mb-4">Search Memories</h2>
+            
+            <div class="memory-search-filters">
+                <div>
+                    <label class="tbx-label">Search Term</label>
+                    <input type="text" 
+                           x-model="searchQuery" 
+                           @input="debounceSearch()"
+                           class="tbx-input" 
+                           placeholder="Search conversations, users, or topics...">
+                </div>
+                
+                <div>
+                    <label class="tbx-label">Date Range</label>
+                    <select x-model="dateFilter" @change="applyFilters()" class="tbx-select">
+                        <option value="all">All Time</option>
+                        <option value="today">Today</option>
+                        <option value="week">This Week</option>
+                        <option value="month">This Month</option>
+                        <option value="custom">Custom Range</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label class="tbx-label">Memory Type</label>
+                    <select x-model="typeFilter" @change="applyFilters()" class="tbx-select">
+                        <option value="all">All Types</option>
+                        <option value="conversation">Conversations</option>
+                        <option value="context">Context</option>
+                        <option value="preference">Preferences</option>
+                        <option value="event">Events</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Search Results -->
+            <div class="conversation-timeline">
+                <template x-for="memory in filteredMemories" :key="memory.id">
+                    <div class="memory-entry">
+                        <div class="flex items-start justify-between mb-2">
+                            <div>
+                                <span class="text-sm font-medium" x-text="memory.user || 'System'"></span>
+                                <span class="tbx-badge tbx-badge-secondary ml-2" x-text="memory.type"></span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-muted" x-text="formatTimeAgo(memory.timestamp)"></span>
+                                <button @click="deleteMemory(memory.id)" 
+                                        class="text-red-400 hover:text-red-300 p-1">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <p class="text-sm text-secondary" x-text="memory.content"></p>
+                        <div x-show="memory.context" class="mt-2 p-2 bg-white/5 rounded text-xs text-muted" x-text="memory.context"></div>
+                    </div>
+                </template>
+                
+                <div x-show="filteredMemories.length === 0" class="text-center py-8 text-secondary">
+                    <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                    </svg>
+                    <p>No memories found matching your criteria</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Memory System Health -->
+        <div class="tbx-card">
+            <h2 class="text-lg font-semibold mb-4">Memory System Health</h2>
+            
+            <div class="space-y-4">
+                <template x-for="health in memoryHealth" :key="health.component">
+                    <div class="p-3 rounded-lg bg-white/5">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="font-medium" x-text="health.component"></span>
+                            <span class="tbx-badge"
+                                  :class="{
+                                      'tbx-badge-success': health.status === 'healthy',
+                                      'tbx-badge-warning': health.status === 'degraded',
+                                      'tbx-badge-error': health.status === 'unhealthy'
+                                  }"
+                                  x-text="health.status">
+                            </span>
+                        </div>
+                        <div class="text-sm text-secondary mb-2" x-text="health.message"></div>
+                        <div x-show="health.metrics" class="text-xs text-muted">
+                            <span x-text="`${health.metrics?.responseTime || 'N/A'}ms response time, ${health.metrics?.memoryUsage || 'N/A'}MB used`"></span>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Memory Management Actions -->
+        <div class="memory-actions-grid">
+            <div class="tbx-card">
+                <h3 class="font-semibold mb-3">Backup & Export</h3>
+                <div class="space-y-3">
+                    <button @click="createBackup()" 
+                            class="w-full tbx-button tbx-button-primary"
+                            :disabled="isProcessing">
+                        <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 12l2 2 4-4"></path>
+                        </svg>
+                        Create Backup
+                    </button>
+                    
+                    <button @click="exportConversations()" 
+                            class="w-full tbx-button tbx-button-secondary"
+                            :disabled="isProcessing">
+                        <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        Export as JSON
+                    </button>
+                </div>
+            </div>
+            
+            <div class="tbx-card">
+                <h3 class="font-semibold mb-3">Memory Cleanup</h3>
+                <div class="space-y-3">
+                    <button @click="cleanupOldMemories()" 
+                            class="w-full tbx-button tbx-button-warning"
+                            :disabled="isProcessing">
+                        <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                        </svg>
+                        Clean Old Data
+                    </button>
+                    
+                    <button @click="optimizeMemory()" 
+                            class="w-full tbx-button tbx-button-secondary"
+                            :disabled="isProcessing">
+                        <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                        Optimize Database
+                    </button>
+                </div>
+            </div>
+            
+            <div class="tbx-card">
+                <h3 class="font-semibold mb-3">Advanced Tools</h3>
+                <div class="space-y-3">
+                    <button @click="rebuildIndex()" 
+                            class="w-full tbx-button tbx-button-secondary"
+                            :disabled="isProcessing">
+                        <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        Rebuild Search Index
+                    </button>
+                    
+                    <button @click="migrateMemories()" 
+                            class="w-full tbx-button tbx-button-secondary"
+                            :disabled="isProcessing">
+                        <svg class="tbx-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+                        </svg>
+                        Migrate to V2
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Processing Progress -->
+        <div x-show="isProcessing" class="tbx-card">
+            <div class="flex items-center gap-3 mb-3">
+                <div class="animate-spin rounded-full h-6 w-6 border-2 border-gray-700 border-t-accent"></div>
+                <span class="font-medium" x-text="processingMessage">Processing...</span>
+            </div>
+            <div class="progress-indicator">
+                <div class="progress-bar" :style="`width: ${processingProgress}%`"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function memoryManagementPage(streamerId) {
+    return {
+        // State
+        streamerId: streamerId,
+        isLoading: true,
+        isProcessing: false,
+        processingMessage: 'Processing...',
+        processingProgress: 0,
+        
+        memoryStatus: 'healthy',
+        stats: {
+            totalMemories: 0,
+            memorySize: 0,
+            conversationCount: 0,
+            longestConversation: 0
+        },
+        
+        // Search and filters
+        searchQuery: '',
+        dateFilter: 'all',
+        typeFilter: 'all',
+        searchTimeout: null,
+        
+        memories: [],
+        filteredMemories: [],
+        
+        memoryHealth: [
+            {
+                component: 'PostgreSQL Database',
+                status: 'healthy',
+                message: 'Database connection stable',
+                metrics: { responseTime: 15, memoryUsage: 245 }
+            },
+            {
+                component: 'Memory Search Index',
+                status: 'healthy',
+                message: 'Search index up to date',
+                metrics: { responseTime: 8, memoryUsage: 128 }
+            },
+            {
+                component: 'Conversation Context',
+                status: 'healthy',
+                message: 'Context tracking active',
+                metrics: { responseTime: 12, memoryUsage: 89 }
+            }
+        ],
+        
+        // Lifecycle
+        async init() {
+            await this.loadMemoryData();
+            this.initMemoryChart();
+            this.isLoading = false;
+        },
+        
+        // Data Loading
+        async loadMemoryData() {
+            try {
+                const api = window.talkbotAPI;
+                const [stats, memories, health] = await Promise.all([
+                    api.getMemoryStats(this.streamerId),
+                    api.getMemories(this.streamerId, { limit: 100 }),
+                    api.getMemoryHealth(this.streamerId)
+                ]);
+                
+                this.stats = stats;
+                this.memories = memories.memories || [];
+                this.filteredMemories = this.memories;
+                this.memoryHealth = health.components || this.memoryHealth;
+                this.memoryStatus = health.overall_status || 'healthy';
+            } catch (error) {
+                console.error('Failed to load memory data:', error);
+                this.handleError(error);
+            }
+        },
+        
+        // Search and Filtering
+        debounceSearch() {
+            clearTimeout(this.searchTimeout);
+            this.searchTimeout = setTimeout(() => {
+                this.applyFilters();
+            }, 300);
+        },
+        
+        applyFilters() {
+            let filtered = [...this.memories];
+            
+            // Apply search filter
+            if (this.searchQuery.trim()) {
+                const query = this.searchQuery.toLowerCase();
+                filtered = filtered.filter(memory => 
+                    memory.content?.toLowerCase().includes(query) ||
+                    memory.user?.toLowerCase().includes(query) ||
+                    memory.context?.toLowerCase().includes(query)
+                );
+            }
+            
+            // Apply date filter
+            if (this.dateFilter !== 'all') {
+                const now = new Date();
+                const filterDate = new Date();
+                
+                switch (this.dateFilter) {
+                    case 'today':
+                        filterDate.setHours(0, 0, 0, 0);
+                        break;
+                    case 'week':
+                        filterDate.setDate(now.getDate() - 7);
+                        break;
+                    case 'month':
+                        filterDate.setMonth(now.getMonth() - 1);
+                        break;
+                }
+                
+                filtered = filtered.filter(memory => 
+                    new Date(memory.timestamp) >= filterDate
+                );
+            }
+            
+            // Apply type filter
+            if (this.typeFilter !== 'all') {
+                filtered = filtered.filter(memory => memory.type === this.typeFilter);
+            }
+            
+            this.filteredMemories = filtered;
+        },
+        
+        // Memory Actions
+        async deleteMemory(memoryId) {
+            if (!confirm('Are you sure you want to delete this memory? This action cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                await window.talkbotAPI.deleteMemory(this.streamerId, memoryId);
+                this.memories = this.memories.filter(m => m.id !== memoryId);
+                this.applyFilters();
+                showToast('Memory deleted successfully', 'success');
+            } catch (error) {
+                console.error('Failed to delete memory:', error);
+                showToast('Failed to delete memory', 'error');
+            }
+        },
+        
+        async createBackup() {
+            this.startProcessing('Creating backup...');
+            
+            try {
+                const result = await window.talkbotAPI.createMemoryBackup(this.streamerId);
+                this.completeProcessing();
+                showToast('Backup created successfully', 'success');
+                
+                // Download backup file
+                const blob = new Blob([JSON.stringify(result.backup, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `memory-backup-${this.streamerId}-${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error('Failed to create backup:', error);
+                this.completeProcessing();
+                showToast('Failed to create backup', 'error');
+            }
+        },
+        
+        async exportMemories() {
+            try {
+                const memories = await window.talkbotAPI.exportMemories(this.streamerId, {
+                    format: 'json',
+                    includeContext: true
+                });
+                
+                const blob = new Blob([JSON.stringify(memories, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `memories-export-${this.streamerId}-${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                
+                showToast('Memories exported successfully', 'success');
+            } catch (error) {
+                console.error('Failed to export memories:', error);
+                showToast('Failed to export memories', 'error');
+            }
+        },
+        
+        async exportConversations() {
+            try {
+                const conversations = await window.talkbotAPI.exportConversations(this.streamerId, {
+                    format: 'json',
+                    includeMetadata: true
+                });
+                
+                const blob = new Blob([JSON.stringify(conversations, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `conversations-export-${this.streamerId}-${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                
+                showToast('Conversations exported successfully', 'success');
+            } catch (error) {
+                console.error('Failed to export conversations:', error);
+                showToast('Failed to export conversations', 'error');
+            }
+        },
+        
+        async cleanupOldMemories() {
+            if (!confirm('This will remove memories older than 30 days. Continue?')) {
+                return;
+            }
+            
+            this.startProcessing('Cleaning up old memories...');
+            
+            try {
+                const result = await window.talkbotAPI.cleanupMemories(this.streamerId, {
+                    olderThan: 30,
+                    preserveImportant: true
+                });
+                
+                this.completeProcessing();
+                await this.loadMemoryData();
+                showToast(`Cleaned up ${result.removedCount} old memories`, 'success');
+            } catch (error) {
+                console.error('Failed to cleanup memories:', error);
+                this.completeProcessing();
+                showToast('Failed to cleanup memories', 'error');
+            }
+        },
+        
+        async optimizeMemory() {
+            this.startProcessing('Optimizing memory database...');
+            
+            try {
+                await window.talkbotAPI.optimizeMemory(this.streamerId);
+                this.completeProcessing();
+                await this.loadMemoryData();
+                showToast('Memory database optimized', 'success');
+            } catch (error) {
+                console.error('Failed to optimize memory:', error);
+                this.completeProcessing();
+                showToast('Failed to optimize memory', 'error');
+            }
+        },
+        
+        async rebuildIndex() {
+            this.startProcessing('Rebuilding search index...');
+            
+            try {
+                await window.talkbotAPI.rebuildMemoryIndex(this.streamerId);
+                this.completeProcessing();
+                showToast('Search index rebuilt successfully', 'success');
+            } catch (error) {
+                console.error('Failed to rebuild index:', error);
+                this.completeProcessing();
+                showToast('Failed to rebuild index', 'error');
+            }
+        },
+        
+        async migrateMemories() {
+            if (!confirm('This will migrate your memories to the new V2 system. This process may take several minutes. Continue?')) {
+                return;
+            }
+            
+            this.startProcessing('Migrating memories to V2...');
+            
+            try {
+                const result = await window.talkbotAPI.migrateMemoriesToV2(this.streamerId);
+                this.completeProcessing();
+                await this.loadMemoryData();
+                showToast(`Successfully migrated ${result.migratedCount} memories`, 'success');
+            } catch (error) {
+                console.error('Failed to migrate memories:', error);
+                this.completeProcessing();
+                showToast('Failed to migrate memories', 'error');
+            }
+        },
+        
+        // Processing State
+        startProcessing(message) {
+            this.isProcessing = true;
+            this.processingMessage = message;
+            this.processingProgress = 0;
+            this.simulateProgress();
+        },
+        
+        completeProcessing() {
+            this.processingProgress = 100;
+            setTimeout(() => {
+                this.isProcessing = false;
+                this.processingProgress = 0;
+            }, 500);
+        },
+        
+        simulateProgress() {
+            if (!this.isProcessing) return;
+            
+            const increment = Math.random() * 10;
+            this.processingProgress = Math.min(this.processingProgress + increment, 95);
+            
+            if (this.processingProgress < 95) {
+                setTimeout(() => this.simulateProgress(), 200);
+            }
+        },
+        
+        // Chart Initialization
+        initMemoryChart() {
+            // Initialize memory usage chart with Chart.js or similar
+            // This would integrate with the memory usage data over time
+            const canvas = document.getElementById('memoryChart');
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                // Chart implementation would go here
+                ctx.fillStyle = '#6366f1';
+                ctx.fillRect(10, 10, 100, 50);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '14px Arial';
+                ctx.fillText('Memory Usage Chart', 20, 35);
+            }
+        },
+        
+        // Utility Functions
+        formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        },
+        
+        formatDuration(seconds) {
+            if (seconds < 60) return `${seconds}s`;
+            const minutes = Math.floor(seconds / 60);
+            if (minutes < 60) return `${minutes}m`;
+            const hours = Math.floor(minutes / 60);
+            return `${hours}h ${minutes % 60}m`;
+        },
+        
+        formatTimeAgo(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diff = (now - date) / 1000;
+            
+            if (diff < 60) return 'just now';
+            if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+            if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+            return date.toLocaleDateString();
+        },
+        
+        handleError(error) {
+            console.error('Memory management error:', error);
+            showToast('An error occurred. Please try again.', 'error');
+        }
+    }
+}
+</script>
+
+<script>
+// Initialize the memory management page
+document.addEventListener('alpine:init', () => {
+    // Page will be initialized via x-data directive
+});
+</script>
+{% endblock %}

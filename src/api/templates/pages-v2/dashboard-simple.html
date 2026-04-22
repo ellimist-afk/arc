@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - {{ streamer_id }}</title>
+    
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            background: #0B0B0D;
+            color: #F5F5F6;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        
+        /* Header */
+        .header {
+            background: #1A1A20;
+            border-bottom: 2px solid #9146FF;
+            padding: 16px 24px;
+            box-shadow: 0 4px 24px rgba(145, 70, 255, 0.25);
+        }
+        
+        .nav {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+        }
+        
+        .logo {
+            color: #9146FF;
+            font-weight: bold;
+            font-size: 20px;
+            text-decoration: none;
+        }
+        
+        .nav-link {
+            color: #E0E0E0;
+            text-decoration: none;
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(145, 70, 255, 0.2);
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+        
+        .nav-link:hover {
+            background: rgba(145, 70, 255, 0.2);
+            border-color: #9146FF;
+            transform: translateY(-1px);
+        }
+        
+        /* Main Content */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+        
+        .page-title {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+        
+        .page-subtitle {
+            color: #A1A1AA;
+            margin-bottom: 32px;
+        }
+        
+        /* Grid */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+        }
+        
+        /* Cards */
+        .card {
+            background: #121217;
+            border: 1px solid #23232A;
+            border-radius: 12px;
+            padding: 24px;
+            transition: all 0.3s;
+        }
+        
+        .card:hover {
+            border-color: rgba(145, 70, 255, 0.3);
+            box-shadow: 0 8px 32px rgba(145, 70, 255, 0.1);
+        }
+        
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #F5F5F6;
+        }
+        
+        /* Buttons */
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            justify-content: center;
+            margin: 4px 0;
+        }
+        
+        .btn-primary {
+            background: #9146FF;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #A262FF;
+            transform: translateY(-1px);
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #E0E0E0;
+            border: 1px solid rgba(145, 70, 255, 0.2);
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(145, 70, 255, 0.2);
+            border-color: #9146FF;
+        }
+        
+        .btn-danger {
+            background: #EF4444;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #DC2626;
+        }
+        
+        /* Status */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .status-online {
+            background: rgba(34, 197, 94, 0.2);
+            color: #22C55E;
+        }
+        
+        .status-offline {
+            background: rgba(239, 68, 68, 0.2);
+            color: #EF4444;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+        
+        /* Metrics */
+        .metric {
+            text-align: center;
+            padding: 16px;
+        }
+        
+        .metric-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #9146FF;
+        }
+        
+        .metric-label {
+            font-size: 14px;
+            color: #A1A1AA;
+            margin-top: 4px;
+        }
+        
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 48px;
+            color: #A1A1AA;
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(145, 70, 255, 0.2);
+            border-top-color: #9146FF;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <nav class="nav">
+            <a href="/ui/v2/dashboard/{{ streamer_id }}" class="logo">TalkBot</a>
+            <a href="/ui/v2/dashboard/{{ streamer_id }}" class="nav-link">Dashboard</a>
+            <a href="/ui/v2/settings/{{ streamer_id }}" class="nav-link">Settings</a>
+            <a href="/ui/v2/analytics/{{ streamer_id }}" class="nav-link">Analytics</a>
+        </nav>
+    </header>
+    
+    <!-- Main Content -->
+    <main class="container" x-data="simpleDashboard()">
+        <h1 class="page-title">Control Dashboard</h1>
+        <p class="page-subtitle">Manage your TalkBot instance</p>
+        
+        <!-- Loading State -->
+        <div x-show="loading" class="loading">
+            <div class="spinner"></div>
+            <p style="margin-top: 16px;">Loading dashboard...</p>
+        </div>
+        
+        <!-- Dashboard Grid -->
+        <div x-show="!loading" class="grid" style="display: none;">
+            
+            <!-- Quick Actions -->
+            <div class="card">
+                <h2 class="card-title">Quick Actions</h2>
+                <button @click="toggleBot()" class="btn" 
+                        :class="botStatus === 'online' ? 'btn-danger' : 'btn-primary'">
+                    <span x-text="botStatus === 'online' ? '■ Stop Bot' : '▶ Start Bot'"></span>
+                </button>
+                <button @click="location.href='/ui/v2/settings/{{ streamer_id }}'" class="btn btn-secondary">
+                    ⚙ Settings
+                </button>
+                <button @click="emergencyMute()" class="btn btn-danger">
+                    🔇 Emergency Mute
+                </button>
+            </div>
+            
+            <!-- Bot Status -->
+            <div class="card">
+                <h2 class="card-title">Bot Status</h2>
+                <div style="text-align: center; padding: 24px 0;">
+                    <div class="status-badge" :class="botStatus === 'online' ? 'status-online' : 'status-offline'">
+                        <span class="status-dot"></span>
+                        <span x-text="botStatus === 'online' ? 'Online' : 'Offline'"></span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Metrics -->
+            <div class="card">
+                <h2 class="card-title">Bot Metrics</h2>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="metric">
+                        <div class="metric-value" x-text="metrics.messages">0</div>
+                        <div class="metric-label">Messages</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-value" x-text="metrics.responses">0</div>
+                        <div class="metric-label">Responses</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- System Health -->
+            <div class="card">
+                <h2 class="card-title">System Health</h2>
+                <div style="padding: 16px 0;">
+                    <div style="display: flex; justify-content: space-between; margin: 8px 0;">
+                        <span>API Status</span>
+                        <span style="color: #22C55E;" x-text="apiStatus">✓ Connected</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin: 8px 0;">
+                        <span>Twitch Connection</span>
+                        <span style="color: #22C55E;" x-text="twitchStatus">✓ Connected</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin: 8px 0;">
+                        <span>Voice Active</span>
+                        <span :style="voiceActive ? 'color: #22C55E;' : 'color: #EF4444;'" 
+                              x-text="voiceActive ? '✓ Active' : '✗ Inactive'">✓ Active</span>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+    </main>
+    
+    <script>
+        function simpleDashboard() {
+            return {
+                loading: true,
+                botStatus: 'offline',
+                apiStatus: '✓ Connected',
+                twitchStatus: '✓ Connected',
+                voiceActive: true,
+                metrics: {
+                    messages: 0,
+                    responses: 0
+                },
+                
+                async init() {
+                    console.log('[SimpleDashboard] Initializing...');
+                    await this.loadData();
+                    this.loading = false;
+                },
+                
+                async loadData() {
+                    try {
+                        const response = await fetch('/api/v2/bots/{{ streamer_id }}');
+                        if (response.ok) {
+                            const data = await response.json();
+                            this.botStatus = data.running ? 'online' : 'offline';
+                            this.metrics.messages = data.stats?.messages_processed || 0;
+                            this.metrics.responses = data.stats?.commands_executed || 0;
+                            this.twitchStatus = data.connected_to_twitch ? '✓ Connected' : '✗ Disconnected';
+                            this.voiceActive = data.voice_active || false;
+                        }
+                    } catch (error) {
+                        console.error('[SimpleDashboard] Error loading data:', error);
+                        this.apiStatus = '✗ Error';
+                    }
+                },
+                
+                async toggleBot() {
+                    const action = this.botStatus === 'online' ? 'stop' : 'start';
+                    try {
+                        const response = await fetch(`/api/v2/bots/{{ streamer_id }}/${action}`, {
+                            method: 'POST'
+                        });
+                        if (response.ok) {
+                            await this.loadData();
+                        }
+                    } catch (error) {
+                        console.error('[SimpleDashboard] Error toggling bot:', error);
+                    }
+                },
+                
+                async emergencyMute() {
+                    if (confirm('Emergency mute for 5 minutes?')) {
+                        try {
+                            await fetch('/api/v2/bots/{{ streamer_id }}/emergency-mute?duration_minutes=5', {
+                                method: 'POST'
+                            });
+                            alert('Bot muted for 5 minutes');
+                        } catch (error) {
+                            console.error('[SimpleDashboard] Error muting bot:', error);
+                        }
+                    }
+                }
+            };
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+# TalkBot Requirements
+# Core dependencies for the rebuilt TalkBot system
+
+# Async and Core
+asyncio-mqtt==0.16.2
+python-dotenv==1.0.0
+
+# Database
+sqlalchemy==2.0.23
+asyncpg==0.29.0
+redis==5.0.1
+alembic==1.13.0
+
+# OpenAI
+openai==1.6.1
+
+# Twitch
+twitchio==2.8.2
+
+# Audio
+pyaudio==0.2.14
+pydub==0.25.1
+soundfile==0.12.1
+wave==0.0.2
+
+# WebSocket
+websockets==12.0
+
+# API
+fastapi==0.108.0
+uvicorn==0.25.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Utilities
+numpy==1.26.2
+python-dateutil==2.8.2
+pytz==2023.3.post1
+
+# Development
+pytest==7.4.3
+pytest-asyncio==0.21.1
+black==23.12.0
+ruff==0.1.9
+
+# Optional for embeddings (if using vector search)
+# pgvector==0.2.4
