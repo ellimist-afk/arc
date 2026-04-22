@@ -174,16 +174,34 @@ class ResilientMemorySystem:
         """Store message in database with error handling"""
         if not self.db:
             return False
-        
+
         try:
+            user_id = message.get('user_id')
+            username = message.get('username')
+
+            # Upsert user first to avoid foreign key violation
+            if user_id and username:
+                await self.db.execute(
+                    """
+                    INSERT INTO users (user_id, username, first_seen, last_seen)
+                    VALUES ($1, $2, $3, $3)
+                    ON CONFLICT (user_id) DO UPDATE
+                    SET last_seen = $3, username = $2
+                    """,
+                    user_id,
+                    username,
+                    datetime.now()
+                )
+
+            # Now insert the message
             await self.db.execute(
                 """
-                INSERT INTO chat_messages 
+                INSERT INTO chat_messages
                 (user_id, username, message, timestamp, channel)
                 VALUES ($1, $2, $3, $4, $5)
                 """,
-                message.get('user_id'),
-                message.get('username'),
+                user_id,
+                username,
                 message.get('message'),
                 message.get('timestamp', datetime.now()),
                 message.get('channel', 'twitch')
@@ -194,26 +212,41 @@ class ResilientMemorySystem:
             return False
     
     async def get_recent_messages(
-        self, 
-        limit: int = 50, 
+        self,
+        channel: str = None,
+        limit: int = 50,
         username: str = None
     ) -> List[Dict[str, Any]]:
         """
         Get recent messages with fallback to in-memory storage
-        
+
         Args:
+            channel: Filter by specific channel
             limit: Maximum number of messages to return
             username: Filter by specific user
-            
+
         Returns:
             List of recent messages
         """
         self.read_count += 1
-        
+
         # Try database first if available
         if self.db_available and self.db:
             try:
-                if username:
+                if username and channel:
+                    result = await self.db.fetch(
+                        """
+                        SELECT user_id, username, message, timestamp, channel
+                        FROM chat_messages
+                        WHERE username = $1 AND channel = $2
+                        ORDER BY timestamp DESC
+                        LIMIT $3
+                        """,
+                        username,
+                        channel,
+                        limit
+                    )
+                elif username:
                     result = await self.db.fetch(
                         """
                         SELECT user_id, username, message, timestamp, channel
@@ -223,6 +256,18 @@ class ResilientMemorySystem:
                         LIMIT $2
                         """,
                         username,
+                        limit
+                    )
+                elif channel:
+                    result = await self.db.fetch(
+                        """
+                        SELECT user_id, username, message, timestamp, channel
+                        FROM chat_messages
+                        WHERE channel = $1
+                        ORDER BY timestamp DESC
+                        LIMIT $2
+                        """,
+                        channel,
                         limit
                     )
                 else:
@@ -235,27 +280,31 @@ class ResilientMemorySystem:
                         """,
                         limit
                     )
-                
+
                 if result:
                     return [dict(row) for row in result]
             except Exception as e:
-                logger.error(f"Failed to fetch messages from database: {e}")
+                logger.debug(f"Failed to fetch messages from database: {e}")
                 self.db_failures += 1
-        
+
         # Fallback to in-memory storage
         messages = []
-        
+
         if username and username in self.user_memory:
             messages = list(self.user_memory[username])[-limit:]
         else:
             # Get from memory buffer
             for item in reversed(self.memory_buffer):
                 if item['type'] == 'message':
-                    if not username or item['data'].get('username') == username:
-                        messages.append(item['data'])
-                        if len(messages) >= limit:
-                            break
-        
+                    data = item['data']
+                    if username and data.get('username') != username:
+                        continue
+                    if channel and data.get('channel') != channel:
+                        continue
+                    messages.append(data)
+                    if len(messages) >= limit:
+                        break
+
         return messages
     
     async def store_memory(self, memory: Dict[str, Any]) -> None:
@@ -423,6 +472,100 @@ class ResilientMemorySystem:
         
         return stats
     
+    async def get_viewer_context(self, viewer: str, channel: str) -> Dict[str, Any]:
+        """
+        Get viewer context for a specific channel
+
+        Args:
+            viewer: Username to get context for
+            channel: Channel to get context for
+
+        Returns:
+            Viewer context dictionary with safe defaults
+        """
+        try:
+            return await self.get_user_context(viewer)
+        except Exception as e:
+            logger.debug(f"Error getting viewer context: {e}")
+            return {
+                'username': viewer,
+                'channel': channel,
+                'message_count': 0,
+                'from_memory': True
+            }
+
+    async def get_channel_context(self, channel: str) -> Dict[str, Any]:
+        """
+        Get channel context with safe defaults
+
+        Args:
+            channel: Channel to get context for
+
+        Returns:
+            Channel context dictionary
+        """
+        self.read_count += 1
+
+        # Try database if available
+        if self.db_available and self.db:
+            try:
+                result = await self.db.fetchrow(
+                    """
+                    SELECT channel, COUNT(*) as message_count,
+                           MAX(timestamp) as last_activity
+                    FROM chat_messages
+                    WHERE channel = $1
+                    GROUP BY channel
+                    """,
+                    channel
+                )
+
+                if result:
+                    return dict(result)
+            except Exception as e:
+                logger.debug(f"Failed to fetch channel context: {e}")
+                self.db_failures += 1
+
+        # Fallback to in-memory data
+        message_count = 0
+        for item in self.memory_buffer:
+            if item['type'] == 'message' and item['data'].get('channel') == channel:
+                message_count += 1
+
+        return {
+            'channel': channel,
+            'message_count': message_count,
+            'last_activity': datetime.now(),
+            'from_memory': True
+        }
+
+    async def get_interaction_history(
+        self,
+        viewer: str,
+        channel: str,
+        limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Get viewer's interaction history for a specific channel
+
+        Args:
+            viewer: Username to get history for
+            channel: Channel to get history for
+            limit: Maximum number of interactions to return
+
+        Returns:
+            List of recent interactions with safe defaults
+        """
+        try:
+            return await self.get_recent_messages(
+                channel=channel,
+                username=viewer,
+                limit=limit
+            )
+        except Exception as e:
+            logger.debug(f"Error getting interaction history: {e}")
+            return []
+
     def get_session(self):
         """Get database session for direct database operations"""
         return self.db_manager.get_session()
