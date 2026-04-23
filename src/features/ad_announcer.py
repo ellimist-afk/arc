@@ -131,6 +131,20 @@ class AdAnnouncer:
                 info += f"\nDistinctive: {', '.join(distinctive[:4])}"
         return info
 
+    def _trim_to_length(self, text: str, max_len: int) -> str:
+        """Trim text to max length, preserving sentence boundaries"""
+        if len(text) <= max_len:
+            return text
+        trim_point = max_len - 3
+        sentence_ends = [text.rfind(c, 0, trim_point) for c in ['.', '!', '?']]
+        last_sentence = max(sentence_ends)
+        if last_sentence > 0:
+            return text[:last_sentence + 1]
+        last_space = text.rfind(' ', 0, trim_point)
+        if last_space > 0:
+            return text[:last_space] + "..."
+        return text[:trim_point] + "..."
+
     async def _call_llm(self, prompt: str, max_tokens: int = 80) -> Optional[str]:
         """Make LLM call with timeout and error handling"""
         try:
@@ -173,10 +187,15 @@ CRITICAL RULES:
 Generate ONE engaging hook for a {duration_seconds}-second ad:"""
 
         msg = await self._call_llm(prompt, 80)
-        if msg and 10 <= len(msg) <= 200:
-            logger.debug(f"Generated hook: {msg}")
-            return msg
-        return None
+        if not msg:
+            return None
+        if len(msg) < 10:
+            logger.debug(f"LLM hook too short: {len(msg)} chars")
+            return None
+        if len(msg) > 200:
+            msg = self._trim_to_length(msg, 200)
+        logger.debug(f"Generated hook: {msg}")
+        return msg
 
     async def _generate_return_message(self) -> Optional[str]:
         """Generate engaging LLM 'we're back' message"""
@@ -200,10 +219,15 @@ RULES:
 Generate ONE welcoming return message:"""
 
         msg = await self._call_llm(prompt, 60)
-        if msg and 5 <= len(msg) <= 150:
-            logger.debug(f"Generated return: {msg}")
-            return msg
-        return None
+        if not msg:
+            return None
+        if len(msg) < 5:
+            logger.debug(f"LLM return too short: {len(msg)} chars")
+            return None
+        if len(msg) > 150:
+            msg = self._trim_to_length(msg, 150)
+        logger.debug(f"Generated return: {msg}")
+        return msg
 
     async def _handle_ad_start(self, event: Dict[str, Any]) -> None:
         """Handle ad break start"""
@@ -266,11 +290,17 @@ Generate ONE welcoming return message:"""
                 await self.twitch_client.send_message(message)
             if self.announce_with_voice and self.audio_queue:
                 if self.response_coordinator:
-                    tasks = [{'type': 'chat', 'content': message, 'priority': 'high'}]
-                    if self.audio_queue:
-                        tasks.append({'type': 'audio', 'content': message, 'priority': 'high'})
+                    async def queue_tts():
+                        if self.audio_queue:
+                            await self.audio_queue.queue_audio(text=message, priority='high')
+
                     await self.response_coordinator.coordinate_response(
-                        tasks=tasks, response_id=f"ad_{datetime.now().timestamp()}")
+                        chat_msg=message,
+                        audio_task=queue_tts,
+                        priority='high',
+                        is_mention=False,
+                        is_voice=False
+                    )
                 else:
                     await self.audio_queue.queue_audio(text=message, priority='high')
         except Exception as e:
