@@ -222,7 +222,7 @@ class TalkBot:
 
             # Initialize ChannelChatBuffer for real-time conversational context
             logger.info("Initializing ChannelChatBuffer...")
-            self.chat_buffer = ChannelChatBuffer(max_turns_per_channel=50)
+            self.chat_buffer = ChannelChatBuffer(max_turns_per_channel=200)
             self.service_registry.register('ChatBuffer', self.chat_buffer)
 
             # Initialize OptimizedContextBuilder for <100ms performance (PRD requirement)

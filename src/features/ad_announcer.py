@@ -169,7 +169,7 @@ class AdAnnouncer:
         if not self.openai_client or not self.personality_engine:
             return None
 
-        chat_ctx = await self._get_chat_context(8)
+        chat_ctx = await self._get_chat_context(20)
         personality = await self._get_personality_info()
 
         prompt = f"""You are a Twitch streamer bot announcing an ad break. Keep viewers engaged so they don't leave.
@@ -202,7 +202,7 @@ Generate ONE engaging hook for a {duration_seconds}-second ad:"""
         if not self.openai_client or not self.personality_engine:
             return None
 
-        chat_ctx = await self._get_chat_context(10)
+        chat_ctx = await self._get_chat_context(20)
         personality = await self._get_personality_info()
 
         prompt = f"""You are a Twitch streamer bot returning from an ad break.

@@ -497,7 +497,7 @@ class PersonalityEngine:
                     # Take last 5 messages, iterate oldest-first so insertion order
                     # is chronological (oldest just after system prompt, newest just
                     # before current message)
-                    recent = context['recent_messages'][-5:]
+                    recent = context['recent_messages'][-15:]
                     for msg in reversed(recent):
                         text = msg.get('message') or msg.get('text', '')
                         if not text:
