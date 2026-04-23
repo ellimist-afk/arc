@@ -395,7 +395,10 @@ class TalkBot:
             self.ad_announcer = AdAnnouncer(
                 twitch_client=self.twitch_client,
                 audio_queue=self.audio_queue,
-                response_coordinator=self.response_coordinator
+                response_coordinator=self.response_coordinator,
+                personality_engine=self.personality_engine,
+                chat_buffer=self.chat_buffer,
+                channel_name=self.config.get('TWITCH_CHANNEL')
             )
             
             # Register EventSub handler for automatic ad detection
