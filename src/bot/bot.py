@@ -194,7 +194,11 @@ class TalkBot:
                         logger.info(f"Switched personality to: {preset_name}")
                     else:
                         logger.warning(f"Could not switch personality to: {preset_name}")
-                    
+
+                # Pick up llm_model / streamer_name changes
+                if self.personality_engine:
+                    self.personality_engine.reload_llm_settings()
+
                 logger.info("Reloaded bot settings")
         except Exception as e:
             logger.error(f"Failed to reload bot settings: {e}")
@@ -630,7 +634,7 @@ class TalkBot:
                         logger.info(f"Queueing TTS for: '{response['text'][:50]}...'")
                         async def queue_tts():
                             await self.audio_queue.queue_audio(
-                                text=strip_mentions_for_tts(response['text']),
+                                text=strip_mentions_for_tts(response.get('speech_text') or response['text']),
                                 priority=priority
                             )
                             self.audio_count += 1
@@ -651,7 +655,7 @@ class TalkBot:
                     await self.twitch_client.send_message(response['text'])
                     if self.config.get('TTS_ENABLED', True):
                         await self.audio_queue.queue_audio(
-                            text=strip_mentions_for_tts(response['text']),
+                            text=strip_mentions_for_tts(response.get('speech_text') or response['text']),
                             priority=priority
                         )
                         self.audio_count += 1
@@ -889,13 +893,14 @@ class TalkBot:
             
             # Voice messages are always high priority
             priority = 'high'
-            
+
             # Store in memory system
             await self.memory_system.store_message(message)
 
-            # Add to real-time chat buffer
+            # Add to real-time chat buffer under the real channel — context is
+            # always read for TWITCH_CHANNEL, so 'voice' entries would be invisible
             self.chat_buffer.append_viewer(
-                channel=message.get('channel', ''),
+                channel=self.config.get('TWITCH_CHANNEL', message.get('channel', '')),
                 username=message.get('username', 'unknown'),
                 message=message.get('text') or message.get('message', '')
             )
@@ -916,11 +921,13 @@ class TalkBot:
                     max_time_ms=80
                 )
             
-            # Get personality response - force response for voice
+            # Get personality response - force response for voice.
+            # Label the speaker so the LLM knows this is the streamer talking,
+            # not a viewer (attribution only — storage keeps the plain username)
             response = await self.personality_engine.generate_response(
                 message=message.get('text'),
                 context=context,
-                user=message.get('username'),
+                user=f"{message.get('username')} (the streamer, your co-host partner)",
                 is_mention=True  # Treat all voice as mentions
             )
             
@@ -934,7 +941,7 @@ class TalkBot:
                     async def queue_tts():
                         if self.audio_queue:
                             await self.audio_queue.queue_audio(
-                                text=strip_mentions_for_tts(response['text']),
+                                text=strip_mentions_for_tts(response.get('speech_text') or response['text']),
                                 priority='high'  # Voice responses are high priority
                             )
                             self.audio_count += 1
@@ -954,7 +961,7 @@ class TalkBot:
                         await self.twitch_client.send_message(response['text'])
                     if self.audio_queue:
                         await self.audio_queue.queue_audio(
-                            text=strip_mentions_for_tts(response['text']),
+                            text=strip_mentions_for_tts(response.get('speech_text') or response['text']),
                             priority='high'
                         )
                         self.audio_count += 1

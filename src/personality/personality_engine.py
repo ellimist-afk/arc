@@ -118,6 +118,11 @@ class PersonalityEngine:
         self.config_path = config_path
         self.openai_client = AsyncOpenAI(api_key=openai_api_key) if openai_api_key else None
         self.resilience = get_resilience()
+
+        # LLM model and streamer identity are configurable via bot_settings.json
+        self.llm_model = "gpt-4o-mini"
+        self.streamer_name: Optional[str] = None
+        self.reload_llm_settings()
         
         # Initialize circuit breaker for OpenAI API
         self.circuit_breaker = CircuitBreaker(
@@ -154,6 +159,16 @@ class PersonalityEngine:
         self.total_response_time = 0
         self.last_switch_time = datetime.now()
         
+    def reload_llm_settings(self) -> None:
+        """Load llm_model and streamer_name from bot_settings.json"""
+        try:
+            with open('bot_settings.json', 'r') as f:
+                settings = json.load(f)
+            self.llm_model = settings.get('llm_model', self.llm_model)
+            self.streamer_name = settings.get('streamer_name', self.streamer_name)
+        except Exception as e:
+            logger.debug(f"Could not load LLM settings from bot_settings.json: {e}")
+
     async def initialize(self) -> None:
         """Initialize the personality engine"""
         logger.info("Initializing PersonalityEngine...")
@@ -281,7 +296,7 @@ class PersonalityEngine:
         
         self.response_modifiers = {
             'temperature': 0.7 + (traits.creativity / 200),  # 0.7-1.2
-            'max_tokens': 50 + int(traits.chattiness * 1.5),  # 50-200
+            'max_tokens': 100 + int(traits.chattiness * 2.5),  # 100-350
             'presence_penalty': -0.5 + (traits.assertiveness / 100),  # -0.5 to 0.5
             'frequency_penalty': (traits.creativity / 200),  # 0-0.5
             'use_emojis': traits.enthusiasm > 70,
@@ -353,7 +368,10 @@ class PersonalityEngine:
             if not response_text:
                 return None
                 
-            # Apply personality modifications
+            # Keep the original for TTS — punctuation drives speech pacing
+            speech_text = response_text
+
+            # Apply personality modifications (chat-text styling only)
             response_text = self._apply_personality_modifications(response_text)
             
             # Track performance
@@ -366,6 +384,7 @@ class PersonalityEngine:
             
             return {
                 'text': response_text,
+                'speech_text': speech_text,
                 'should_speak': should_speak,
                 'personality': self.current_preset.value,
                 'traits': asdict(self.current_traits),
@@ -377,36 +396,66 @@ class PersonalityEngine:
             return None
             
     def _build_personality_prompt(self) -> str:
-        """Build system prompt based on personality traits"""
+        """Build system prompt: substance-first co-host base, intensity modulated by traits"""
         traits = self.current_traits
-        style = self.response_modifiers['response_style']
-        
+        streamer = self.streamer_name or "the streamer"
+
+        # Chattiness sets spoken length (max_tokens scales with it too)
+        if traits.chattiness > 70:
+            length_rule = "2-4 short spoken sentences"
+        elif traits.chattiness >= 40:
+            length_rule = "1-3 short spoken sentences"
+        else:
+            length_rule = "1-2 short spoken sentences"
+
+        # The sass framing only makes sense when sarcasm is actually dialed up
+        delivery = "sass" if traits.sarcasm >= 40 else "personality"
+
         prompt_parts = [
-            f"You are a Twitch streamer's chat bot with a {style} personality.",
-            f"Your responses should be:"
+            f"You are the AI co-host on {streamer}'s Twitch stream. Your words are spoken "
+            f"aloud through TTS, live — you're half of a duo, not a chat gimmick.",
+            "",
+            f"Core rule: {delivery} is your delivery, never your answer. ALWAYS engage with the "
+            f"actual substance of what was said. Asked about a build? Judge the build. "
+            f"Asked an opinion? Take a real stance and give a specific reason. A comeback "
+            f"with no content is a failed response.",
+            "",
+            "Style:",
+            f"- {length_rule}. No emoji, no lists, no asterisks, no stage directions — "
+            f"this is read aloud.",
+            "- Have opinions and commit to them. Hedging is boring; being wrong "
+            "confidently is funnier than being safe.",
+            "- Use specifics: the game being played, what just happened in chat, names "
+            "of the people talking.",
+            "- Vary your openings — never start two replies the same way.",
+            "- Playfully mock, never punch down. Twitch-appropriate always.",
+            "",
+            "Personality calibration:",
         ]
-        
-        # Add trait-based instructions
-        if traits.humor > 70:
-            prompt_parts.append("- Witty and entertaining")
+
+        # Trait-driven modifiers so preset switching still changes the voice
         if traits.sarcasm > 70:
-            prompt_parts.append("- Very sarcastic and sassy")
-            prompt_parts.append("- Quick with comebacks")
-            prompt_parts.append("- Playfully mocking but not mean-spirited")
-        if traits.helpfulness > 70:
-            prompt_parts.append("- Helpful when needed")
+            prompt_parts.append(
+                "- Sarcasm dialed high: dry, biting, quick with comebacks — but every "
+                "comeback carries your actual take."
+            )
+        elif traits.sarcasm > 40:
+            prompt_parts.append("- A light sarcastic edge: tease, but keep it warm.")
+        else:
+            prompt_parts.append("- Sincere delivery, minimal sarcasm.")
+        if traits.humor > 70:
+            prompt_parts.append("- Witty: go for the joke when there is one.")
         if traits.enthusiasm > 70:
-            prompt_parts.append("- High energy and excited")
-        if traits.formality < 30:
-            prompt_parts.append("- Casual and relaxed")
-        elif traits.formality > 70:
-            prompt_parts.append("- Professional and formal")
+            prompt_parts.append("- High energy, genuinely hyped.")
+        if traits.formality > 70:
+            prompt_parts.append("- Composed and articulate.")
+        elif traits.formality < 30:
+            prompt_parts.append("- Casual and relaxed, like talking to a friend.")
         if traits.empathy > 70:
-            prompt_parts.append("- Understanding and supportive")
-            
-        prompt_parts.append("\nKeep responses appropriate for Twitch chat.")
-        prompt_parts.append("Match your personality traits consistently.")
-        
+            prompt_parts.append("- Read the room; be supportive when someone is struggling.")
+        if traits.helpfulness > 70:
+            prompt_parts.append("- When someone needs real help, drop the bit and actually help.")
+
         return "\n".join(prompt_parts)
         
     def _should_respond(self, message: str, is_mention: bool) -> bool:
@@ -486,9 +535,14 @@ class PersonalityEngine:
         # Use OpenAI if available
         if self.openai_client:
             try:
+                # Append what the context builder knows (viewer_data, history_summary,
+                # engagement) — previously assembled and then discarded
+                knowledge = self._format_context_knowledge(context, user)
+                system_content = prompt + ("\n\n" + knowledge if knowledge else "")
+
                 # Build messages for chat completion
                 messages = [
-                    {"role": "system", "content": prompt},
+                    {"role": "system", "content": system_content},
                     {"role": "user", "content": f"{user}: {message}"}
                 ]
                 
@@ -527,18 +581,18 @@ class PersonalityEngine:
                 # Define primary OpenAI call
                 async def openai_call():
                     response = await self.openai_client.chat.completions.create(
-                        model="gpt-3.5-turbo",
+                        model=self.llm_model,
                         messages=messages,
                         **openai_params
                     )
                     return response.choices[0].message.content
-                
+
                 # Define fallback with reduced tokens
                 async def openai_fallback():
                     fallback_params = openai_params.copy()
                     fallback_params['max_tokens'] = min(fallback_params.get('max_tokens', 150), 100)
                     response = await self.openai_client.chat.completions.create(
-                        model="gpt-3.5-turbo",
+                        model=self.llm_model,
                         messages=messages,
                         **fallback_params
                     )
@@ -569,6 +623,42 @@ class PersonalityEngine:
         # Fallback to template responses
         return self._generate_template_response(message, user)
         
+    def _format_context_knowledge(self, context: Dict[str, Any], user: str) -> str:
+        """
+        Format the context builder's output into a compact system-prompt block.
+        Only includes what's actually present — returns "" for empty context.
+        """
+        lines = []
+
+        viewer_data = context.get('viewer_data') or {}
+        if isinstance(viewer_data, dict):
+            facts = []
+            for key, value in viewer_data.items():
+                # Only simple scalar facts; skip internals and empty values
+                if key in ('from_memory', 'channel') or value in (None, '', 0, [], {}):
+                    continue
+                if isinstance(value, (str, int, float)):
+                    facts.append(f"{key.replace('_', ' ')}: {value}")
+            if facts:
+                lines.append(f"- About {user}: " + ", ".join(facts))
+
+        history = context.get('history_summary')
+        if history:
+            lines.append(f"- History with {user}: {history}")
+
+        engagement = context.get('engagement_level')
+        if engagement:
+            lines.append(f"- Engagement level: {engagement}")
+
+        # recent_context duplicates the chat turns inserted into messages,
+        # so only use it when there is no message history to insert
+        if not context.get('recent_messages') and context.get('recent_context'):
+            lines.append(f"- Recent chat: {context['recent_context']}")
+
+        if not lines:
+            return ""
+        return "What you know right now:\n" + "\n".join(lines)
+
     def _generate_template_response(self, message: str, user: str) -> str:
         """
         Generate response from templates

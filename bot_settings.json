@@ -2,6 +2,8 @@
   "TTS_ENABLED": true,
   "tts_voice": "shimmer",
   "tts_speed": 1.25,
+  "llm_model": "gpt-4o-mini",
+  "streamer_name": "cassova_",
   "personality": {
     "preset": "sassy",
     "custom_traits": {
