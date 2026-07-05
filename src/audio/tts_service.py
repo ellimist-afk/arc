@@ -82,28 +82,16 @@ class TTSService:
             if len(audio_bytes) > 44 and audio_bytes[:4] == b'RIFF':
                 logger.debug("Stripping WAV header")
                 audio_bytes = audio_bytes[44:]
-                
-            # Open stream if needed
-            if not self.stream or not self.stream.is_active():
-                logger.debug("Opening audio stream")
-                self.stream = self.pa.open(
-                    format=self.FORMAT,
-                    channels=self.CHANNELS,
-                    rate=self.SAMPLE_RATE,
-                    output=True,
-                    frames_per_buffer=self.CHUNK_SIZE
-                )
-                
-            # Play audio in chunks
-            for i in range(0, len(audio_bytes), self.CHUNK_SIZE):
-                chunk = audio_bytes[i:i + self.CHUNK_SIZE]
-                if len(chunk) < self.CHUNK_SIZE:
-                    # Pad last chunk with silence
-                    chunk += b'\x00' * (self.CHUNK_SIZE - len(chunk))
-                self.stream.write(chunk)
-                
+
+            # Open the stream and write every chunk in a worker thread.
+            # stream.write() blocks for the full chunk duration; summed over a
+            # clip that's hundreds of ms of event-loop starvation if done
+            # inline. The _lock above already serializes playback, so only one
+            # writer touches self.stream at a time.
+            await asyncio.to_thread(self._play_audio_blocking, audio_bytes)
+
             logger.debug("Audio playback completed")
-            
+
         except Exception as e:
             logger.error(f"Audio playback failed: {e}")
             raise
@@ -117,6 +105,32 @@ class TTSService:
                 logger.debug("Playing queued audio")
                 await self.play_audio(next_audio)
                 
+    def _play_audio_blocking(self, audio_bytes: bytes) -> None:
+        """Synchronous playback -- runs in a worker thread, NEVER on the loop.
+
+        Opens the shared PyAudio stream if needed, then writes the PCM in
+        CHUNK_SIZE frames (padding the tail with silence). Callers hold
+        ``self._lock``, so there is a single writer to ``self.stream``.
+        """
+        # Open stream if needed
+        if not self.stream or not self.stream.is_active():
+            logger.debug("Opening audio stream")
+            self.stream = self.pa.open(
+                format=self.FORMAT,
+                channels=self.CHANNELS,
+                rate=self.SAMPLE_RATE,
+                output=True,
+                frames_per_buffer=self.CHUNK_SIZE
+            )
+
+        # Play audio in chunks
+        for i in range(0, len(audio_bytes), self.CHUNK_SIZE):
+            chunk = audio_bytes[i:i + self.CHUNK_SIZE]
+            if len(chunk) < self.CHUNK_SIZE:
+                # Pad last chunk with silence
+                chunk += b'\x00' * (self.CHUNK_SIZE - len(chunk))
+            self.stream.write(chunk)
+
     async def speak(self, text: str, voice: str = "nova") -> None:
         """Synthesize and play text.
         
