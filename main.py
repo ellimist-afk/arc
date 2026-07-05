@@ -83,6 +83,7 @@ def load_configuration():
         
         # API
         'API_PORT': int(os.getenv('API_PORT', '8000')),
+        'API_ENABLED': os.getenv('API_ENABLED', 'false').lower() == 'true',
         
         # OBS
         'OBS_ENABLED': os.getenv('OBS_ENABLED', 'false').lower() == 'true',

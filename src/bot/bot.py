@@ -87,6 +87,7 @@ class TalkBot:
         self.vad_ducking = None  # VAD ducking for natural interrupts
         self.eventsub: Optional[EventSubWebSocket] = None  # EventSub for automatic ad detection
         self.ad_announcer: Optional[AdAnnouncer] = None  # Ad announcer
+        self.api_server = None  # Embedded uvicorn server (API_ENABLED=true)
 
         # Metrics tracking (enabled for PRD compliance)
         self.metrics_collector: Optional[MetricsCollector] = None  # Metrics collection
@@ -509,7 +510,11 @@ class TalkBot:
             # Wait for Twitch connection to complete
             await twitch_connect_task
             logger.info("Twitch connection established")
-            
+
+            # Start embedded API server if enabled
+            if self.config.get('API_ENABLED', False):
+                await self._start_api_server()
+
             logger.info("TalkBot setup complete!")
             
         except Exception as e:
@@ -1168,12 +1173,64 @@ class TalkBot:
         except Exception as e:
             logger.error(f"Error handling ad command: {e}")
     
+    async def _start_api_server(self) -> None:
+        """
+        Launch the V2 FastAPI app inside the bot's event loop (API_ENABLED=true).
+        Import is lazy so disabled mode never pays the heavy app import.
+        """
+        try:
+            import uvicorn
+            from src.api.app import app as api_app
+            from src.api import dependencies as api_dependencies
+
+            # Endpoints reach the bot two ways; both must see this instance
+            api_app.state.bot = self
+            api_dependencies.set_bot_instance(self)
+
+            port = int(self.config.get('API_PORT', 8000))
+            server_config = uvicorn.Config(
+                api_app,
+                host='127.0.0.1',  # auth middleware is a stub - localhost only
+                port=port,
+                # lifespan="off": the app's standalone lifespan would auto-start
+                # a second TalkBot (second PyAudio). Endpoints need only app.state.bot.
+                lifespan='off',
+                log_level='warning',
+            )
+            self.api_server = uvicorn.Server(server_config)
+            # The bot owns SIGINT/SIGTERM; uvicorn must not claim them
+            self.api_server.install_signal_handlers = lambda: None
+
+            self.task_registry.create_task(
+                self._serve_api(),
+                name="api_server"
+            )
+            logger.info(f"Embedded API server starting on http://127.0.0.1:{port}")
+        except Exception as e:
+            # Bot survival is strictly senior to dashboard availability
+            self.api_server = None
+            logger.error(f"Embedded API server failed to start (bot continues): {e}")
+
+    async def _serve_api(self) -> None:
+        """Run uvicorn inside the bot loop; an API failure must never take the bot down."""
+        try:
+            await self.api_server.serve()
+            logger.info("Embedded API server stopped")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"Embedded API server crashed (bot continues): {e}")
+
     async def shutdown(self) -> None:
         """
         Gracefully shutdown all bot components
         """
         logger.info("Starting graceful shutdown...")
         self.running = False
+
+        # Stop accepting API requests before the components endpoints read go away
+        if self.api_server:
+            self.api_server.should_exit = True
         
         # Cancel all tasks via TaskRegistry
         await self.task_registry.shutdown()
