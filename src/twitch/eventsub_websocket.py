@@ -181,8 +181,15 @@ class EventSubWebSocket:
                     f"any follow/sub/cheer events in that window were dropped"
                 )
 
-            # Subscribe to events
-            await self._subscribe_to_events()
+            # Subscribe to events OFF the read loop: the ~13 sequential
+            # subscription POSTs took 3.11s inline, blocking the message pump
+            # (and the PONGs to Twitch's server pings) the whole time. No
+            # ordering hazard -- notifications can't arrive for subscriptions
+            # that don't exist yet.
+            registry_create_task(
+                self._subscribe_to_events(),
+                name=f"eventsub_subscribe_{self.session_id}",
+            )
             
         elif message_type == 'notification':
             # Event notification
