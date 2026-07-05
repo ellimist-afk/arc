@@ -91,35 +91,25 @@ async def get_bot_stats() -> Dict[str, Any]:
 @router.post("/{streamer_id}/start", response_model=Dict[str, str])
 async def start_bot(streamer_id: str) -> Dict[str, str]:
     """Start bot for a specific streamer."""
-    try:
-        from src.api.app import app
-        # This would integrate with bot registry if multi-bot support exists
-        # For now, just return status
-        logger.info(f"Start bot requested for: {streamer_id}")
-        return {
-            "status": "started",
-            "streamer_id": streamer_id,
-            "message": "Bot start initiated"
-        }
-    except Exception as e:
-        logger.error(f"Start bot error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    raise HTTPException(
+        status_code=501,
+        detail=(
+            "Not implemented: in embedded mode the bot is already running "
+            "(the API lives inside its process). Start the bot with main.py."
+        ),
+    )
 
 
 @router.post("/{streamer_id}/stop", response_model=Dict[str, str])
 async def stop_bot(streamer_id: str) -> Dict[str, str]:
     """Stop bot for a specific streamer."""
-    try:
-        from src.api.app import app
-        logger.info(f"Stop bot requested for: {streamer_id}")
-        return {
-            "status": "stopped",
-            "streamer_id": streamer_id,
-            "message": "Bot stop initiated"
-        }
-    except Exception as e:
-        logger.error(f"Stop bot error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    raise HTTPException(
+        status_code=501,
+        detail=(
+            "Not implemented: stopping the bot would kill the API's own "
+            "process; needs auth + confirmation design before exposing."
+        ),
+    )
 
 
 @router.post("/actions/{streamer_id}/mute", response_model=Dict[str, str])
