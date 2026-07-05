@@ -43,10 +43,10 @@ async def detailed_health(request: Request) -> Dict[str, Any]:
             # Get service status
             if hasattr(bot, 'service_registry') and bot.service_registry:
                 service_stats = bot.service_registry.get_stats()
-                services = {
-                    name: "running"
-                    for name in service_stats.get('services', {}).keys()
-                }
+                # get_stats() returns service names as a list
+                registered = service_stats.get('services', [])
+                names = registered if isinstance(registered, list) else list(registered.keys())
+                services = {name: "running" for name in names}
 
             # Calculate uptime
             if hasattr(bot, 'start_time'):

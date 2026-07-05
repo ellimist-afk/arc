@@ -733,8 +733,8 @@ class TalkBot:
                 # Check memory usage
                 memory_stats = self.memory_system.get_stats()  # ResilientMemorySystem.get_stats() is not async
                 
-                # Check audio queue health
-                audio_stats = self.audio_queue.get_stats()
+                # Check audio queue health (get_stats is async)
+                audio_stats = await self.audio_queue.get_stats()
                 
                 # Check response coordinator stats
                 coordinator_stats = None

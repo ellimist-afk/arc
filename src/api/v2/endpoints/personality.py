@@ -27,8 +27,9 @@ async def get_current_personality() -> Dict[str, Any]:
             raise HTTPException(status_code=503, detail="Personality engine not initialized")
 
         current = "unknown"
-        if hasattr(bot.personality_engine, 'current_personality'):
-            current = bot.personality_engine.current_personality
+        preset = getattr(bot.personality_engine, 'current_preset', None)
+        if preset is not None:
+            current = getattr(preset, 'value', str(preset))
 
         return {
             "current": current,
@@ -52,8 +53,9 @@ async def switch_personality(switch: PersonalitySwitch) -> Dict[str, str]:
         if not bot or not hasattr(bot, 'personality_engine'):
             raise HTTPException(status_code=503, detail="Personality engine not initialized")
 
-        # Switch personality
-        await bot.personality_engine.switch_personality(switch.personality)
+        success = await bot.personality_engine.switch_personality_by_name(switch.personality)
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Unknown personality: {switch.personality}")
 
         return {
             "status": "switched",
@@ -77,9 +79,7 @@ async def list_personalities() -> Dict[str, Any]:
         if not bot or not hasattr(bot, 'personality_engine'):
             raise HTTPException(status_code=503, detail="Personality engine not initialized")
 
-        personalities = []
-        if hasattr(bot.personality_engine, 'get_available_personalities'):
-            personalities = bot.personality_engine.get_available_personalities()
+        personalities = list(getattr(bot.personality_engine, 'all_personalities', {}).keys())
 
         return {
             "personalities": personalities,

@@ -73,12 +73,8 @@ async def reload_settings() -> Dict[str, str]:
         if not bot:
             raise HTTPException(status_code=503, detail="Bot not initialized")
 
-        # Reload settings if bot has the method
-        if hasattr(bot, 'reload_settings'):
-            await bot.reload_settings()
-            return {"status": "reloaded"}
-
-        return {"status": "no_reload_method"}
+        await bot._reload_settings()
+        return {"status": "reloaded"}
 
     except HTTPException:
         raise

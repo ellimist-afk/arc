@@ -90,10 +90,10 @@ async def get_dashboard_data() -> Dict[str, Any]:
         if hasattr(bot, 'service_registry') and bot.service_registry:
             data["services"] = bot.service_registry.get_stats()
 
-        # Cache stats
+        # Cache stats (attribute is `cache`; get_stats is async)
         if hasattr(bot, 'audio_queue') and bot.audio_queue:
-            if hasattr(bot.audio_queue, 'persistent_cache'):
-                data["cache_stats"] = bot.audio_queue.persistent_cache.get_stats()
+            if getattr(bot.audio_queue, 'cache', None):
+                data["cache_stats"] = await bot.audio_queue.cache.get_stats()
 
         return data
 

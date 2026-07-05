@@ -27,10 +27,9 @@ async def get_audio_stats() -> Dict[str, Any]:
             queue_stats = await bot.audio_queue.get_stats()
             stats["queue"] = queue_stats
 
-        # Get TTS cache stats
-        if hasattr(bot.audio_queue, 'persistent_cache'):
-            cache_stats = bot.audio_queue.persistent_cache.get_stats()
-            stats["cache"] = cache_stats
+        # Get TTS cache stats (attribute is `cache`; TTSCacheSQLite.get_stats is async)
+        if getattr(bot.audio_queue, 'cache', None):
+            stats["cache"] = await bot.audio_queue.cache.get_stats()
 
         return {
             "status": "ok",
@@ -54,15 +53,9 @@ async def get_queue_status() -> Dict[str, Any]:
         if not bot or not hasattr(bot, 'audio_queue'):
             raise HTTPException(status_code=503, detail="Audio queue not initialized")
 
-        # Get queue size and status
-        queue_size = 0
-        is_playing = False
-
-        if hasattr(bot.audio_queue, 'queue'):
-            queue_size = bot.audio_queue.queue.qsize()
-
-        if hasattr(bot.audio_queue, 'is_playing'):
-            is_playing = bot.audio_queue.is_playing
+        # queue is a plain list; current_item is set while a clip is playing
+        queue_size = len(getattr(bot.audio_queue, 'queue', []))
+        is_playing = getattr(bot.audio_queue, 'current_item', None) is not None
 
         return {
             "queue_size": queue_size,

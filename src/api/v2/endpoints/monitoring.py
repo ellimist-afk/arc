@@ -111,11 +111,10 @@ async def get_dashboard_data() -> Dict[str, Any]:
             data["services"] = service_stats
             data["service_count"] = len(service_stats.get('services', {}))
 
-        # Memory system stats
+        # Memory system stats (ResilientMemorySystem.get_stats() is sync)
         if hasattr(bot, 'memory_system') and bot.memory_system:
             try:
-                memory_stats = await bot.memory_system.get_stats()
-                data["memory_stats"] = memory_stats
+                data["memory_stats"] = bot.memory_system.get_stats()
             except Exception as e:
                 logger.warning(f"Failed to get memory stats: {e}")
 
@@ -129,11 +128,10 @@ async def get_dashboard_data() -> Dict[str, Any]:
                 except Exception as e:
                     logger.warning(f"Failed to get audio stats: {e}")
 
-            # TTS cache stats
-            if hasattr(bot.audio_queue, 'persistent_cache'):
+            # TTS cache stats (attribute is `cache`; get_stats is async)
+            if getattr(bot.audio_queue, 'cache', None):
                 try:
-                    cache_stats = bot.audio_queue.persistent_cache.get_stats()
-                    data["cache_stats"] = cache_stats
+                    data["cache_stats"] = await bot.audio_queue.cache.get_stats()
                 except Exception as e:
                     logger.warning(f"Failed to get cache stats: {e}")
 

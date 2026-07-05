@@ -20,8 +20,8 @@ async def get_memory_stats() -> Dict[str, Any]:
         if not bot or not hasattr(bot, 'memory_system'):
             raise HTTPException(status_code=503, detail="Memory system not initialized")
 
-        # Get stats from memory system
-        stats = await bot.memory_system.get_stats()
+        # ResilientMemorySystem.get_stats() is sync
+        stats = bot.memory_system.get_stats()
 
         return {
             "status": "ok",
@@ -45,12 +45,15 @@ async def get_user_memory(username: str) -> Dict[str, Any]:
         if not bot or not hasattr(bot, 'memory_system'):
             raise HTTPException(status_code=503, detail="Memory system not initialized")
 
-        # Get user memory
-        memory = await bot.memory_system.get_user_memory(username)
+        context = await bot.memory_system.get_user_context(username)
+        stats = await bot.memory_system.get_user_stats(username)
 
         return {
             "username": username,
-            "memory": memory or {}
+            "memory": {
+                "context": context or {},
+                "stats": stats or {}
+            }
         }
 
     except HTTPException:

@@ -132,17 +132,10 @@ async def mute_bot(streamer_id: str) -> Dict[str, str]:
         if not bot:
             raise HTTPException(status_code=503, detail="Bot not initialized")
 
-        # Mute audio queue if available
-        if hasattr(bot, 'audio_queue') and bot.audio_queue:
-            if hasattr(bot.audio_queue, 'mute'):
-                bot.audio_queue.mute()
-                return {
-                    "status": "muted",
-                    "streamer_id": streamer_id
-                }
-
+        # bot.muted is the real mute flag (checked before the bot responds)
+        bot.muted = True
         return {
-            "status": "no_audio_queue",
+            "status": "muted",
             "streamer_id": streamer_id
         }
 
