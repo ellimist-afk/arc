@@ -12,6 +12,7 @@ import redis.asyncio as redis
 
 from database.session import DatabaseSessionManager, ResilientDatabaseConnection
 from memory.single_memory_system import SingleMemorySystem
+from utils.task_registry import create_task as registry_create_task
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,11 @@ class ResilientMemorySystem:
                 self.redis_client = None
         
         # Start background task to check database availability
-        asyncio.create_task(self._monitor_database_health())
+        # (tracked via TaskRegistry per the project's no-raw-create_task rule)
+        registry_create_task(
+            self._monitor_database_health(),
+            name="memory_db_health_monitor"
+        )
     
     async def _monitor_database_health(self):
         """Background task to periodically check database availability"""
