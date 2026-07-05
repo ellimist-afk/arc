@@ -25,6 +25,7 @@ from audio.optimized_queue import OptimizedAudioQueue
 from personality.personality_engine import PersonalityEngine
 from api.websocket_manager import WebSocketManager
 from components.voice.recognition import VoiceRecognition
+from components.voice.trigger_match import match_hey_trigger
 from bot.optimized_context_builder import OptimizedContextBuilder
 from bot.channel_chat_buffer import ChannelChatBuffer
 from core.bot_state import BotState
@@ -1080,17 +1081,17 @@ class TalkBot:
             bot_name = self.config.get('BOT_NAME', 'talkbot').lower()
             needs_response = False
             
-            # 1. Respond to various "hey" greetings directed at the bot
-            # Include common misrecognitions
-            hey_triggers = ['hey bot', 'hey talkbot', 'hey bud', 'hey buddy', 
-                          'hey boss', 'hey there', 'hey elimist', 'yo bot',
-                          'ok bot', 'alright bot', 'listen bot',
-                          # Common misrecognitions of "hey bot"
-                          'hey bought', 'hey but', 'hey thought', 'hey bart',
-                          'hey bott', 'hay bot', 'hey bod', 'hey pot']
-            
-            if any(trigger in text_lower for trigger in hey_triggers):
+            # 1. Respond to various "hey" greetings directed at the bot.
+            # The trigger list and the normalization for recognizer misfires
+            # ("hey b..." heard as "play ...") live in trigger_match.py.
+            trigger_matched, trigger_how = match_hey_trigger(text_lower)
+            if trigger_matched:
                 needs_response = True
+                if trigger_how != 'exact':
+                    # Loud on purpose: non-exact hits are how false positives
+                    # get diagnosed from the stream log
+                    logger.info(f"[VOICE] Trigger via {trigger_how} match "
+                                f"(recognizer misfire tolerated): '{text}'")
                 logger.info(f"Voice: Bot triggered - '{text}'")
             # Also respond if bot name is mentioned
             elif bot_name in text_lower and len(text_lower.split()) <= 10:
