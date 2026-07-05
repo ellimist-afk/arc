@@ -484,12 +484,6 @@ class TalkBot:
                 if success:
                     logger.info("Voice recognition active and listening")
                     self.service_registry.register('VoiceService', self.voice_recognition)
-                    
-                    # Start voice processing task
-                    self.task_registry.create_task(
-                        self._process_voice_commands(),
-                        name="voice_processor"
-                    )
                 else:
                     logger.warning("Voice recognition failed to start")
                     
@@ -1169,25 +1163,6 @@ class TalkBot:
         except Exception as e:
             logger.error(f"Error handling voice input: {e}")
             
-    async def _process_voice_commands(self) -> None:
-        """
-        Process queued voice commands from recognition system
-        """
-        while self.running:
-            try:
-                if self.voice_recognition:
-                    # Check for queued voice text
-                    text = await self.voice_recognition.get_queued_text(timeout=0.5)
-                    
-                    if text:
-                        await self._handle_voice_input(text)
-                        
-                await asyncio.sleep(0.1)
-                
-            except Exception as e:
-                logger.error(f"Error processing voice commands: {e}")
-                await asyncio.sleep(1)
-    
     async def _handle_raid_event(self, event: Dict[str, Any]) -> None:
         """
         Handle raid events from IRC USERNOTICE

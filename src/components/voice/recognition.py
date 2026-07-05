@@ -206,7 +206,9 @@ class VoiceRecognition:
             text = recognizer.recognize_google(audio)
             logger.info(f"Background recognition: '{text}'")
             
-            # Call registered callback if available
+            # Exactly ONE delivery path per utterance: with a callback
+            # registered, also queueing the text hands it to any pull-based
+            # consumer as well and the bot processes it twice.
             if self.on_text_recognized and self.main_loop:
                 # Schedule the coroutine to run in the main event loop
                 try:
@@ -216,9 +218,8 @@ class VoiceRecognition:
                     )
                 except Exception as e:
                     logger.error(f"Error scheduling callback: {e}")
-                
-            # Queue the text for processing
-            if not self.audio_queue.full():
+            elif not self.audio_queue.full():
+                # No callback: queue for pull-based consumers (get_queued_text)
                 self.audio_queue.put(text)
                 
         except sr.UnknownValueError:

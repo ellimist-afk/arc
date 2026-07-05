@@ -76,9 +76,8 @@ talkbot-extracted/
 temp-extract/
 *.zip
 
-# Tests
-tests/
-test_*.py
+# Stray test scripts at repo root (the real suite lives in tests/, tracked)
+/test_*.py
 **/test_*.html
 
 # Demo/validation scripts
