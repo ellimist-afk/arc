@@ -237,15 +237,20 @@ class VoiceRecognition:
                 
     async def get_queued_text(self, timeout: float = 0.1) -> Optional[str]:
         """Get text from the recognition queue.
-        
+
+        Never blocks the event loop: the blocking queue.Queue.get runs in a
+        worker thread. (A previous version called it inline from this async
+        method, stalling the loop for up to `timeout` per call -- the chronic
+        ~240ms/1.24s loop-lag source when polled with timeout=0.5.)
+
         Args:
             timeout: Max time to wait for text
-            
+
         Returns:
             Recognized text or None
         """
         try:
-            return self.audio_queue.get(timeout=timeout)
+            return await asyncio.to_thread(self.audio_queue.get, True, timeout)
         except Empty:
             return None
             
