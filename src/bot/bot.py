@@ -106,6 +106,9 @@ class TalkBot:
         self.in_conversation = False  # Track if we're in active conversation
         self.conversation_timeout = 30  # End conversation after 30s of no interaction
         
+        # Memory health tracking - degradation must never be silent
+        self._memory_healthy = True
+
         # Bot state
         self.muted = False  # Can be toggled via voice commands
         self.tts_enabled = True  # TTS on/off state
@@ -220,6 +223,12 @@ class TalkBot:
             )
             await self.memory_system.initialize()
             self.service_registry.register('MemoryService', self.memory_system)
+
+            # Startup gate: DB connectivity AND schema completeness.
+            # Degradation is allowed (bot still runs) but never silent.
+            self._memory_healthy, memory_reason = await self._check_memory_health()
+            if not self._memory_healthy:
+                self._log_memory_degraded(memory_reason)
 
             # Initialize ChannelChatBuffer for real-time conversational context
             logger.info("Initializing ChannelChatBuffer...")
@@ -511,6 +520,10 @@ class TalkBot:
             await twitch_connect_task
             logger.info("Twitch connection established")
 
+            # If memory came up degraded, say so in chat now that we can
+            if not self._memory_healthy:
+                await self._send_memory_offline_notice()
+
             # Start embedded API server if enabled
             if self.config.get('API_ENABLED', False):
                 await self._start_api_server()
@@ -715,6 +728,56 @@ class TalkBot:
                 logger.error(f"Error processing audio queue: {e}")
                 await asyncio.sleep(1)
                 
+    # Tables the memory system reads/writes; schema drift here means the bot
+    # silently loses viewer memory (April 2026: ran 10 weeks without noticing)
+    MEMORY_REQUIRED_TABLES = ('users', 'chat_messages')
+
+    async def _check_memory_health(self) -> tuple:
+        """
+        Verify DB connectivity AND schema completeness.
+
+        Returns:
+            (healthy, reason) - healthy only if the DB is reachable and every
+            table the memory system uses exists.
+        """
+        if not (self.memory_system
+                and getattr(self.memory_system, 'db_available', False)
+                and self.memory_system.db):
+            return False, "database unreachable"
+        try:
+            rows = await self.memory_system.db.fetch(
+                """
+                SELECT table_name FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = ANY($1::text[])
+                """,
+                list(self.MEMORY_REQUIRED_TABLES)
+            )
+            found = {r['table_name'] for r in rows} if rows else set()
+            missing = [t for t in self.MEMORY_REQUIRED_TABLES if t not in found]
+            if missing:
+                return False, f"missing tables: {', '.join(missing)}"
+            return True, "ok"
+        except Exception as e:
+            return False, f"schema check failed: {e}"
+
+    def _log_memory_degraded(self, reason: str) -> None:
+        """CRITICAL banner - ASCII only (cp1252 console chokes on unicode)."""
+        logger.critical("!" * 60)
+        logger.critical("!!! MEMORY OFFLINE - BOT RUNNING WITHOUT VIEWER MEMORY !!!")
+        logger.critical(f"!!! Reason: {reason}")
+        logger.critical("!!! Conversations will NOT persist until this is fixed")
+        logger.critical("!" * 60)
+
+    async def _send_memory_offline_notice(self) -> None:
+        """One chat line so degradation is visible in-stream, never spammed."""
+        try:
+            if self.twitch_client and self.twitch_client.is_connected():
+                await self.twitch_client.send_message(
+                    "⚠ memory offline - running without viewer memory"
+                )
+        except Exception as e:
+            logger.error(f"Failed to send memory-offline chat notice: {e}")
+
     async def _health_monitor(self) -> None:
         """
         Monitor bot health and performance metrics
@@ -730,6 +793,16 @@ class TalkBot:
                         # Reload settings
                         await self._reload_settings()
                 
+                # Memory health: alert on healthy->degraded transition only
+                memory_ok, memory_reason = await self._check_memory_health()
+                if not memory_ok and self._memory_healthy:
+                    self._memory_healthy = False
+                    self._log_memory_degraded(memory_reason)
+                    await self._send_memory_offline_notice()
+                elif memory_ok and not self._memory_healthy:
+                    self._memory_healthy = True
+                    logger.info("Memory system recovered - DB and schema healthy")
+
                 # Check memory usage
                 memory_stats = self.memory_system.get_stats()  # ResilientMemorySystem.get_stats() is not async
                 
