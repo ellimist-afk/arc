@@ -24,15 +24,31 @@ class TaskRegistry:
         self.task_stats: Dict[str, Dict[str, Any]] = {}
         self._cleanup_interval = 60  # Cleanup every 60 seconds
         self._cleanup_task: Optional[asyncio.Task] = None
+        self._cleanup_started = False  # Flag to track if cleanup has been started
         self._shutdown = False
         
-        # Start cleanup task
-        self._start_cleanup()
-        
-    def _start_cleanup(self) -> None:
-        """Start the background cleanup task"""
-        if not self._cleanup_task or self._cleanup_task.done():
-            self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
+    def _ensure_cleanup_started(self) -> None:
+        """
+        Lazily start the background cleanup task when first needed.
+        This prevents RuntimeError when no event loop is running at import time.
+        """
+        if self._cleanup_started:
+            return  # Already started, no-op
+
+        try:
+            # Try to get the running event loop
+            loop = asyncio.get_running_loop()
+
+            # Create cleanup task in the running loop
+            if not self._cleanup_task or self._cleanup_task.done():
+                self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
+                self._cleanup_started = True
+                logger.debug("TaskRegistry cleanup task started")
+
+        except RuntimeError:
+            # No running event loop - this is fine, cleanup will start on first task creation
+            logger.debug("No running event loop, cleanup task will start on first task creation")
+            pass
             
     async def _periodic_cleanup(self) -> None:
         """Periodically clean up completed tasks"""
@@ -51,15 +67,18 @@ class TaskRegistry:
     ) -> asyncio.Task:
         """
         Create and register a task with proper tracking
-        
+
         Args:
             coro: Coroutine to run
             name: Optional name for the task
             cleanup: Whether to auto-cleanup when done
-            
+
         Returns:
             The created task
         """
+        # Ensure cleanup task is started (lazy init)
+        self._ensure_cleanup_started()
+
         # Generate name if not provided
         if not name:
             name = f"task_{len(self.active_tasks)}_{datetime.now().timestamp()}"

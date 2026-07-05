@@ -9,6 +9,11 @@ import logging
 import time
 from contextlib import asynccontextmanager
 
+# Load .env before any src import reads settings — main.py and start_web_ui.py
+# load it themselves, but `uvicorn src.api.app:app` invoked directly does not.
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -56,7 +61,7 @@ from src.services.cache_cleanup import (
     start_cache_cleanup,
     stop_cache_cleanup,
 )
-from src.services.service_registry import ServiceRegistry
+from src.services.service_registry import ServiceRegistry, get_global_registry
 from src.services.registry_migration import (
     get_migration_controller,
     get_registry_mode,
@@ -146,12 +151,13 @@ async def register_shutdown_components():
         timeout=5.0,
     )
 
-    shutdown_manager.register(
-        name="Security Monitor",
-        # shutdown_func=shutdown_security_monitor,
-        priority=ShutdownPriority.HIGH,
-        timeout=5.0,
-    )
+    # DISABLED - security monitor import is commented out above
+    # shutdown_manager.register(
+    #     name="Security Monitor",
+    #     shutdown_func=shutdown_security_monitor,
+    #     priority=ShutdownPriority.HIGH,
+    #     timeout=5.0,
+    # )
     
     shutdown_manager.register(
         name="Health Monitoring",
@@ -176,12 +182,13 @@ async def register_shutdown_components():
         timeout=2.0,  # Reduced for faster shutdown
     )
 
-    shutdown_manager.register(
-        name="Memory Cleanup Manager",
-        # shutdown_func=shutdown_memory_cleanup_manager,
-        priority=ShutdownPriority.NORMAL,
-        timeout=1.0,  # Reduced for faster shutdown
-    )
+    # DISABLED - memory cleanup import is commented out above
+    # shutdown_manager.register(
+    #     name="Memory Cleanup Manager",
+    #     shutdown_func=shutdown_memory_cleanup_manager,
+    #     priority=ShutdownPriority.NORMAL,
+    #     timeout=1.0,  # Reduced for faster shutdown
+    # )
 
     # Low: Close connections and cleanup
     shutdown_manager.register(
@@ -219,12 +226,13 @@ async def register_shutdown_components():
         timeout=2.0,  # Reduced for faster shutdown
     )
 
-    shutdown_manager.register(
-        name="Connection Pools",
-        # shutdown_func=shutdown_connection_pools,
-        priority=ShutdownPriority.LOW,
-        timeout=2.0,  # Reduced for faster shutdown
-    )
+    # DISABLED - connection pool import is commented out above
+    # shutdown_manager.register(
+    #     name="Connection Pools",
+    #     shutdown_func=shutdown_connection_pools,
+    #     priority=ShutdownPriority.LOW,
+    #     timeout=2.0,  # Reduced for faster shutdown
+    # )
 
     # Only log in verbose mode
     if os.getenv("VERBOSE_STARTUP", "false").lower() == "true":
@@ -313,7 +321,7 @@ async def shutdown_service_registry():
             await migration_controller.shutdown_all()
         else:
             # Use old registry directly
-            service_registry = ServiceRegistry.get_instance()
+            service_registry = get_global_registry()
             await service_registry.shutdown_all()
     except Exception as e:
         log.error(f"ServiceRegistry shutdown error: {e}")
@@ -399,9 +407,9 @@ async def _register_all_services(service_registry: ServiceRegistry) -> None:
 async def lifespan(app: FastAPI):
     """FastAPI application lifespan manager."""
     log.info("===== LIFESPAN CONTEXT MANAGER ENTERED =====")
-    
+
     # Create TaskRegistry for API server tasks
-    task_registry = TaskRegistry(name="api_server")
+    task_registry = TaskRegistry()
     
     # Helper for conditional logging
     verbose_mode = os.getenv("VERBOSE_STARTUP", "false").lower() == "true"
@@ -429,6 +437,12 @@ async def lifespan(app: FastAPI):
         await db_manager.create_tables()
         startup_log("[STARTUP] Database initialization complete")
         
+        # NOTE: The running bot (main.py -> TalkBot) does NOT use this
+        # ServiceRegistry — it instantiates its components directly. The
+        # registry below is API-only scaffolding, and the service modules it
+        # was designed to host (stream/chat/memory/analytics/etc.) were never
+        # implemented. Non-health endpoints cannot serve real bot data until
+        # those services exist or the API is rewired to the bot's live objects.
         # Initialize ServiceRegistry based on migration mode
         registry_mode = get_registry_mode()
         startup_log(f"[STARTUP] Registry mode: {registry_mode}")
@@ -449,20 +463,21 @@ async def lifespan(app: FastAPI):
             service_registry = migration_controller
         else:
             # Use old registry directly
-            service_registry = ServiceRegistry.get_instance()
+            service_registry = get_global_registry()
             startup_log("[STARTUP] ServiceRegistry initialized (legacy mode)")
             
-            # Register all services with the registry
-            await _register_all_services(service_registry)
-        startup_log("[STARTUP] All services registered with registry")
-        
-        # Initialize all registered services (defer background tasks)
-        startup_log("[STARTUP] Initializing all services (deferred mode)...")
-        if isinstance(service_registry, MigrationController):
-            await service_registry.initialize_all()
-        else:
-            await service_registry.initialize_all(defer_background_tasks=True)
-        startup_log("[STARTUP] All services initialized successfully (background tasks deferred)")
+            # Skip service registration for now - services don't exist yet
+            # await _register_all_services(service_registry)
+            startup_log("[STARTUP] Skipping service registration (services not implemented yet)")
+        startup_log("[STARTUP] Service registry ready")
+
+        # Skip service initialization for now
+        startup_log("[STARTUP] Skipping service initialization (services not implemented yet)")
+        # if isinstance(service_registry, MigrationController):
+        #     await service_registry.initialize_all()
+        # else:
+        #     await service_registry.initialize_all(defer_background_tasks=True)
+        startup_log("[STARTUP] Services initialization skipped")
         
         # TEMPORARILY DISABLED - debugging startup hang
         # # Initialize core services
@@ -552,22 +567,23 @@ async def lifespan(app: FastAPI):
                 name="auto_start_bot"
             )
 
-        # Schedule background task startup after server starts
-        async def start_service_background_tasks():
-            """Start service background tasks after server is running."""
-            await asyncio.sleep(2)  # Give server time to start
-            log.info("[BACKGROUND] Starting service background tasks...")
-            try:
-                await service_registry.start_background_tasks()
-                log.info("[BACKGROUND] Service background tasks started successfully")
-            except Exception as e:
-                log.error(f"[BACKGROUND] Failed to start service background tasks: {e}")
-        
-        # Schedule the background task
-        task_registry.create_task(
-            start_service_background_tasks(),
-            name="start_service_background_tasks"
-        )
+        # Skip background task startup for now - services don't exist yet
+        # async def start_service_background_tasks():
+        #     """Start service background tasks after server is running."""
+        #     await asyncio.sleep(2)  # Give server time to start
+        #     log.info("[BACKGROUND] Starting service background tasks...")
+        #     try:
+        #         await service_registry.start_background_tasks()
+        #         log.info("[BACKGROUND] Service background tasks started successfully")
+        #     except Exception as e:
+        #         log.error(f"[BACKGROUND] Failed to start service background tasks: {e}")
+        #
+        # # Schedule the background task
+        # task_registry.create_task(
+        #     start_service_background_tasks(),
+        #     name="start_service_background_tasks"
+        # )
+        startup_log("[STARTUP] Skipping background tasks (services not implemented yet)")
         
         log.info("TalkBot API ready")  # Always show completion
         log.info("===== ABOUT TO YIELD FROM LIFESPAN =====")
@@ -632,8 +648,9 @@ async def lifespan(app: FastAPI):
 
                 # Then handle remaining tasks
                 try:
+                    # Just wait for tasks to complete - don't use gather with task objects
                     await asyncio.wait_for(
-                        task_registry.gather(*all_tasks, return_exceptions=True, name_prefix="shutdown_cleanup"), 
+                        asyncio.gather(*all_tasks, return_exceptions=True),
                         timeout=3.0
                     )
                 except asyncio.TimeoutError:
@@ -776,20 +793,18 @@ def create_app() -> FastAPI:
     )
 
     # Correlation ID middleware
+    # NOTE: src.core.correlation (CorrelationManager) was never implemented —
+    # plain UUIDs provide the same request tracing without context propagation.
     @app.middleware("http")
     async def correlation_id_middleware(request: Request, call_next):
         """Add correlation ID to all requests for distributed tracing."""
         import time
-
-        from src.core.correlation import CorrelationManager
+        import uuid
 
         # Get or generate correlation ID
         corr_id = request.headers.get("X-Correlation-ID")
         if not corr_id:
-            corr_id = f"req-{CorrelationManager.generate_id()}"
-
-        # Set in context
-        CorrelationManager.set_correlation_id(corr_id)
+            corr_id = f"req-{uuid.uuid4().hex[:16]}"
 
         # Log request start (only in debug/verbose mode)
         start_time = time.time()
@@ -832,9 +847,6 @@ def create_app() -> FastAPI:
                 extra={"correlation_id": corr_id, "error_type": type(e).__name__},
             )
             raise
-        finally:
-            # Clear correlation ID from context
-            CorrelationManager.clear_correlation_id()
 
     # Security headers are now handled by SecurityHeadersMiddleware
 
@@ -1206,14 +1218,14 @@ def create_app() -> FastAPI:
     async def get_services_status():
         """Get status of all registered services in the ServiceRegistry."""
         try:
-            service_registry = ServiceRegistry.get_instance()
-            service_info = service_registry.get_service_info()
+            service_registry = get_global_registry()
+            service_info = service_registry.get_stats()
             
             return {
                 "status": "success",
                 "timestamp": time.time(),
                 "services": service_info,
-                "message": f"{service_info['total_initialized']}/{service_info['total_registered']} services initialized"
+                "message": f"{service_info['total_services']} services registered"
             }
         except Exception as e:
             log.error(f"Failed to get service status: {e}")
@@ -1226,35 +1238,13 @@ def create_app() -> FastAPI:
     @app.post("/api/services/initialize")
     async def initialize_services():
         """Initialize all registered services in the ServiceRegistry."""
-        try:
-            service_registry = ServiceRegistry.get_instance()
-            
-            # Get current status before initialization
-            before_info = service_registry.get_service_info()
-            
-            # Initialize all services
-            await service_registry.initialize_all()
-            
-            # Get status after initialization
-            after_info = service_registry.get_service_info()
-            
-            return {
-                "status": "success",
-                "timestamp": time.time(),
-                "before": f"{before_info['total_initialized']}/{before_info['total_registered']} services initialized",
-                "after": f"{after_info['total_initialized']}/{after_info['total_registered']} services initialized",
-                "newly_initialized": after_info['total_initialized'] - before_info['total_initialized'],
-                "message": "Service initialization completed"
-            }
-        except Exception as e:
-            log.error(f"Failed to initialize services: {e}")
-            import traceback
-            return {
-                "status": "error",
-                "timestamp": time.time(),
-                "message": str(e),
-                "traceback": traceback.format_exc()
-            }
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                "Not implemented: ServiceRegistry has no initialize_all(). "
+                "Services are initialized by the bot process (main.py), not the API."
+            ),
+        )
 
     @app.get("/api/settings/{streamer_id}")
     async def emergency_settings(
