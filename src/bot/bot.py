@@ -34,6 +34,7 @@ from twitch.eventsub_websocket import EventSubWebSocket
 from features.ad_announcer import AdAnnouncer
 from features.event_announcer import EventAnnouncer
 from monitoring.metrics_collector import MetricsCollector
+from monitoring.loop_lag_monitor import LoopLagMonitor
 
 # Configure logging
 logging.basicConfig(
@@ -108,6 +109,12 @@ class TalkBot:
         
         # Memory health tracking - degradation must never be silent
         self._memory_healthy = True
+
+        # Event-loop lag probe. Blocking work on the loop (PyAudio writes,
+        # numpy, sync I/O) starves latency-sensitive coroutines and, most
+        # visibly, causes Twitch EventSub 4002 disconnects. This monitor
+        # surfaces any stall >100ms so regressions are caught loudly.
+        self._loop_lag_monitor: Optional[LoopLagMonitor] = None
 
         # Bot state
         self.muted = False  # Can be toggled via voice commands
@@ -702,7 +709,17 @@ class TalkBot:
             self._process_audio_queue(),
             name="audio_processor"
         )
-        
+
+        # Loop-lag probe: warns loudly if any single loop tick stalls >100ms,
+        # the bar for "no stall under active TTS + voice load". Cheap enough
+        # to leave on in production; it's how we'd notice a future regression
+        # that reintroduces blocking work on the loop.
+        self._loop_lag_monitor = LoopLagMonitor(interval=1.0, warn_threshold_ms=100.0)
+        self.task_registry.create_task(
+            self._loop_lag_monitor.run(),
+            name="loop_lag_monitor"
+        )
+
         try:
             while self.running:
                 await asyncio.sleep(1)

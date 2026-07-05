@@ -26,6 +26,7 @@ if str(Path(__file__).parent.parent) not in sys.path:
 
 from core.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
 from audio.tts_cache_sqlite import TTSCacheSQLite
+from utils.task_registry import get_global_registry
 
 logger = logging.getLogger(__name__)
 
@@ -126,9 +127,15 @@ class OptimizedAudioQueue:
         self.total_processing_time = 0
         self.quality_degradations = 0
         
-        # Volume control for VAD ducking
+        # Volume control for VAD ducking. Read live inside the chunked
+        # playback loop so ducking takes effect mid-clip, not just per-clip.
         self.current_volume = 1.0
-        
+
+        # Set to interrupt the clip currently being written (skip command).
+        # Checked between chunks in the playback worker thread; cleared at the
+        # start of each new clip.
+        self._skip_playback = False
+
         # Pre-buffered common responses
         self.common_responses = [
             "Hello!",
@@ -175,12 +182,20 @@ class OptimizedAudioQueue:
         # List available audio devices for debugging
         self._list_audio_devices()
         
-        # Pre-buffer common responses if enabled - but do it asynchronously
+        # Pre-buffer common responses if enabled - but do it asynchronously.
+        # Use TaskRegistry (never raw asyncio.create_task) per CLAUDE.md.
+        registry = get_global_registry()
         if self.enable_pre_buffering:
-            asyncio.create_task(self._pre_buffer_responses())
-        
+            registry.create_task(
+                self._pre_buffer_responses(),
+                name="audio_pre_buffer"
+            )
+
         # Start the processing task
-        self.processing_task = asyncio.create_task(self._process_queue())
+        self.processing_task = registry.create_task(
+            self._process_queue(),
+            name="audio_queue_process"
+        )
         logger.info("Started audio queue processing task")
             
         logger.info("OptimizedAudioQueue initialized")
@@ -401,49 +416,98 @@ class OptimizedAudioQueue:
         
     async def _play_audio(self, audio_data: bytes) -> None:
         """
-        Play audio data
-        
+        Play audio data.
+
+        CRITICAL: every blocking PyAudio operation here (opening the output
+        stream, and above all ``stream.write()``, which blocks for the full
+        clip duration) is dispatched to a worker thread via
+        ``asyncio.to_thread``. Running it inline starved the event loop for
+        hundreds of milliseconds per clip -- the documented ~761ms API stall
+        and the root cause of Twitch EventSub 4002 disconnects (the loop
+        couldn't send a timely WebSocket PONG while blocked in write()).
+
         Args:
             audio_data: PCM audio data to play
         """
         try:
             logger.debug(f"Playing audio: {len(audio_data)} bytes")
-            
-            # Open audio stream if not already open
-            if not self.stream:
-                logger.debug("Opening audio stream: 24kHz, mono, 16-bit")
-                # Get default output device index to ensure audio goes to headphones
-                default_device = self.pyaudio.get_default_output_device_info()
-                device_index = default_device.get('index')
-                logger.debug(f"Using audio device: {default_device.get('name')} (index: {device_index})")
-                
-                self.stream = self.pyaudio.open(
-                    format=pyaudio.paInt16,
-                    channels=1,
-                    rate=24000,  # 24kHz as per OpenAI TTS
-                    output=True,
-                    output_device_index=device_index
-                )
+
             if audio_data.startswith(b'RIFF'):
                 # Skip WAV header (44 bytes)
                 logger.debug("Stripping 44-byte WAV header")
                 audio_data = audio_data[44:]
-            
-            # Apply volume scaling for VAD ducking
-            if self.current_volume != 1.0:
-                # Convert to numpy for volume scaling
-                import numpy as np
-                audio_array = np.frombuffer(audio_data, dtype=np.int16)
-                audio_array = (audio_array * self.current_volume).astype(np.int16)
-                audio_data = audio_array.tobytes()
-                logger.debug(f"Applied volume scaling: {self.current_volume:.2f}")
-                
-            self.stream.write(audio_data)
-            logger.info(f"AUDIO PLAYED: {len(audio_data)} bytes, volume={self.current_volume}")
-            
+
+            # Fresh clip: clear any stale skip request from a prior one.
+            self._skip_playback = False
+
+            # Blocking parts (stream open + the full-duration write loop) run
+            # off the event loop. The worker re-reads self.current_volume and
+            # self._skip_playback between chunks, so VAD ducking and the skip
+            # command both take effect mid-clip.
+            await asyncio.to_thread(self._play_audio_blocking, audio_data)
+
+            logger.info(f"AUDIO PLAYED: {len(audio_data)} bytes")
+
         except Exception as e:
             logger.error(f"Error playing audio: {e}")
-            
+
+    # ~4096 frames per chunk. 16-bit mono => 2 bytes/frame => 8192 bytes.
+    # Small enough that volume/skip are re-checked ~3x/sec at 24kHz, large
+    # enough that per-chunk overhead is negligible.
+    _PLAYBACK_CHUNK_FRAMES = 4096
+    _BYTES_PER_FRAME = 2  # paInt16, mono
+
+    def _play_audio_blocking(self, audio_data: bytes) -> None:
+        """
+        Synchronous chunked audio playback -- runs in a worker thread, NEVER
+        on the loop.
+
+        Opens the PyAudio output stream on first use, then writes the PCM in
+        ~4096-frame chunks. Between chunks it re-reads ``self.current_volume``
+        (so VAD ducking applies mid-clip) and ``self._skip_playback`` (so the
+        skip voice command interrupts the current clip, not just the queue).
+        Each ``stream.write`` blocks only for its chunk's duration.
+
+        Single-writer by construction: the queue processes items sequentially
+        (``self.processing`` guard in ``process_next``), so only one
+        ``_play_audio`` -> ``to_thread`` is ever in flight, and the shared
+        ``self.stream`` is not touched concurrently.
+        """
+        # Open audio stream if not already open
+        if not self.stream:
+            logger.debug("Opening audio stream: 24kHz, mono, 16-bit")
+            # Get default output device index to ensure audio goes to headphones
+            default_device = self.pyaudio.get_default_output_device_info()
+            device_index = default_device.get('index')
+            logger.debug(f"Using audio device: {default_device.get('name')} (index: {device_index})")
+
+            self.stream = self.pyaudio.open(
+                format=pyaudio.paInt16,
+                channels=1,
+                rate=24000,  # 24kHz as per OpenAI TTS
+                output=True,
+                output_device_index=device_index
+            )
+
+        import numpy as np
+
+        chunk_bytes = self._PLAYBACK_CHUNK_FRAMES * self._BYTES_PER_FRAME
+        for i in range(0, len(audio_data), chunk_bytes):
+            if self._skip_playback:
+                logger.info("Playback interrupted by skip request")
+                break
+
+            chunk = audio_data[i:i + chunk_bytes]
+
+            # Re-read volume per chunk so mid-clip VAD ducking is audible.
+            volume = self.current_volume
+            if volume != 1.0:
+                audio_array = np.frombuffer(chunk, dtype=np.int16)
+                audio_array = (audio_array * volume).astype(np.int16)
+                chunk = audio_array.tobytes()
+
+            self.stream.write(chunk)
+
     def get_queue_load(self) -> float:
         """
         Get current queue load percentage
@@ -470,7 +534,19 @@ class OptimizedAudioQueue:
             return True
             
         return False
-    
+
+    def skip(self) -> None:
+        """
+        Skip audio: interrupt the clip currently playing AND drop what's queued.
+
+        Sets the skip flag (read between chunks in the playback worker, so the
+        current clip stops within one chunk ~170ms) and clears the pending
+        queue. The flag is auto-cleared when the next clip starts.
+        """
+        self._skip_playback = True
+        self.queue.clear()
+        logger.info("Skip requested: interrupting current clip and clearing queue")
+
     def set_volume(self, volume: float) -> None:
         """
         Set playback volume for VAD ducking

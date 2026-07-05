@@ -365,10 +365,11 @@ class VoiceCommandSystem:
             logger.info(f"TTS toggled to {status}")
     
     async def _cmd_skip_audio(self):
-        """Skip current audio."""
+        """Skip current audio: interrupt the playing clip and clear the queue."""
         if self.bot and self.bot.audio_queue:
-            # Clear the queue (it's a list, not a Queue)
-            self.bot.audio_queue.queue.clear()
+            # skip() sets the interrupt flag (stops the clip mid-playback) and
+            # clears the pending queue, rather than only clearing the queue.
+            self.bot.audio_queue.skip()
             logger.info("Skipped audio queue")
     
     async def _cmd_repeat_last(self):

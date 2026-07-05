@@ -179,13 +179,11 @@ class EventAnnouncer:
             if hasattr(self.bot, 'twitch_client') and self.bot.twitch_client:
                 await self.bot.twitch_client.send_message(message)
 
-            # Queue TTS
+            # Queue TTS. Route through queue_audio with the event's priority
+            # (the old speak() fallback dropped priority and doesn't exist on
+            # OptimizedAudioQueue -- it AttributeError'd if ever reached).
             if hasattr(self.bot, 'audio_queue') and self.bot.audio_queue:
-                # Try priority method first, fall back to regular queue
-                if hasattr(self.bot.audio_queue, 'queue_audio'):
-                    await self.bot.audio_queue.queue_audio(message, priority=priority)
-                elif hasattr(self.bot.audio_queue, 'speak'):
-                    await self.bot.audio_queue.speak(message)
+                await self.bot.audio_queue.queue_audio(message, priority=priority)
 
         except Exception as e:
             logger.error(f"Failed to announce: {e}")
