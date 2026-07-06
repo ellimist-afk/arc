@@ -72,6 +72,9 @@ def load_configuration():
         'TTS_ENABLED': os.getenv('TTS_ENABLED', 'true').lower() == 'true',
         'VOICE_ENABLED': os.getenv('VOICE_ENABLED', 'true').lower() == 'true',
         'VOICE_INPUT_ENABLED': os.getenv('VOICE_INPUT_ENABLED', 'true').lower() == 'true',
+        # 'whisper' = local faster-whisper on GPU; 'google' = legacy cloud ASR
+        'VOICE_ASR_ENGINE': os.getenv('VOICE_ASR_ENGINE', 'whisper').lower(),
+        'WHISPER_MODEL': os.getenv('WHISPER_MODEL', 'small.en'),
         
         # Performance
         'FAST_STARTUP': os.getenv('FAST_STARTUP', 'true').lower() == 'true',

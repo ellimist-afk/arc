@@ -470,7 +470,11 @@ class TalkBot:
             )
             if voice_enabled:
                 logger.info("Initializing Voice Recognition...")
-                self.voice_recognition = VoiceRecognition(tts_service=self.audio_queue)
+                self.voice_recognition = VoiceRecognition(
+                    tts_service=self.audio_queue,
+                    asr_engine=self.config.get('VOICE_ASR_ENGINE', 'whisper'),
+                    whisper_model=self.config.get('WHISPER_MODEL', 'small.en'),
+                )
                 
                 # Initialize voice command system
                 from components.voice.voice_commands import VoiceCommandSystem

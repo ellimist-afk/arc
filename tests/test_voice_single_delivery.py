@@ -5,8 +5,10 @@ through TWO paths -- the registered on_text_recognized callback AND the
 internal queue that bot._process_voice_commands polled -- so
 bot._handle_voice_input ran twice per utterance, ~1ms apart.
 
-No audio device is touched: _audio_callback is invoked directly with a stub
-recognizer, exactly as speech_recognition's listener thread would.
+No audio device is touched: _audio_callback is invoked directly, exactly as
+speech_recognition's listener thread would. Transcription is stubbed on the
+instance (recognizer attribute, google engine) since _audio_callback now
+routes through self._transcribe rather than the recognizer argument.
 """
 import asyncio
 from pathlib import Path
@@ -27,7 +29,8 @@ class StubRecognizer:
 
 
 async def test_utterance_delivered_once_via_callback():
-    vr = VoiceRecognition()
+    vr = VoiceRecognition(asr_engine='google')
+    vr.recognizer = StubRecognizer('hey bot test')
     received = []
 
     async def on_text(text):
@@ -37,7 +40,7 @@ async def test_utterance_delivered_once_via_callback():
     vr.main_loop = asyncio.get_running_loop()
 
     # speech_recognition invokes the callback from its own listener thread
-    await asyncio.to_thread(vr._audio_callback, StubRecognizer('hey bot test'), None)
+    await asyncio.to_thread(vr._audio_callback, vr.recognizer, None)
     await asyncio.sleep(0.2)  # let the scheduled coroutine run
 
     assert received == ['hey bot test']
@@ -48,8 +51,9 @@ async def test_utterance_delivered_once_via_callback():
 
 
 async def test_queue_still_serves_pull_consumers_without_callback():
-    vr = VoiceRecognition()
-    await asyncio.to_thread(vr._audio_callback, StubRecognizer('hello there'), None)
+    vr = VoiceRecognition(asr_engine='google')
+    vr.recognizer = StubRecognizer('hello there')
+    await asyncio.to_thread(vr._audio_callback, vr.recognizer, None)
     assert vr.audio_queue.get_nowait() == 'hello there'
 
 

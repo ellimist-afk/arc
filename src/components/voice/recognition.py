@@ -1,13 +1,46 @@
 """Voice Recognition with <3 second startup time."""
 import asyncio
 import logging
+import os
+import re
 import time
+from pathlib import Path
 from typing import Optional, Callable, Any
+import numpy as np
 import speech_recognition as sr
 import threading
 from queue import Queue, Empty
 
 logger = logging.getLogger(__name__)
+
+# Local Whisper model cache (gitignored); shared with the install smoke test
+_WHISPER_MODEL_DIR = Path(__file__).resolve().parents[3] / 'models' / 'whisper'
+
+_cuda_dlls_registered = False
+
+
+def _prepend_cuda_dll_dirs():
+    """Put the nvidia pip wheels' DLL dirs on PATH for ctranslate2.
+
+    ctranslate2 resolves cublas64_12.dll at inference time through the
+    legacy PATH search on Windows -- os.add_dll_directory is not consulted
+    for that load, so without this the first transcription raises
+    'Library cublas64_12.dll is not found or cannot be loaded'.
+    """
+    global _cuda_dlls_registered
+    if _cuda_dlls_registered:
+        return
+    site_packages = Path(np.__file__).resolve().parents[1]
+    dll_dirs = [
+        str(site_packages / 'nvidia' / sub / 'bin')
+        for sub in ('cublas', 'cudnn', 'cuda_nvrtc')
+    ]
+    dll_dirs = [d for d in dll_dirs if Path(d).is_dir()]
+    if dll_dirs:
+        os.environ['PATH'] = os.pathsep.join(
+            dll_dirs + [os.environ.get('PATH', '')]
+        )
+    _cuda_dlls_registered = True
 
 
 class VoiceRecognition:
@@ -17,17 +50,27 @@ class VoiceRecognition:
     Never creates its own PyAudio instance.
     """
     
-    def __init__(self, tts_service=None):
+    def __init__(self, tts_service=None, asr_engine: str = 'whisper',
+                 whisper_model: str = 'small.en'):
         """Initialize voice recognition.
-        
+
         Args:
             tts_service: TTSService instance to share PyAudio
+            asr_engine: 'whisper' (local faster-whisper on GPU) or 'google'
+                (legacy cloud ASR fallback)
+            whisper_model: faster-whisper model name (small.en / medium.en)
         """
         self.tts = tts_service  # Share PyAudio instance
         self.recognizer = sr.Recognizer()
         self.mic = None
         self._is_listening = False
         self._stop_listening = None
+
+        # ASR engine selection; whisper falls back to google if the model
+        # fails to load (see _load_whisper_model)
+        self.asr_engine = asr_engine
+        self.whisper_model_name = whisper_model
+        self._whisper_model = None
         
         # Audio processing queue
         self.audio_queue = Queue(maxsize=5)
@@ -45,7 +88,7 @@ class VoiceRecognition:
         self.startup_time = None
         self.recognition_times = []
         
-        logger.info("VoiceRecognition initialized")
+        logger.info(f"VoiceRecognition initialized (ASR engine: {self.asr_engine})")
     
     def _find_voicemeeter_device(self):
         """Find best VoiceMeeter device for voice input.
@@ -83,7 +126,71 @@ class VoiceRecognition:
         except Exception as e:
             logger.error(f"Error finding VoiceMeeter device: {e}")
             return None
-        
+
+    def _load_whisper_model(self) -> bool:
+        """Load faster-whisper on CUDA. On any failure, fall back to Google.
+
+        Returns:
+            True if Whisper is loaded and active
+        """
+        try:
+            _prepend_cuda_dll_dirs()
+            from faster_whisper import WhisperModel
+
+            t0 = time.perf_counter()
+            self._whisper_model = WhisperModel(
+                self.whisper_model_name,
+                device='cuda',
+                compute_type='int8_float16',
+                download_root=str(_WHISPER_MODEL_DIR),
+            )
+            logger.info(
+                f"Whisper model '{self.whisper_model_name}' loaded on CUDA "
+                f"in {time.perf_counter() - t0:.2f}s"
+            )
+            return True
+
+        except Exception as e:
+            # Loud on purpose: the operator must never stream on Google
+            # thinking they are on Whisper.
+            logger.error(
+                f"WHISPER MODEL LOAD FAILED -- falling back to Google ASR "
+                f"for this session. Voice recognition is NOT running on "
+                f"Whisper. Reason: {e}"
+            )
+            self._whisper_model = None
+            self.asr_engine = 'google'
+            return False
+
+    def _transcribe(self, audio) -> str:
+        """Transcribe one utterance with the active ASR engine.
+
+        Same contract as recognize_google: returns the transcript, raises
+        sr.UnknownValueError when nothing intelligible was heard.
+        """
+        if self.asr_engine == 'whisper' and self._whisper_model is not None:
+            raw = audio.get_raw_data(convert_rate=16000, convert_width=2)
+            samples = (
+                np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+            )
+            # vad_filter: Whisper hallucinates text on silence/noise
+            # (verified: pure silence -> "You"); Silero VAD drops
+            # non-speech segments in ~3ms before they hit the decoder
+            segments, _info = self._whisper_model.transcribe(
+                samples, language='en', beam_size=1, vad_filter=True
+            )
+            text = ' '.join(seg.text for seg in segments)
+            # Downstream matching (trigger_match, voice-command substring
+            # checks) was built against Google's punctuation-free
+            # transcripts -- "hey, bud." must still contain "hey bud".
+            text = re.sub(r'[,.?!;:"]', '', text)
+            text = ' '.join(text.split())
+            if not text:
+                raise sr.UnknownValueError()
+            return text
+
+        return self.recognizer.recognize_google(audio)
+
     async def start_listening(self) -> bool:
         """Start voice recognition in <3 seconds.
         
@@ -98,8 +205,14 @@ class VoiceRecognition:
         self.main_loop = asyncio.get_running_loop()
             
         start_time = time.perf_counter()
-        
+
         try:
+            # Load the ASR model up front so the one-time CUDA warmup
+            # happens at startup, not on the first mid-stream utterance.
+            # Blocking load runs off the loop; falls back to google inside.
+            if self.asr_engine == 'whisper':
+                await asyncio.to_thread(self._load_whisper_model)
+
             # Initialize microphone with optimized settings
             # Try to find VoiceMeeter output device
             device_index = self._find_voicemeeter_device()
@@ -171,7 +284,7 @@ class VoiceRecognition:
                 
             # Recognize speech
             recognition_start = time.perf_counter()
-            text = self.recognizer.recognize_google(audio)
+            text = self._transcribe(audio)
             
             # Track recognition time
             recognition_time = time.perf_counter() - recognition_start
@@ -202,8 +315,9 @@ class VoiceRecognition:
         Called by speech_recognition when audio is detected.
         """
         try:
-            # Try to recognize the audio
-            text = recognizer.recognize_google(audio)
+            # Try to recognize the audio (runs on the listener thread,
+            # off the event loop -- Whisper inference included)
+            text = self._transcribe(audio)
             logger.info(f"Background recognition: '{text}'")
             
             # Exactly ONE delivery path per utterance: with a callback
@@ -226,6 +340,10 @@ class VoiceRecognition:
             pass  # Couldn't understand audio
         except sr.RequestError as e:
             logger.error(f"Recognition error in background: {e}")
+        except Exception as e:
+            # A transient ASR failure (e.g. CUDA hiccup) must not kill the
+            # listener thread -- log and keep listening
+            logger.error(f"ASR error in background: {e}")
             
     async def _handle_recognized_text(self, text: str):
         """Handle recognized text asynchronously."""
@@ -316,6 +434,7 @@ class VoiceRecognition:
         
         return {
             'is_listening': self._is_listening,
+            'asr_engine': self.asr_engine,
             'startup_time': self.startup_time,
             'average_recognition_time': avg_recognition_time,
             'queued_commands': self.audio_queue.qsize(),
