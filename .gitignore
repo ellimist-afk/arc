@@ -96,3 +96,6 @@ scrub_backup_*/
 cleanup.ps1
 inspect.ps1
 scrub.ps1
+
+# Local Whisper model cache (downloaded at first run, ~460MB)
+models/whisper/

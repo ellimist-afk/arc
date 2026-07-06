@@ -23,6 +23,11 @@ pydub==0.25.1
 soundfile==0.12.1
 wave==0.0.2
 
+# Local ASR (Whisper on CUDA; cuBLAS/cuDNN come from the nvidia pip wheels)
+faster-whisper==1.2.1
+nvidia-cublas-cu12==12.9.2.10
+nvidia-cudnn-cu12==9.24.0.43
+
 # WebSocket
 websockets==12.0
 
