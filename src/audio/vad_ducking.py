@@ -108,56 +108,89 @@ class VADDucking:
             return False
             
     def _find_microphone(self) -> Optional[int]:
-        """Find the best microphone device"""
+        """Find the best microphone device for VAD ducking.
+
+        VAD must monitor a mic-ONLY bus. A generic "voicemeeter" match can land
+        on an output like "Voicemeeter Out A2" that carries the full stream mix
+        (mic + game + browser + discord), so game audio would falsely trigger
+        ducking. Prefer the dedicated mic-only tap (Voicemeeter Out B3) before
+        falling back to the generic match. Mirrors the priority approach in
+        recognition._find_voicemeeter_device.
+        """
         try:
-            # Look for specific microphone patterns
+            device_count = self.pyaudio.get_device_count()
+
+            def input_devices():
+                for i in range(device_count):
+                    try:
+                        info = self.pyaudio.get_device_info_by_index(i)
+                    except Exception:
+                        continue
+                    # Skip output-only devices
+                    if info['maxInputChannels'] == 0:
+                        continue
+                    yield i, info
+
+            # Tier 1: dedicated mic-only bus (preferred)
+            for i, info in input_devices():
+                if 'voicemeeter out b3' in info['name'].lower():
+                    logger.info(
+                        f"VAD mic: dedicated mic-only bus (tier 1) - "
+                        f"{info['name']} (index: {i})"
+                    )
+                    return i
+
+            # Tier 2: generic VoiceMeeter match (fallback) -- may carry a mix
+            for i, info in input_devices():
+                if 'voicemeeter' in info['name'].lower():
+                    logger.info(
+                        f"VAD mic: generic VoiceMeeter fallback (tier 2) - "
+                        f"{info['name']} (index: {i}); B3 mic-only bus not found, "
+                        f"stream audio may falsely trigger ducking"
+                    )
+                    return i
+
+            # Tier 3: best non-VoiceMeeter input device (existing behavior)
             preferred_mics = [
                 "samson q2u",
-                "blue yeti", 
+                "blue yeti",
                 "audio-technica",
                 "shure",
                 "rode",
-                "voicemeeter"
             ]
-            
-            device_count = self.pyaudio.get_device_count()
             best_device = None
             best_score = -1
-            
-            for i in range(device_count):
-                try:
-                    info = self.pyaudio.get_device_info_by_index(i)
-                    
-                    # Skip output devices
-                    if info['maxInputChannels'] == 0:
-                        continue
-                        
-                    name_lower = info['name'].lower()
-                    
-                    # Check for preferred microphones
-                    score = 0
-                    for mic in preferred_mics:
-                        if mic in name_lower:
-                            score += 10
-                            
-                    # Prefer devices with "microphone" in name
-                    if "microphone" in name_lower:
-                        score += 5
-                        
-                    # Prefer higher channel count (stereo mics)
-                    score += info['maxInputChannels']
-                    
-                    if score > best_score:
-                        best_score = score
-                        best_device = i
-                        
-                    logger.debug(f"Mic {i}: {info['name']} (score: {score})")
-                    
-                except:
-                    continue
-                    
+
+            for i, info in input_devices():
+                name_lower = info['name'].lower()
+
+                score = 0
+                for mic in preferred_mics:
+                    if mic in name_lower:
+                        score += 10
+
+                # Prefer devices with "microphone" in name
+                if "microphone" in name_lower:
+                    score += 5
+
+                # Prefer higher channel count (stereo mics)
+                score += info['maxInputChannels']
+
+                if score > best_score:
+                    best_score = score
+                    best_device = i
+
+                logger.debug(f"Mic {i}: {info['name']} (score: {score})")
+
+            if best_device is not None:
+                info = self.pyaudio.get_device_info_by_index(best_device)
+                logger.info(
+                    f"VAD mic: non-VoiceMeeter fallback (tier 3) - "
+                    f"{info['name']} (index: {best_device})"
+                )
+
             return best_device
-            
+
         except Exception as e:
             logger.error(f"Error finding microphone: {e}")
             return None
