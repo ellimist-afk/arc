@@ -1,0 +1,10 @@
+# passive chatter, bots, spam, duplicates, a mention flood, a raid — Arc stays quiet except where policy says otherwise
+{"t": 0.5, "id": "p1", "type": "speech_ended", "source": "streamer_voice", "actor": {"username": "streamer", "roles": ["streamer"]}, "trust": "trusted", "payload": {"text": "nice shot dude"}}
+{"t": 1.0, "id": "c1", "type": "chat_message", "source": "viewer_chat", "actor": {"username": "viewer_a", "roles": ["viewer"]}, "trust": "untrusted", "payload": {"text": "LETSGO"}}
+{"t": 1.2, "id": "c2", "type": "chat_message", "source": "viewer_chat", "actor": {"username": "nightbot_clone", "roles": ["viewer"]}, "trust": "untrusted", "payload": {"text": "Follow us on socials!"}}
+{"t": 1.5, "id": "m1", "type": "chat_mention", "source": "viewer_chat", "actor": {"username": "viewer_b", "roles": ["viewer"]}, "trust": "untrusted", "payload": {"text": "@bot what do you think"}}
+{"t": 2.0, "id": "m2", "type": "chat_mention", "source": "viewer_chat", "actor": {"username": "viewer_b", "roles": ["viewer"]}, "trust": "untrusted", "payload": {"text": "@bot answer me"}}
+{"t": 2.5, "id": "m3", "type": "chat_mention", "source": "viewer_chat", "actor": {"username": "viewer_c", "roles": ["viewer"]}, "trust": "untrusted", "payload": {"text": "@bot me too"}}
+{"t": 3.0, "id": "m1", "type": "chat_mention", "source": "viewer_chat", "actor": {"username": "viewer_b", "roles": ["viewer"]}, "trust": "untrusted", "payload": {"text": "duplicate delivery"}}
+{"t": 4.0, "id": "r1", "type": "platform_event", "source": "platform_event", "actor": {"username": "raider_x", "roles": ["viewer"]}, "trust": "untrusted", "payload": {"kind": "raid", "amount": 25}}
+{"t": 95.0, "id": "old1", "type": "chat_mention", "source": "viewer_chat", "actor": {"username": "viewer_d", "roles": ["viewer"]}, "trust": "untrusted", "ts": 1.0, "payload": {"text": "stale mention"}}

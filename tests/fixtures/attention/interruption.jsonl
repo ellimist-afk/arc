@@ -1,0 +1,7 @@
+# wake → turn → Arc speaks → sustained barge-in commits → interrupting turn answered
+{"t": 0.0, "id": "w1", "type": "wake_phrase_detected", "source": "streamer_voice", "actor": {"username": "streamer", "roles": ["streamer"]}, "trust": "trusted", "payload": {"phrase": "hey helper"}}
+{"t": 1.5, "id": "s1", "type": "speech_ended", "source": "streamer_voice", "actor": {"username": "streamer", "roles": ["streamer"]}, "trust": "trusted", "payload": {"text": "count to twenty"}}
+{"t": 2.2, "id": "a1", "type": "arc_speech_started", "source": "internal", "actor": {"username": "system"}, "trust": "trusted", "payload": {"item_id": "item_count"}}
+{"t": 5.0, "id": "i1", "type": "speech_started", "source": "streamer_voice", "actor": {"username": "streamer", "roles": ["streamer"]}, "trust": "trusted", "payload": {"played_ms": 2800.0}}
+{"t": 5.3, "type": "poll"}
+{"t": 7.1, "id": "i2", "type": "speech_ended", "source": "streamer_voice", "actor": {"username": "streamer", "roles": ["streamer"]}, "trust": "trusted", "payload": {"text": "wait what number were you on"}}
