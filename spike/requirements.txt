@@ -1,0 +1,4 @@
+# Spike-only dependencies (isolated from the app's requirements.txt).
+# python -m pip install -r spike/requirements.txt
+websockets>=14.0      # additional_headers API; GA Realtime over WebSocket
+pyaudio>=0.2.14       # device enumeration + PCM capture/playback
