@@ -108,6 +108,53 @@ def test_load_failure_falls_back_to_google_loudly(monkeypatch, caplog):
     assert any('falling back to Google' in r.message for r in errors)
 
 
+class _RecordingWhisperModel:
+    """Records constructor kwargs; raises on local-only when not 'cached'."""
+
+    calls = []
+    cached = True
+
+    def __init__(self, *args, **kwargs):
+        _RecordingWhisperModel.calls.append(kwargs)
+        if kwargs.get('local_files_only') and not _RecordingWhisperModel.cached:
+            raise FileNotFoundError('not in cache')
+
+
+def _install_recording_model(monkeypatch, cached: bool):
+    _RecordingWhisperModel.calls = []
+    _RecordingWhisperModel.cached = cached
+    monkeypatch.setitem(
+        sys.modules, 'faster_whisper',
+        types.SimpleNamespace(WhisperModel=_RecordingWhisperModel),
+    )
+
+
+def test_cached_model_loads_offline_without_download(monkeypatch, caplog):
+    """A cached model must load with local_files_only=True and never take
+    the download path -- no hub round-trip at stream start."""
+    _install_recording_model(monkeypatch, cached=True)
+    vr = VoiceRecognition(asr_engine='whisper')
+    with caplog.at_level(logging.INFO):
+        assert vr._load_whisper_model() is True
+
+    assert [c['local_files_only'] for c in _RecordingWhisperModel.calls] == [True]
+    assert vr.asr_engine == 'whisper'
+    assert any('from local cache' in r.message for r in caplog.records)
+
+
+def test_uncached_model_falls_through_to_download(monkeypatch, caplog):
+    """First run / new WHISPER_MODEL: cache miss must retry with download
+    rather than failing over to google."""
+    _install_recording_model(monkeypatch, cached=False)
+    vr = VoiceRecognition(asr_engine='whisper')
+    with caplog.at_level(logging.INFO):
+        assert vr._load_whisper_model() is True
+
+    assert [c['local_files_only'] for c in _RecordingWhisperModel.calls] == [True, False]
+    assert vr.asr_engine == 'whisper'
+    assert any('from download' in r.message for r in caplog.records)
+
+
 def test_google_engine_uses_recognize_google():
     vr = VoiceRecognition(asr_engine='google')
     vr.recognizer = types.SimpleNamespace(

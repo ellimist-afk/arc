@@ -143,16 +143,35 @@ class VoiceRecognition:
             _prepend_cuda_dll_dirs()
             from faster_whisper import WhisperModel
 
+            def build(local_files_only: bool):
+                return WhisperModel(
+                    self.whisper_model_name,
+                    device='cuda',
+                    compute_type='int8_float16',
+                    download_root=str(_WHISPER_MODEL_DIR),
+                    local_files_only=local_files_only,
+                )
+
             t0 = time.perf_counter()
-            self._whisper_model = WhisperModel(
-                self.whisper_model_name,
-                device='cuda',
-                compute_type='int8_float16',
-                download_root=str(_WHISPER_MODEL_DIR),
-            )
+            # Offline-first: a cached model must not depend on
+            # huggingface.co being reachable at stream start. Without
+            # local_files_only the hub is contacted on every boot, and a
+            # slow/unreachable hub stalls voice startup. Only fall through
+            # to a download when the cache has no copy (first run, or
+            # WHISPER_MODEL switched to a model not yet fetched).
+            try:
+                self._whisper_model = build(local_files_only=True)
+                source = 'local cache'
+            except Exception as cache_miss:
+                logger.info(
+                    f"Whisper model '{self.whisper_model_name}' not in local "
+                    f"cache ({cache_miss}); downloading"
+                )
+                self._whisper_model = build(local_files_only=False)
+                source = 'download'
             logger.info(
                 f"Whisper model '{self.whisper_model_name}' loaded on CUDA "
-                f"in {time.perf_counter() - t0:.2f}s"
+                f"from {source} in {time.perf_counter() - t0:.2f}s"
             )
             return True
 
