@@ -1,0 +1,11 @@
+# wake → two turns with responses → window expires quietly
+{"t": 0.0, "id": "w1", "type": "wake_phrase_detected", "source": "streamer_voice", "actor": {"username": "streamer", "roles": ["streamer"]}, "trust": "trusted", "payload": {"phrase": "hey helper"}}
+{"t": 1.0, "id": "s1", "type": "speech_started", "source": "streamer_voice", "actor": {"username": "streamer", "roles": ["streamer"]}, "trust": "trusted"}
+{"t": 3.2, "id": "s2", "type": "speech_ended", "source": "streamer_voice", "actor": {"username": "streamer", "roles": ["streamer"]}, "trust": "trusted", "payload": {"text": "why am I losing every game tonight"}}
+{"t": 3.9, "id": "a1", "type": "arc_speech_started", "source": "internal", "actor": {"username": "system"}, "trust": "trusted", "payload": {"item_id": "item_a1"}}
+{"t": 8.0, "id": "a2", "type": "arc_speech_ended", "source": "internal", "actor": {"username": "system"}, "trust": "trusted"}
+{"t": 8.4, "id": "s3", "type": "speech_started", "source": "streamer_voice", "actor": {"username": "streamer", "roles": ["streamer"]}, "trust": "trusted"}
+{"t": 10.0, "id": "s4", "type": "speech_ended", "source": "streamer_voice", "actor": {"username": "streamer", "roles": ["streamer"]}, "trust": "trusted", "payload": {"text": "fast follow-up"}}
+{"t": 10.6, "id": "a3", "type": "arc_speech_started", "source": "internal", "actor": {"username": "system"}, "trust": "trusted"}
+{"t": 14.0, "id": "a4", "type": "arc_speech_ended", "source": "internal", "actor": {"username": "system"}, "trust": "trusted"}
+{"t": 60.0, "type": "poll"}

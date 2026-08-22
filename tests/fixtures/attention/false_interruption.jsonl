@@ -1,0 +1,8 @@
+# Arc speaking; a 150ms cough stays inside the grace window; playback continues
+{"t": 0.0, "id": "w1", "type": "wake_phrase_detected", "source": "streamer_voice", "actor": {"username": "streamer", "roles": ["streamer"]}, "trust": "trusted", "payload": {"phrase": "hey helper"}}
+{"t": 1.0, "id": "s1", "type": "speech_ended", "source": "streamer_voice", "actor": {"username": "streamer", "roles": ["streamer"]}, "trust": "trusted", "payload": {"text": "tell me a story"}}
+{"t": 1.8, "id": "a1", "type": "arc_speech_started", "source": "internal", "actor": {"username": "system"}, "trust": "trusted", "payload": {"item_id": "item_story"}}
+{"t": 4.0, "id": "c1", "type": "speech_started", "source": "streamer_voice", "actor": {"username": "streamer", "roles": ["streamer"]}, "trust": "trusted"}
+{"t": 4.15, "id": "c2", "type": "speech_ended", "source": "streamer_voice", "actor": {"username": "streamer", "roles": ["streamer"]}, "trust": "trusted"}
+{"t": 5.0, "type": "poll"}
+{"t": 9.0, "id": "a2", "type": "arc_speech_ended", "source": "internal", "actor": {"username": "system"}, "trust": "trusted"}
