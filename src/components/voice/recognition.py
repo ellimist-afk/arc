@@ -91,7 +91,11 @@ class VoiceRecognition:
         logger.info(f"VoiceRecognition initialized (ASR engine: {self.asr_engine})")
     
     def _find_voicemeeter_device(self):
-        """Find best VoiceMeeter device for voice input.
+        """Find the best microphone-only device for voice input.
+
+        The stream mix (for example VoiceMeeter B1) can include browser,
+        game, and Discord audio.  Prefer the dedicated B3 microphone bus so
+        speech recognition only receives the streamer's microphone.
         
         Returns:
             Device index or None for default
@@ -99,18 +103,20 @@ class VoiceRecognition:
         try:
             mic_list = sr.Microphone.list_microphone_names()
             
-            # Priority order for VoiceMeeter devices (most likely to have mic audio)
+            # B3 is the dedicated mic-only bus on this setup. Keep mixed
+            # stream buses as fallbacks for installations without B3.
             priority_patterns = [
-                'voicemeeter out b1',  # Usually main output
-                'voicemeeter out a1',  # Alternative main output
-                'cable output',        # Virtual cable output
-                'voicemeeter vaio',    # VAIO output
+                'voicemeeter out b3',  # Dedicated microphone-only bus
+                'voicemeeter out b1',  # Main mix fallback
+                'voicemeeter out a1',  # Alternative mix fallback
+                'cable output',        # Virtual cable fallback
+                'voicemeeter vaio',    # VAIO fallback
             ]
             
             for pattern in priority_patterns:
                 for idx, name in enumerate(mic_list):
                     if pattern in name.lower():
-                        logger.info(f"Using VoiceMeeter device {idx}: {name}")
+                        logger.info(f"Using VoiceMeeter device {idx}: {name} (matched '{pattern}')")
                         return idx
                         
             # Fallback to physical microphone if no VoiceMeeter found
