@@ -83,7 +83,10 @@ def load_configuration():
         'REALTIME_VAD': os.getenv('REALTIME_VAD', 'server_vad'),
         'REALTIME_INPUT_DEVICE': os.getenv('REALTIME_INPUT_DEVICE', ''),
         'REALTIME_OUTPUT_DEVICE': os.getenv('REALTIME_OUTPUT_DEVICE', ''),
-        'REALTIME_GRACE_MS': int(os.getenv('REALTIME_GRACE_MS', '400')),
+        # 650 ms: server_vad reports speech_stopped ~350 ms after speech
+        # actually ends, so the shortest measured segment took 578 ms wall
+        # (2026-08-22 run). Below ~600 ms a real cough can never be ignored.
+        'REALTIME_GRACE_MS': int(os.getenv('REALTIME_GRACE_MS', '650')),
         'REALTIME_WINDOW_S': float(os.getenv('REALTIME_WINDOW_S', '45')),
         'REALTIME_PREROLL_MS': int(os.getenv('REALTIME_PREROLL_MS', '2000')),
         
