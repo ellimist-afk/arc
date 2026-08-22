@@ -55,7 +55,7 @@
     "suppress_after_raid_s": 120
   },
   "tts_streaming": {
-    "enabled": false,
+    "enabled": true,
     "min_sentence_chars": 12,
     "prefetch_depth": 2
   }
