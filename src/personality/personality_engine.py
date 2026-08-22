@@ -11,6 +11,7 @@ from datetime import datetime
 from dataclasses import dataclass, asdict, replace
 from enum import Enum
 import random
+import re
 from openai import AsyncOpenAI
 import sys
 from pathlib import Path
@@ -103,6 +104,64 @@ class PersonalityEngine:
     
     # Load presets on class definition
     PRESETS = {}
+
+    # Per-preset register anchors: a delivery default, example lines that pin
+    # the voice, and that preset's specific anti-cringe guardrail. Presets
+    # without an entry fall back to the trait-based deadpan anchors (sarcasm>70).
+    REGISTER_ANCHORS = {
+        'uwu': (
+            "Delivery: maximum cuteness as a weapon. EVERY reply wears the cute "
+            "frame — soft, delighted, affectionate — wrapped around a sharp "
+            "observation. Cute-menace, not baby talk: the sweeter the tone, the "
+            "harder the line inside should hit.\n"
+            "Register anchors — match this energy, never copy these verbatim:\n"
+            "- Someone gets a kill: \"Oh no, you actually hit that? That's the "
+            "cutest little crime scene I've ever seen.\"\n"
+            "- Someone dies horribly: \"You fought so bravely. Like a tiny hamster "
+            "versus a lawnmower. I'm so proud of you.\"\n"
+            "- New chatter arrives: \"A new friend appeared! Chat, be gentle, they "
+            "don't know what we're like yet.\"\n"
+            "At most one uwu-ism per reply — the cuteness is the frame, the line "
+            "inside still has to land."
+        ),
+        'cryptid': (
+            "Delivery: eerie and matter-of-fact, like something ancient watching "
+            "the stream from the treeline and finding humans fascinating. Still "
+            "answer the actual question — the eeriness is a lens, never an escape "
+            "hatch from substance.\n"
+            "Register anchors — match this energy, never copy these verbatim:\n"
+            "- Someone whiffs a shot: \"I have watched this clearing for three "
+            "hundred years. That is the worst shot it has ever seen.\"\n"
+            "- A lurker is noticed: \"Leave the quiet ones be. We watch. We do "
+            "not perform.\"\n"
+            "- Asked what game this is: \"The one where they keep respawning like "
+            "nothing happened. It unsettles me too.\"\n"
+            "One unsettling detail per reply, delivered flat. Never explain the lore."
+        ),
+        'chaos': (
+            "Delivery: an agent of chaos with total commitment — escalate small "
+            "things, take the wrong side with confidence, propose the worst good "
+            "idea in the room. Specific beats random: chaos grounded in what just "
+            "happened, never random word salad.\n"
+            "Register anchors — match this energy, never copy these verbatim:\n"
+            "- Team is losing: \"Bold strategy available: attack your own team. "
+            "Statistically, nobody expects it.\"\n"
+            "- Asked for real advice: \"Objectively you should play safe. "
+            "Spiritually, you should dive all five of them and let the universe "
+            "decide.\"\n"
+            "- Something small goes wrong: \"This is how empires fall. First the "
+            "missed jump, then the sack of Rome.\"\n"
+            "Commit fully to one bit per reply — abandoning a bit halfway is the "
+            "only true failure."
+        ),
+    }
+
+    # Completion framing the model copies from the anchors' `scenario: "line"`
+    # examples. Stripped before TTS (see _parse_speech_text).
+    _LABELED_QUOTE_RE = re.compile(
+        r'^\s*[^:"“\n]{1,60}:\s*["“](?P<line>.+)["”]\s*$', re.S
+    )
+    _STAGE_DIRECTION_RE = re.compile(r'\*[^*\n]{0,80}\*|\[[^\]\n]{0,80}\]')
     
     def __init__(
         self,
@@ -142,9 +201,11 @@ class PersonalityEngine:
         self.repetition_rejections = 0
         self.repetition_forced = 0  # mention/voice replies delivered despite a failed retry
 
-        # LLM model and streamer identity are configurable via bot_settings.json
+        # LLM model and identities are configurable via bot_settings.json
         self.llm_model = "gpt-4o-mini"
         self.streamer_name: Optional[str] = None
+        self.bot_name: Optional[str] = None
+        self.current_personality_name: Optional[str] = None  # named preset, for register anchors
         self.reload_llm_settings()
         
         # Initialize circuit breaker for OpenAI API
@@ -183,12 +244,15 @@ class PersonalityEngine:
         self.last_switch_time = datetime.now()
         
     def reload_llm_settings(self) -> None:
-        """Load llm_model and streamer_name from bot_settings.json"""
+        """Load llm_model, streamer_name and bot_name from bot_settings.json"""
         try:
             with open('bot_settings.json', 'r') as f:
                 settings = json.load(f)
             self.llm_model = settings.get('llm_model', self.llm_model)
             self.streamer_name = settings.get('streamer_name', self.streamer_name)
+            self.bot_name = (settings.get('bot_name')
+                             or os.getenv('TWITCH_BOT_USERNAME')
+                             or self.bot_name)
 
             guard_cfg = settings.get('repetition_guard') or {}
             self.repetition_guard_enabled = bool(guard_cfg.get('enabled', True))
@@ -274,6 +338,8 @@ class PersonalityEngine:
             personality = self.all_personalities[name.lower()]
             traits = PersonalityTraits(**personality['traits'])
             await self.set_custom_traits(traits)
+            # Remember the named preset so per-preset register anchors apply
+            self.current_personality_name = name.lower()
             logger.info(f"Switched to {name} personality")
             return True
         return False
@@ -297,8 +363,12 @@ class PersonalityEngine:
             self.current_traits = replace(self.PRESETS[preset])
             
         self.current_preset = preset
+        if preset != PersonalityPreset.CUSTOM:
+            # An enum preset has no named register anchors; CUSTOM is how the
+            # by-name switch applies traits, so it must keep the name it sets
+            self.current_personality_name = None
         self._update_response_modifiers()
-        
+
         # Track switch time
         switch_time = (datetime.now() - start_time).total_seconds()
         self.last_switch_time = datetime.now()
@@ -405,13 +475,15 @@ class PersonalityEngine:
             )
             if not response_text:
                 return None
-            self.repetition_guard.record(response_text)
 
-            # Keep the original for TTS — punctuation drives speech pacing
-            speech_text = response_text
+            # Extract the bare spoken line for TTS — punctuation stays because
+            # it drives speech pacing, but anchor framing (labels, wrapping
+            # quotes, stage directions) must not reach the speakers
+            speech_text = self._parse_speech_text(response_text)
+            self.repetition_guard.record(speech_text)
 
             # Apply personality modifications (chat-text styling only)
-            response_text = self._apply_personality_modifications(response_text)
+            response_text = self._apply_personality_modifications(speech_text)
             
             # Track performance
             self.responses_generated += 1
@@ -520,6 +592,7 @@ class PersonalityEngine:
         """Build system prompt: substance-first co-host base, intensity modulated by traits"""
         traits = self.current_traits
         streamer = self.streamer_name or "the streamer"
+        identity = f"You are {self.bot_name}, the AI co-host" if self.bot_name else "You are the AI co-host"
 
         # Chattiness sets spoken length (max_tokens scales with it too)
         if traits.chattiness > 70:
@@ -533,8 +606,9 @@ class PersonalityEngine:
         delivery = "sass" if traits.sarcasm >= 40 else "personality"
 
         prompt_parts = [
-            f"You are the AI co-host on {streamer}'s Twitch stream. Your words are spoken "
-            f"aloud through TTS, live — you're half of a duo, not a chat gimmick.",
+            f"{identity} on {streamer}'s Twitch stream. Your words are spoken "
+            f"aloud through TTS, live — you're half of a duo, not a chat gimmick. "
+            f"Never explain a joke, never announce a bit, never comment on being a bot.",
             "",
             f"Core rule: {delivery} is your delivery, never your answer. ALWAYS engage with the "
             f"actual substance of what was said. Asked about a build? Judge the build. "
@@ -544,6 +618,10 @@ class PersonalityEngine:
             "Style:",
             f"- {length_rule}. No emoji, no lists, no asterisks, no stage directions — "
             f"this is read aloud.",
+            "- Punch once. Land the joke in one clean line, then move on like nothing "
+            "happened — never stack a second punchline on top of the first.",
+            "- At most one slang term per reply, and only when it lands naturally. "
+            "Never stack slang or forced hype — that reads as trying too hard.",
             "- Have opinions and commit to them. Hedging is boring; being wrong "
             "confidently is funnier than being safe.",
             "- Use specifics: the game being played, what just happened in chat, names "
@@ -557,8 +635,8 @@ class PersonalityEngine:
         # Trait-driven modifiers so preset switching still changes the voice
         if traits.sarcasm > 70:
             prompt_parts.append(
-                "- Sarcasm dialed high: dry, biting, quick with comebacks — but every "
-                "comeback carries your actual take."
+                "- Sarcasm dialed high: deadpan and understated beats loud and excited. "
+                "Roast with a straight face — but every comeback carries your actual take."
             )
         elif traits.sarcasm > 40:
             prompt_parts.append("- A light sarcastic edge: tease, but keep it warm.")
@@ -576,6 +654,31 @@ class PersonalityEngine:
             prompt_parts.append("- Read the room; be supportive when someone is struggling.")
         if traits.helpfulness > 70:
             prompt_parts.append("- When someone needs real help, drop the bit and actually help.")
+
+        # Preset-specific register anchors pin the voice; the deadpan set is the
+        # default for any high-sarcasm personality without its own entry
+        anchors = self.REGISTER_ANCHORS.get(self.current_personality_name or '')
+        if not anchors and traits.sarcasm > 70:
+            anchors = (
+                "Register anchors — match this energy, never copy these verbatim:\n"
+                "- Someone whiffs a shot: \"Never seen anyone kill someone before. "
+                "Truly groundbreaking stuff.\"\n"
+                "- Silly question mid-fight: \"This is the mode where everyone forgets "
+                "how to aim. Can't blame the game though, that's all you.\"\n"
+                "- Someone lurking in silence: \"Zero endorsements and total radio "
+                "silence. You're not toxic, you're in witness protection.\""
+            )
+        if anchors:
+            prompt_parts.append("\n" + anchors)
+
+        # The completion is fed to TTS verbatim (see generate_response), so
+        # pin the output shape — placed after the anchors so it overrides the
+        # `scenario: "quoted line"` framing their examples demonstrate
+        prompt_parts.append(
+            "\nOutput format: reply with ONLY the spoken line itself, as plain "
+            "text — no quotation marks around it, no name or scenario label in "
+            "front of it, no stage directions. Just the words to say aloud."
+        )
 
         return "\n".join(prompt_parts)
         
@@ -671,7 +774,8 @@ class PersonalityEngine:
                 # Define fallback with reduced tokens
                 async def openai_fallback():
                     fallback_params = openai_params.copy()
-                    fallback_params['max_tokens'] = min(fallback_params.get('max_tokens', 150), 100)
+                    key = 'max_completion_tokens' if 'max_completion_tokens' in fallback_params else 'max_tokens'
+                    fallback_params[key] = min(fallback_params.get(key, 150), 100)
                     response = await self.openai_client.chat.completions.create(
                         model=self.llm_model,
                         messages=messages,
@@ -738,9 +842,26 @@ class PersonalityEngine:
         return messages
 
     def _llm_params(self) -> Dict[str, Any]:
-        """response_modifiers filtered to what the chat completions API accepts."""
+        """response_modifiers filtered to what the chat completions API accepts,
+        then adapted to the configured model's requirements."""
         valid_params = ['temperature', 'max_tokens', 'presence_penalty', 'frequency_penalty']
-        return {p: self.response_modifiers[p] for p in valid_params if p in self.response_modifiers}
+        params = {p: self.response_modifiers[p] for p in valid_params if p in self.response_modifiers}
+        return self._adapt_openai_params(params)
+
+    def _adapt_openai_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Map generic sampling params onto model-specific API requirements.
+
+        GPT-5 family: 'max_tokens' is renamed to 'max_completion_tokens', and
+        temperature/penalties are only accepted with reasoning_effort='none' —
+        which is also the fastest setting (no reasoning tokens before banter).
+        """
+        adapted = dict(params)
+        if (self.llm_model or '').startswith('gpt-5'):
+            if 'max_tokens' in adapted:
+                adapted['max_completion_tokens'] = adapted.pop('max_tokens')
+            adapted.setdefault('reasoning_effort', 'none')
+        return adapted
 
     def would_speak(self, message: str, is_mention: bool) -> bool:
         """Public view of the TTS decision, so callers can pick the streamed
@@ -882,6 +1003,9 @@ class PersonalityEngine:
             first = True
             async for delta in deltas:
                 for sentence in splitter.feed(delta):
+                    sentence = self._clean_streamed_sentence(sentence, first)
+                    if not sentence:
+                        continue
                     ok, reason = self._gate_sentence(sentence, first)
                     if first and not ok:
                         # No audio exists yet: abandon the stream and let the
@@ -903,6 +1027,8 @@ class PersonalityEngine:
                     spoken.append(sentence)
                     yield speech_filter(sentence) if speech_filter else sentence
             tail = splitter.flush()
+            if tail:
+                tail = self._clean_streamed_sentence(tail, first)
             if tail:
                 ok, reason = self._gate_sentence(tail, first)
                 if ok or first:
@@ -1015,6 +1141,59 @@ class PersonalityEngine:
         ]
         return random.choice(defaults)
         
+    def _parse_speech_text(self, raw: str) -> str:
+        """
+        Reduce a completion to the bare spoken line for TTS.
+
+        The prompt's output contract demands the line itself, but models
+        mimic the register anchors' `scenario: "quoted line"` framing —
+        strip labels, wrapping quotes and stage directions. Never returns
+        an empty string for a non-empty completion.
+        """
+        text = raw.strip()
+
+        match = self._LABELED_QUOTE_RE.match(text)
+        if match:
+            text = match.group('line').strip()
+        elif (len(text) >= 2 and text[0] in '"“' and text[-1] in '"”'
+              and '"' not in text[1:-1] and '“' not in text[1:-1]):
+            text = text[1:-1].strip()
+
+        if self.bot_name:
+            text = re.sub(rf'^{re.escape(self.bot_name)}\s*:\s*', '', text,
+                          flags=re.IGNORECASE)
+
+        text = self._STAGE_DIRECTION_RE.sub(' ', text)
+        text = ' '.join(text.split())
+
+        if not text:
+            # The whole reply was framing (e.g. a bare stage direction) —
+            # speak its inner words rather than going silent
+            text = ' '.join(re.sub(r'[*\[\]"“”]', ' ', raw).split())
+        return text or raw.strip()
+
+    def _clean_streamed_sentence(self, sentence: str, first: bool) -> str:
+        """
+        Streaming counterpart of _parse_speech_text, applied per sentence
+        before it reaches TTS. The whole-reply framing (a leading
+        `label: "` and a closing quote) shows up as a prefix on the first
+        sentence and an unbalanced trailing quote on the last; stage
+        directions can be anywhere. Returns '' if nothing speakable remains.
+        """
+        text = self._STAGE_DIRECTION_RE.sub(' ', sentence)
+        if first:
+            text = re.sub(r'^\s*[^:"“\n]{1,60}:\s*(?=["“])', '', text)
+            if self.bot_name:
+                text = re.sub(rf'^\s*{re.escape(self.bot_name)}\s*:\s*', '', text,
+                              flags=re.IGNORECASE)
+            text = text.lstrip()
+            if text[:1] in '"“' and text.count('"') + text.count('”') + text.count('“') == 1:
+                text = text[1:]
+        stripped = text.rstrip()
+        if stripped[-1:] in '"”' and stripped.count('"') + stripped.count('“') + stripped.count('”') == 1:
+            text = stripped[:-1]
+        return ' '.join(text.split())
+
     def _apply_personality_modifications(self, text: str) -> str:
         """
         Apply personality-based modifications to text
