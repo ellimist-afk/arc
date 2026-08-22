@@ -100,8 +100,12 @@ class StreamInfo:
                 return False
         info = await helix.get_channel_info(self.client_id, token, self.broadcaster_id)
         if not info:
+            logger.warning("StreamInfo: Helix returned no channel info for %s (id %s); "
+                           "the model won't know the category until EventSub channel.update fires",
+                           self.channel_name, self.broadcaster_id)
             return False
         self._apply(info.get("game"), info.get("title"), "helix")
+        logger.info("StreamInfo seeded from Helix: %s", self.describe() or "no category/title set")
         return True
 
     # EventSub handlers — signatures match how EventSubWebSocket dispatches:

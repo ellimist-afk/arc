@@ -145,7 +145,9 @@ class TalkBot:
     def _apply_tts_streaming_settings(self, bot_settings: Dict[str, Any]) -> None:
         cfg = dict(self._TTS_STREAMING_DEFAULTS)
         cfg.update(bot_settings.get('tts_streaming') or {})
-        if cfg != self._tts_streaming:
+        first_load = not getattr(self, '_tts_streaming_logged', False)
+        self._tts_streaming_logged = True
+        if first_load or cfg != self._tts_streaming:
             logger.info(f"TTS streaming: {'ON' if cfg.get('enabled') else 'off'} "
                         f"(min_sentence_chars={cfg.get('min_sentence_chars')}, prefetch_depth={cfg.get('prefetch_depth')})")
         self._tts_streaming = cfg
