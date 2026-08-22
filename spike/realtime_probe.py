@@ -40,6 +40,10 @@ from common import (SAMPLE_RATE, CHANNELS, CHUNK_FRAMES, CHUNK_BYTES, CHUNK_MS,
                     JsonlLogger, resolve_device, ms_of_bytes, bytes_of_ms,
                     cost_of_usage, make_chirp, percentile)
 
+# Windows consoles default to cp1252; the probes print arrows/bullets.
+if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
 try:
     import websockets
 except ImportError:

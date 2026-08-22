@@ -31,6 +31,10 @@ from common import (SAMPLE_RATE, CHANNELS, CHUNK_FRAMES, CHUNK_BYTES,
                     JsonlLogger, list_devices, resolve_device, ms_of_bytes,
                     rms, make_chirp)
 
+# Windows consoles default to cp1252; the probes print arrows/bullets.
+if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
 try:
     import pyaudio
 except ImportError:
