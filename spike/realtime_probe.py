@@ -74,6 +74,18 @@ SCRIPT = [
 # Audio backends: real PyAudio, or a paced null backend for --no-audio runs
 # ---------------------------------------------------------------------------
 
+# GA event names that arrive on every turn and carry nothing the probe
+# measures; listed so "unhandled_event_types" only flags surprises.
+BENIGN_EVENTS = frozenset({
+    "input_audio_buffer.committed",
+    "conversation.item.added", "conversation.item.done",
+    "conversation.item.input_audio_transcription.delta",
+    "response.output_item.added", "response.output_item.done",
+    "response.content_part.added", "response.content_part.done",
+    "response.output_audio.done",
+})
+
+
 class MicCapture:
     """Capture thread → pre-roll ring buffer always; live queue when armed."""
 
@@ -407,7 +419,12 @@ class Probe:
             self.active_response = rid
             self.pending[rid] = {"t_created": now,
                                  "t_speech_stopped": self.t_speech_stopped,
-                                 "t_authorized": self.t_authorized}
+                                 "t_authorized": self.t_authorized,
+                                 "authorized_by": getattr(self, "last_authorize_reason", None)}
+            # A turn end anchors at most ONE response first-audio metric.
+            # Without this, a keypress response with no fresh turn measured
+            # time-since-the-previous-turn (22 s "latency" in run 1).
+            self.t_speech_stopped = None
             self.log.log("response_created", response_id=rid)
         elif t in ("response.output_audio.delta", "response.audio.delta"):
             if t == "response.audio.delta":
@@ -439,6 +456,8 @@ class Probe:
             print(f"\n[api error] {ev.get('error')}")
         elif t in ("session.created", "session.updated"):
             self.log.log(t, session_keys=sorted((ev.get("session") or {}).keys()))
+        elif t in BENIGN_EVENTS:
+            pass
         else:
             if self.unknown_events[t] == 0:
                 self.log.log("unhandled_event", type=t)
@@ -459,6 +478,7 @@ class Probe:
             first_audio = (t_played - lat["t_speech_stopped"]) * 1000
             self.first_audio_ms.append(first_audio)
         self.log.log("response_done", response_id=rid, status=resp.get("status"),
+                     authorized_by=lat.get("authorized_by"),
                      first_audio_ms=round(first_audio, 1) if first_audio else None,
                      model_latency_ms=round((lat["t_first_delta"] - lat["t_authorized"]) * 1000, 1)
                      if lat.get("t_first_delta") and lat.get("t_authorized") else None,
@@ -473,6 +493,7 @@ class Probe:
     async def authorize(self, reason):
         self.t_authorized = time.monotonic()
         self.awaiting_authorization = False
+        self.last_authorize_reason = reason
         self.log.log("response_authorized", reason=reason)
         await self._send({"type": "response.create"})
 
@@ -539,7 +560,9 @@ class Probe:
             elif ch == "p":
                 self.mic.disarm()
                 print("\n[PASSIVE — buffering locally, nothing sent]")
-            elif ch in (" ", "\r", "\n"):
+            elif ch == " ":
+                # SPACE only. Enter used to authorize too, so n + Enter in
+                # scripted mode fired a phantom response with no fresh turn.
                 asyncio.run_coroutine_threadsafe(
                     self.authorize("keypress"), self.loop)
             elif ch == "n" and self.args.scripted:
