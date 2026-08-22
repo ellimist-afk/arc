@@ -87,6 +87,7 @@ class TalkBot:
         self.context_builder: Optional[OptimizedContextBuilder] = None  # PRD required component
         self.response_coordinator: Optional[ResponseCoordinator] = None  # PRD critical component
         self.vad_ducking = None  # VAD ducking for natural interrupts
+        self.realtime_backend = None  # VOICE_BACKEND=realtime (doc SS3)
         self.eventsub: Optional[EventSubWebSocket] = None  # EventSub for automatic ad detection
         self.ad_announcer: Optional[AdAnnouncer] = None  # Ad announcer
         self.api_server = None  # Embedded uvicorn server (API_ENABLED=true)
@@ -491,7 +492,13 @@ class TalkBot:
                     self.service_registry.register('VoiceService', self.voice_recognition)
                 else:
                     logger.warning("Voice recognition failed to start")
-                    
+
+                # Realtime backend (doc SS17 Phase 2). Legacy recognition stays
+                # up: in PASSIVE it is the local wake-phrase detector (U3), and
+                # it is the fallback if the Realtime session fails.
+                if self.config.get('VOICE_BACKEND', 'legacy') == 'realtime':
+                    await self._setup_realtime_backend()
+
             # Initialize VAD ducking if enabled
             if self.config.get('VAD_DUCKING_ENABLED', True) and self.audio_queue:
                 try:
@@ -1033,6 +1040,73 @@ class TalkBot:
                     priority='high'
                 )
     
+    async def _setup_realtime_backend(self) -> None:
+        """Wire VOICE_BACKEND=realtime. Any failure falls back to legacy."""
+        try:
+            from attention.config import AttentionConfig
+            from attention.router import AttentionRouter
+            from realtime.audio_router import AudioRouter
+            from realtime.backend import RealtimeVoiceBackend
+            from realtime.session import RealtimeVoiceSession
+
+            in_spec = self.config.get('REALTIME_INPUT_DEVICE', '')
+            out_spec = self.config.get('REALTIME_OUTPUT_DEVICE', '')
+            if not in_spec or not out_spec:
+                raise RuntimeError(
+                    "REALTIME_INPUT_DEVICE and REALTIME_OUTPUT_DEVICE must be "
+                    "set (no default device is ever guessed)")
+
+            audio = AudioRouter(
+                input_spec=in_spec, output_spec=out_spec,
+                preroll_ms=self.config.get('REALTIME_PREROLL_MS', 2000),
+                loop=asyncio.get_running_loop(),
+                pa=self.audio_queue.pyaudio if self.audio_queue else None)
+
+            session = RealtimeVoiceSession(
+                model=self.config.get('REALTIME_MODEL', 'gpt-realtime-2.1-mini'),
+                voice=self.config.get('REALTIME_VOICE', 'marin'),
+                vad=self.config.get('REALTIME_VAD', 'server_vad'),
+                instructions_provider=self._realtime_instructions,
+                api_key=self.config.get('OPENAI_API_KEY'),
+                create_task=lambda coro: self.task_registry.create_task(
+                    coro, name="realtime_session"))
+
+            router = AttentionRouter(AttentionConfig(
+                bot_username=self.config.get('TWITCH_BOT_USERNAME', ''),
+                streamer_username=self.config.get('TWITCH_CHANNEL', ''),
+                grace_s=self.config.get('REALTIME_GRACE_MS', 400) / 1000.0,
+                window_s=self.config.get('REALTIME_WINDOW_S', 45.0)))
+
+            self.realtime_backend = RealtimeVoiceBackend(
+                audio=audio, session=session, router=router,
+                streamer_username=self.config.get('TWITCH_CHANNEL', ''),
+                channel=self.config.get('TWITCH_CHANNEL', ''),
+                create_task=lambda coro: self.task_registry.create_task(
+                    coro, name="realtime_backend"))
+            await self.realtime_backend.start()
+            self.service_registry.register('RealtimeVoiceService',
+                                           self.realtime_backend)
+            logger.info("VOICE_BACKEND=realtime active; legacy recognition is "
+                        "the wake-phrase detector and the fallback")
+        except Exception as e:
+            # Loud: the operator must never think they are on realtime when
+            # they are not (same rule as the Whisper->Google fallback).
+            logger.error(
+                f"REALTIME BACKEND FAILED TO START -- staying on the legacy "
+                f"voice pipeline for this session. Reason: {e}")
+            self.realtime_backend = None
+
+    def _realtime_instructions(self) -> str:
+        """Persona text for the Realtime session (doc SS11 'in')."""
+        try:
+            if self.personality_engine:
+                return self.personality_engine._build_personality_prompt()
+        except Exception as e:
+            logger.warning(f"Falling back to a minimal realtime persona: {e}")
+        return ("You are a witty, concise AI co-host on a Twitch stream. The "
+                "person speaking to you is the streamer. Keep replies to one "
+                "or two short sentences.")
+
     async def _handle_voice_input(self, text: str) -> None:
         """
         Handle voice input from recognition system
@@ -1043,6 +1117,13 @@ class TalkBot:
         """
         try:
             logger.info(f"[VOICE INPUT] Received: '{text}'")
+
+            # VOICE_BACKEND=realtime: legacy transcripts are wake-phrase
+            # candidates only. The Realtime session owns the conversation, so
+            # the staged pipeline below must not also answer.
+            if self.realtime_backend is not None:
+                await self.realtime_backend.on_legacy_transcript(text)
+                return
             
             # Filter out short/noisy inputs
             if len(text) < 4:
@@ -1325,6 +1406,13 @@ class TalkBot:
         if self.voice_recognition:
             self.voice_recognition.stop_listening()
             
+        if self.realtime_backend:
+            try:
+                await self.realtime_backend.stop()
+            except Exception as e:
+                logger.warning(f"Realtime backend shutdown error: {e}")
+            self.realtime_backend = None
+
         if self.vad_ducking:
             self.vad_ducking.shutdown()
             
