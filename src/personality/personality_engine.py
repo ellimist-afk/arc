@@ -2,10 +2,11 @@
 PersonalityEngine with 4 presets and custom configuration
 """
 
+import asyncio
 import logging
 import json
 import os
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, AsyncIterator, Callable, Tuple
 from datetime import datetime
 from dataclasses import dataclass, asdict, replace
 from enum import Enum
@@ -21,6 +22,8 @@ if str(Path(__file__).parent.parent) not in sys.path:
 from core.network_resilience import get_resilience
 from core.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
 from personality.repetition_guard import RepetitionGuard
+from personality.streamed_reply import StreamedReply, SentenceStream
+from audio.sentence_splitter import SentenceSplitter, split_text
 
 logger = logging.getLogger(__name__)
 
@@ -653,49 +656,9 @@ class PersonalityEngine:
         # Use OpenAI if available
         if self.openai_client:
             try:
-                # Append what the context builder knows (viewer_data, history_summary,
-                # engagement) — previously assembled and then discarded
-                knowledge = self._format_context_knowledge(context, user)
-                system_content = prompt + ("\n\n" + knowledge if knowledge else "")
+                messages = self._build_messages(message, context, user, prompt)
+                openai_params = self._llm_params()
 
-                # Build messages for chat completion
-                messages = [
-                    {"role": "system", "content": system_content},
-                    {"role": "user", "content": f"{user}: {message}"}
-                ]
-                
-                # Add context if available
-                if context.get('recent_messages'):
-                    # Take last 5 messages, iterate oldest-first so insertion order
-                    # is chronological (oldest just after system prompt, newest just
-                    # before current message)
-                    recent = context['recent_messages'][-15:]
-                    for msg in reversed(recent):
-                        text = msg.get('message') or msg.get('text', '')
-                        if not text:
-                            continue
-                        username = msg.get('username', 'User')
-                        role = msg.get('role', 'viewer')
-                        if role == 'assistant':
-                            # Bot's own past response — tell the LLM "I said this"
-                            messages.insert(1, {
-                                "role": "assistant",
-                                "content": text
-                            })
-                        else:
-                            # Someone in chat said this
-                            messages.insert(1, {
-                                "role": "user",
-                                "content": f"{username}: {text}"
-                            })
-                        
-                # Filter response_modifiers to only include valid OpenAI parameters
-                openai_params = {}
-                valid_params = ['temperature', 'max_tokens', 'presence_penalty', 'frequency_penalty']
-                for param in valid_params:
-                    if param in self.response_modifiers:
-                        openai_params[param] = self.response_modifiers[param]
-                
                 # Define primary OpenAI call
                 async def openai_call():
                     response = await self.openai_client.chat.completions.create(
@@ -741,6 +704,223 @@ class PersonalityEngine:
         # Fallback to template responses
         return self._generate_template_response(message, user)
         
+    def _build_messages(
+        self, message: str, context: Dict[str, Any], user: str, prompt: str
+    ) -> List[Dict[str, str]]:
+        """System prompt + knowledge block, recent chat turns in order, then the
+        current message. Shared by the blocking and streamed generation paths."""
+        # Append what the context builder knows (viewer_data, history_summary,
+        # engagement) — previously assembled and then discarded
+        knowledge = self._format_context_knowledge(context, user)
+        system_content = prompt + ("\n\n" + knowledge if knowledge else "")
+
+        messages = [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": f"{user}: {message}"}
+        ]
+
+        if context.get('recent_messages'):
+            # Iterate oldest-first so insertion order is chronological (oldest
+            # just after system prompt, newest just before current message)
+            recent = context['recent_messages'][-15:]
+            for msg in reversed(recent):
+                text = msg.get('message') or msg.get('text', '')
+                if not text:
+                    continue
+                username = msg.get('username', 'User')
+                role = msg.get('role', 'viewer')
+                if role == 'assistant':
+                    # Bot's own past response — tell the LLM "I said this"
+                    messages.insert(1, {"role": "assistant", "content": text})
+                else:
+                    # Someone in chat said this
+                    messages.insert(1, {"role": "user", "content": f"{username}: {text}"})
+        return messages
+
+    def _llm_params(self) -> Dict[str, Any]:
+        """response_modifiers filtered to what the chat completions API accepts."""
+        valid_params = ['temperature', 'max_tokens', 'presence_penalty', 'frequency_penalty']
+        return {p: self.response_modifiers[p] for p in valid_params if p in self.response_modifiers}
+
+    def would_speak(self, message: str, is_mention: bool) -> bool:
+        """Public view of the TTS decision, so callers can pick the streamed
+        path (which always speaks) before generating anything."""
+        return self._should_speak(message, is_mention)
+
+    # ----------------------------------------------------------- streaming
+
+    async def _stream_deltas(
+        self, messages: List[Dict[str, str]], params: Dict[str, Any]
+    ) -> AsyncIterator[str]:
+        """Text deltas from a streaming completion.
+
+        Retries once only if the stream fails before the first delta. After
+        anything has been yielded a retry would re-speak the reply, so the
+        stream just ends and the caller delivers what it has."""
+        attempt = 0
+        while True:
+            attempt += 1
+            got_any = False
+            try:
+                async def open_stream():
+                    return await self.openai_client.chat.completions.create(
+                        model=self.llm_model, messages=messages, stream=True, **params
+                    )
+                stream = await self.circuit_breaker.call(open_stream)
+                async for chunk in stream:
+                    choices = getattr(chunk, 'choices', None) or []
+                    delta = choices[0].delta.content if choices else None
+                    if delta:
+                        got_any = True
+                        yield delta
+                return
+            except CircuitBreakerOpenError:
+                raise
+            except Exception as e:
+                if got_any or attempt >= 2:
+                    logger.error(f"Streaming completion failed: {e}")
+                    return
+                logger.warning(f"Streaming completion failed before first token, retrying: {e}")
+
+    def _gate_sentence(self, sentence: str, first: bool) -> Tuple[bool, str]:
+        """Per-sentence repetition check. The first sentence gets the full
+        guard (opener cooldown, catchphrases, similarity); later ones only
+        similarity — 'opener' and 'catchphrase' are properties of a reply's
+        start, not of its third sentence."""
+        if not self.repetition_guard_enabled:
+            return True, "ok"
+        verdict = self.repetition_guard.check(sentence)
+        if first:
+            return verdict.ok, verdict.reason
+        ok = verdict.score < self.repetition_guard.similarity_threshold
+        return ok, verdict.reason
+
+    async def generate_response_streamed(
+        self,
+        message: str,
+        context: Dict[str, Any],
+        user: str,
+        is_mention: bool = False,
+        *,
+        min_sentence_chars: int = 12,
+        speech_filter: Optional[Callable[[str], str]] = None,
+    ) -> Optional[StreamedReply]:
+        """
+        Streamed counterpart of generate_response. Returns a StreamedReply
+        whose `sentences` iterator yields TTS-ready sentences as the model
+        writes them, and whose `text` / `speech_text` are filled in when the
+        stream ends (await `reply.wait()`). Returns None when the personality
+        decides not to respond at all.
+
+        Generation is lazy: nothing is sent to the model until something
+        starts consuming `sentences`. The repetition guard gates the first
+        sentence before any audio exists; if it fails, this falls back to the
+        blocking path (which does its hinted regeneration) and streams that
+        result instead. Later sentences that near-duplicate recent output are
+        dropped rather than regenerated.
+        """
+        if not self.openai_client:
+            return None
+        self._update_response_modifiers()
+        if message == "[DEAD_AIR_FILLER]":
+            prompt = ("Generate ONLY a very short casual twitch chat message (3-6 words max). "
+                      "Be natural. Examples: 'anyone there' or 'chat seems quiet' or 'whats up chat'. "
+                      "IMPORTANT: Output ONLY the message text, nothing else. No punctuation. "
+                      "No capitals. No sarcasm about dead air.")
+        else:
+            prompt = self._build_personality_prompt()
+        if message != "[DEAD_AIR_FILLER]" and not self._should_respond(message, is_mention):
+            return None
+
+        reply = StreamedReply(personality=self.current_preset.value)
+        messages = self._build_messages(message, context, user, prompt)
+        params = self._llm_params()
+        # Wrapped so that closing it before anything pulled (expired in the
+        # audio queue) still finalizes the reply — see SentenceStream.
+        reply.sentences = SentenceStream(
+            self._sentence_stream(
+                reply, messages, params, message, context, user, is_mention,
+                min_sentence_chars, speech_filter,
+            ),
+            on_close=reply.abandon,
+        )
+        return reply
+
+    async def _sentence_stream(
+        self,
+        reply: StreamedReply,
+        messages: List[Dict[str, str]],
+        params: Dict[str, Any],
+        message: str,
+        context: Dict[str, Any],
+        user: str,
+        is_mention: bool,
+        min_sentence_chars: int,
+        speech_filter: Optional[Callable[[str], str]],
+    ) -> AsyncIterator[str]:
+        start_time = datetime.now()
+        splitter = SentenceSplitter(min_chars=min_sentence_chars)
+        spoken: List[str] = []       # what was actually yielded (chat text source)
+        deltas = self._stream_deltas(messages, params)
+        fell_back = False
+
+        def finalize() -> None:
+            if reply.done.is_set():
+                return
+            full = " ".join(spoken).strip()
+            if full:
+                if not fell_back:
+                    self.repetition_guard.record(full)
+                reply.speech_text = full
+                reply.text = self._apply_personality_modifications(full)
+                self.responses_generated += 1
+                self.total_response_time += (datetime.now() - start_time).total_seconds()
+            reply.fell_back = fell_back
+            reply.done.set()
+
+        try:
+            first = True
+            async for delta in deltas:
+                for sentence in splitter.feed(delta):
+                    ok, reason = self._gate_sentence(sentence, first)
+                    if first and not ok:
+                        # No audio exists yet: abandon the stream and let the
+                        # blocking path do its regenerate-with-hint dance.
+                        logger.info(f"Streamed reply: first sentence rejected ({reason}); falling back")
+                        await deltas.aclose()
+                        fell_back = True
+                        self.repetition_rejections += 1
+                        fallback = await self.generate_response(message, context, user, is_mention)
+                        if fallback:
+                            for s in split_text(fallback['speech_text'], min_chars=min_sentence_chars):
+                                spoken.append(s)
+                                yield speech_filter(s) if speech_filter else s
+                        return
+                    if not ok:
+                        logger.info(f"Streamed reply: dropping repetitive sentence ({reason})")
+                        continue
+                    first = False
+                    spoken.append(sentence)
+                    yield speech_filter(sentence) if speech_filter else sentence
+            tail = splitter.flush()
+            if tail:
+                ok, reason = self._gate_sentence(tail, first)
+                if ok or first:
+                    # A first-and-only sentence that fails here has nothing to
+                    # fall back to without speaking twice; deliver it.
+                    spoken.append(tail)
+                    yield speech_filter(tail) if speech_filter else tail
+                else:
+                    logger.info(f"Streamed reply: dropping repetitive tail ({reason})")
+        except (GeneratorExit, asyncio.CancelledError):
+            # Consumer stopped (skip, shutdown, TTL drop): keep what was said.
+            reply.aborted = True
+            raise
+        except Exception as e:
+            logger.error(f"Streamed reply failed: {e}")
+        finally:
+            finalize()
+
     def _format_context_knowledge(self, context: Dict[str, Any], user: str) -> str:
         """
         Format the context builder's output into a compact system-prompt block.

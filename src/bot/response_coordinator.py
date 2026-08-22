@@ -202,6 +202,54 @@ class ResponseCoordinator:
             except Exception as fallback_error:
                 logger.error(f"Fallback response failed: {fallback_error}")
                 
+    async def coordinate_streamed_response(
+        self,
+        reply: Any,
+        priority: str = "normal",
+        is_mention: bool = False,
+        is_voice: bool = False,
+        user: Optional[str] = None,
+        *,
+        prefetch_depth: int = 2,
+        timeout: float = 90.0,
+    ) -> Optional[str]:
+        """
+        Deliver a StreamedReply: audio starts on the first sentence, chat is
+        posted once the full text is known. Timing modes don't apply — the
+        chat text doesn't exist until generation ends, and the whole point is
+        to not wait for that before speaking.
+
+        Returns the chat text that was sent (None if nothing was produced).
+        """
+        self.last_activity_time = datetime.now()
+        start_time = time.perf_counter()
+        try:
+            if self.audio_queue:
+                await self.audio_queue.queue_utterance(
+                    reply.sentences, priority=priority, user=user,
+                    is_mention=is_mention, prefetch_depth=prefetch_depth,
+                )
+            else:
+                # Nobody will pull sentences otherwise; drain so the text finalizes
+                async for _ in reply.sentences:
+                    pass
+
+            text = await asyncio.wait_for(reply.wait(), timeout=timeout)
+            if text and self.twitch_client and self.twitch_client.is_connected():
+                await self.twitch_client.send_message(text)
+
+            self.response_count += 1
+            elapsed = (time.perf_counter() - start_time) * 1000
+            logger.info(f"Streamed response coordinated in {elapsed:.0f}ms "
+                        f"(fell_back={getattr(reply, 'fell_back', False)}, aborted={getattr(reply, 'aborted', False)})")
+            return text
+        except asyncio.TimeoutError:
+            logger.error("Streamed response timed out waiting for completion")
+            return reply.text
+        except Exception as e:
+            logger.error(f"Error coordinating streamed response: {e}", exc_info=True)
+            return reply.text
+
     async def start_dead_air_prevention(self) -> None:
         """Start the dead air prevention task"""
         if self.dead_air_task:

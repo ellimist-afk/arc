@@ -25,6 +25,7 @@ if str(Path(__file__).parent.parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
+from audio.utterance_player import UtterancePlayer, UtteranceStats
 from audio.tts_cache_sqlite import TTSCacheSQLite
 from utils.task_registry import get_global_registry
 
@@ -48,6 +49,10 @@ class AudioItem:
     cache_key: Optional[str] = None
     audio_data: Optional[bytes] = None
     ttl: int = 300  # Time to live in seconds
+    # Streamed utterance: sentences arrive over time and are spoken as they
+    # do. One queue item = one whole reply, so ordering/merging stay atomic.
+    utterance: Optional[UtterancePlayer] = None
+    sentences: Optional[Any] = None  # AsyncIterator[str]
     
     def __lt__(self, other):
         """Compare items for priority queue"""
@@ -135,6 +140,10 @@ class OptimizedAudioQueue:
         # Checked between chunks in the playback worker thread; cleared at the
         # start of each new clip.
         self._skip_playback = False
+
+        # Streamed-utterance metrics
+        self.utterances_played = 0
+        self.last_time_to_first_audio: Optional[float] = None
 
         # Pre-buffered common responses
         self.common_responses = [
@@ -277,7 +286,67 @@ class OptimizedAudioQueue:
             self.queue.sort()  # Sort by priority
             
         logger.info(f"Audio queued: text='{text[:50]}...', priority={priority_enum.name}, mention={is_mention}, user={user}, queue_size={len(self.queue)}")
-        
+
+    async def queue_utterance(
+        self,
+        sentences: Any,
+        priority: str = "normal",
+        user: Optional[str] = None,
+        is_mention: bool = False,
+        *,
+        prefetch_depth: int = 2,
+    ) -> UtterancePlayer:
+        """
+        Queue a streamed reply: `sentences` is an async iterator that yields
+        TTS-ready sentences as the model writes them. Playback of sentence N
+        overlaps TTS of sentence N+1 (see UtterancePlayer). The whole reply is
+        one queue item, so it is never merged with, or interleaved by, other
+        audio. Returns the player (for skip / stats).
+        """
+        priority_map = {
+            "low": Priority.LOW, "normal": Priority.NORMAL,
+            "high": Priority.HIGH, "critical": Priority.CRITICAL,
+        }
+        priority_enum = priority_map.get(priority.lower(), Priority.NORMAL)
+        if is_mention and priority_enum in (Priority.LOW, Priority.NORMAL):
+            priority_enum = Priority(priority_enum.value + 1)
+
+        player = UtterancePlayer(
+            tts=self._tts_for_text,
+            play=self._play_audio,
+            prefetch_depth=prefetch_depth,
+        )
+        item = AudioItem(
+            text="<streamed utterance>",
+            priority=priority_enum,
+            user=user,
+            is_mention=is_mention,
+            ttl=600 if is_mention else 300,
+            utterance=player,
+            sentences=sentences,
+        )
+        self.queue.append(item)
+        self.queue.sort()
+        logger.info(f"Utterance queued: priority={priority_enum.name}, mention={is_mention}, "
+                    f"user={user}, queue_size={len(self.queue)}")
+        return player
+
+    async def _tts_for_text(self, text: str) -> Optional[bytes]:
+        """Cache-aware TTS for one sentence (the UtterancePlayer's producer)."""
+        return await self._get_or_generate_audio(AudioItem(text=text, priority=Priority.NORMAL))
+
+    async def _play_utterance(self, item: AudioItem) -> UtteranceStats:
+        """Run one streamed reply to completion (or skip)."""
+        stats = await item.utterance.run(item.sentences)
+        self.utterances_played += 1
+        self.last_time_to_first_audio = stats.time_to_first_audio
+        ttfa = f"{stats.time_to_first_audio * 1000:.0f}ms" if stats.time_to_first_audio is not None else "n/a"
+        logger.info(f"[UTTERANCE] {stats.played}/{stats.sentences} sentences played, "
+                    f"first audio after {ttfa}, total {stats.duration:.2f}s"
+                    + (", skipped" if item.utterance.skipped else "")
+                    + (f", {stats.failed} TTS failures" if stats.failed else ""))
+        return stats
+
     def _should_merge(self, item: AudioItem) -> bool:
         """
         Check if item should be merged with existing queue item
@@ -288,11 +357,13 @@ class OptimizedAudioQueue:
         Returns:
             True if should merge
         """
-        if not self.queue:
+        if not self.queue or item.utterance:
             return False
-            
+
         # Look for similar items from same user within 5 seconds
         for existing in self.queue:
+            if existing.utterance:
+                continue  # a streamed reply is atomic; never fold text into it
             if existing.user == item.user:
                 time_diff = abs((item.timestamp - existing.timestamp).total_seconds())
                 if time_diff < 5 and existing.priority == item.priority:
@@ -335,8 +406,19 @@ class OptimizedAudioQueue:
             age = (datetime.now() - self.current_item.timestamp).total_seconds()
             if age > self.current_item.ttl:
                 logger.debug(f"Dropping expired audio item (age: {age}s)")
+                if self.current_item.sentences is not None and hasattr(self.current_item.sentences, 'aclose'):
+                    # Never consumed: close the generator so whoever awaits
+                    # the reply's completion is released
+                    await self.current_item.sentences.aclose()
                 return
-                
+
+            # Streamed reply: sentences are generated and spoken as they arrive
+            if self.current_item.utterance:
+                await self._play_utterance(self.current_item)
+                self.items_processed += 1
+                self.total_processing_time += (time.time() - start_time)
+                return
+
             # Get or generate audio
             audio_data = await self._get_or_generate_audio(self.current_item)
             
@@ -544,6 +626,8 @@ class OptimizedAudioQueue:
         queue. The flag is auto-cleared when the next clip starts.
         """
         self._skip_playback = True
+        if self.current_item and self.current_item.utterance:
+            self.current_item.utterance.skip()  # drop the rest of the streamed reply too
         self.queue.clear()
         logger.info("Skip requested: interrupting current clip and clearing queue")
 
@@ -576,7 +660,9 @@ class OptimizedAudioQueue:
             'avg_processing_time': avg_processing_time,
             'quality_degradations': self.quality_degradations,
             'cache_stats': await self.cache.get_stats(),
-            'processing': self.processing
+            'processing': self.processing,
+            'utterances_played': self.utterances_played,
+            'last_time_to_first_audio': self.last_time_to_first_audio,
         }
         
     def _generate_silence_audio(self, duration: float = 1.0) -> bytes:

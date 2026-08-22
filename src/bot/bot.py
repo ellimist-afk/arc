@@ -9,7 +9,7 @@ import sys
 import time
 import json
 import re
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime
 import signal
 
@@ -90,6 +90,8 @@ class TalkBot:
         self.stream_recap = None        # post-stream recap counters (features.stream_recap)
         self.first_timer = None         # first-time chatter greeting policy (features.first_timer)
         self.current_game: Optional[str] = None
+        # Sentence-streamed TTS (bot_settings.json -> tts_streaming). Off by default.
+        self._tts_streaming: Dict[str, Any] = dict(self._TTS_STREAMING_DEFAULTS)
         self.response_coordinator: Optional[ResponseCoordinator] = None  # PRD critical component
         self.vad_ducking = None  # VAD ducking for natural interrupts
         self.eventsub: Optional[EventSubWebSocket] = None  # EventSub for automatic ad detection
@@ -137,6 +139,16 @@ class TalkBot:
         logger.info(f"Received signal {signum}, initiating graceful shutdown...")
         asyncio.create_task(self.shutdown())
         
+    _TTS_STREAMING_DEFAULTS = {'enabled': False, 'min_sentence_chars': 12, 'prefetch_depth': 2}
+
+    def _apply_tts_streaming_settings(self, bot_settings: Dict[str, Any]) -> None:
+        cfg = dict(self._TTS_STREAMING_DEFAULTS)
+        cfg.update(bot_settings.get('tts_streaming') or {})
+        if cfg != self._tts_streaming:
+            logger.info(f"TTS streaming: {'ON' if cfg.get('enabled') else 'off'} "
+                        f"(min_sentence_chars={cfg.get('min_sentence_chars')}, prefetch_depth={cfg.get('prefetch_depth')})")
+        self._tts_streaming = cfg
+
     async def _load_bot_settings(self) -> None:
         """Load bot settings from configuration file"""
         try:
@@ -144,24 +156,26 @@ class TalkBot:
             if os.path.exists(settings_file):
                 with open(settings_file, 'r') as f:
                     bot_settings = json.load(f)
-                    
-                # Update TTS settings if present  
+
+                # Update TTS settings if present
                 if 'TTS_ENABLED' in bot_settings:
                     self.config['TTS_ENABLED'] = bot_settings['TTS_ENABLED']
                     logger.info(f"TTS_ENABLED set to {bot_settings['TTS_ENABLED']} from bot_settings.json")
-                    
+
                 # Update voice settings if present
                 if 'voice' in bot_settings:
                     self.config.update({
                         'TTS_VOICE': bot_settings['voice'].get('model', 'nova'),
                         'TTS_SPEED': bot_settings['voice'].get('speed', 1.0)
                     })
-                    
+
                 # Update conversation settings if present
                 if 'conversation' in bot_settings:
                     self.voice_cooldown_seconds = bot_settings['conversation'].get('cooldown_seconds', 5)
                     self.conversation_timeout = bot_settings['conversation'].get('conversation_timeout', 30)
-                    
+
+                self._apply_tts_streaming_settings(bot_settings)
+
                 logger.info(f"Loaded bot settings from {settings_file}")
             else:
                 logger.info("No bot settings file found, using defaults")
@@ -211,6 +225,8 @@ class TalkBot:
                 # Pick up llm_model / streamer_name changes
                 if self.personality_engine:
                     self.personality_engine.reload_llm_settings()
+
+                self._apply_tts_streaming_settings(bot_settings)
 
                 logger.info("Reloaded bot settings")
         except Exception as e:
@@ -642,14 +658,30 @@ class TalkBot:
                 priority = 'high'
                 logger.info(f"First-time chatter: {message.get('username')}")
 
-            # Get personality response
-            response = await self.personality_engine.generate_response(
-                message=message.get('text'),
+            # Sentence-streamed path (flag-gated): speaks as the model writes.
+            # Falls through to the blocking path when off, when not speaking,
+            # or when streaming produced nothing at all.
+            handled, streamed_text = await self._try_streamed_reply(
+                message_text=message.get('text', ''),
                 context=context,
                 user=message.get('username'),
-                is_mention=is_mention
+                is_mention=is_mention,
+                priority=priority,
+                is_voice=False,
             )
-            
+            if handled:
+                if streamed_text and greet:
+                    self.first_timer.mark_greeted()
+                response = None
+            else:
+                # Get personality response
+                response = await self.personality_engine.generate_response(
+                    message=message.get('text'),
+                    context=context,
+                    user=message.get('username'),
+                    is_mention=is_mention
+                )
+
             if response:
                 # Track last response for repeat command
                 self.last_response = response['text']
@@ -973,12 +1005,27 @@ class TalkBot:
             # Get personality response - force response for voice.
             # Label the speaker so the LLM knows this is the streamer talking,
             # not a viewer (attribution only — storage keeps the plain username)
-            response = await self.personality_engine.generate_response(
-                message=message.get('text'),
+            speaker = f"{message.get('username')} (the streamer, your co-host partner)"
+            handled, streamed_text = await self._try_streamed_reply(
+                message_text=message.get('text', ''),
                 context=context,
-                user=f"{message.get('username')} (the streamer, your co-host partner)",
-                is_mention=True  # Treat all voice as mentions
+                user=message.get('username'),
+                is_mention=True,
+                priority='high',
+                is_voice=True,
+                speaker_label=speaker,
             )
+            if handled and streamed_text:
+                response = None
+                voice_streamed = True
+            else:
+                voice_streamed = False
+                response = await self.personality_engine.generate_response(
+                    message=message.get('text'),
+                    context=context,
+                    user=speaker,
+                    is_mention=True  # Treat all voice as mentions
+                )
             
             if response:
                 # Track last response for repeat command
@@ -1022,6 +1069,8 @@ class TalkBot:
                     username=self.config.get('TWITCH_BOT_USERNAME', 'bot'),
                     message=response['text']
                 )
+            elif voice_streamed:
+                pass  # already delivered by the streamed path
             else:
                 # Fallback response if personality engine doesn't respond
                 fallback = "I heard you, but I'm not sure what to say."
@@ -1246,6 +1295,70 @@ class TalkBot:
             )
         except Exception as e:
             logger.debug(f"Could not schedule session summary: {e}")
+
+    async def _try_streamed_reply(
+        self,
+        *,
+        message_text: str,
+        context: Dict[str, Any],
+        user: str,
+        is_mention: bool,
+        priority: str,
+        is_voice: bool,
+        speaker_label: Optional[str] = None,
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Sentence-streamed reply: audio starts on the first sentence instead of
+        after the full completion + full TTS. Gated by bot_settings.json ->
+        tts_streaming.enabled; only used when the reply would be spoken.
+
+        Returns (handled, chat_text). handled=False means "use the blocking
+        path"; handled=True with chat_text=None means the personality chose
+        not to respond.
+        """
+        cfg = self._tts_streaming
+        if not cfg.get('enabled'):
+            return False, None
+        if not (self.config.get('TTS_ENABLED', True) and self.audio_queue
+                and self.response_coordinator and self.personality_engine):
+            return False, None
+        if not (is_mention or self.personality_engine.would_speak(message_text, is_mention)):
+            return False, None
+
+        reply = await self.personality_engine.generate_response_streamed(
+            message=message_text,
+            context=context,
+            user=speaker_label or user,
+            is_mention=is_mention,
+            min_sentence_chars=int(cfg.get('min_sentence_chars', 12)),
+            speech_filter=strip_mentions_for_tts,
+        )
+        if reply is None:
+            return True, None  # personality declined; don't roll the dice twice
+
+        text = await self.response_coordinator.coordinate_streamed_response(
+            reply, priority=priority, is_mention=is_mention, is_voice=is_voice,
+            user=user, prefetch_depth=int(cfg.get('prefetch_depth', 2)),
+        )
+        if not text:
+            if getattr(reply, 'aborted', False):
+                # Expired in the queue or skipped before it started: the moment
+                # has passed, a second (blocking) attempt would be just as stale
+                logger.info("Streamed reply abandoned before it started; not retrying")
+                return True, None
+            logger.warning("Streamed reply produced nothing; using blocking path")
+            return False, None
+
+        self.last_response = text
+        self.audio_count += 1
+        self.chat_buffer.append_assistant(
+            channel=self.config.get('TWITCH_CHANNEL', ''),
+            username=self.config.get('TWITCH_BOT_USERNAME', 'bot'),
+            message=text,
+        )
+        if self.stream_recap:
+            self.stream_recap.record_response(spoken=True)
+        return True, text
 
     def _setup_stream_awareness(self) -> None:
         """Wire StreamInfo (category/title), stream lifecycle, recap, first-timer policy."""
