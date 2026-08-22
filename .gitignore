@@ -37,8 +37,9 @@ env/
 .env.*
 .env.local
 
-# Local settings
-.claude/
+# Local settings (shared .claude/settings.json IS tracked)
+.claude/*
+!.claude/settings.json
 
 # Database
 *.db
