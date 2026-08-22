@@ -75,6 +75,20 @@ def load_configuration():
         # 'whisper' = local faster-whisper on GPU; 'google' = legacy cloud ASR
         'VOICE_ASR_ENGINE': os.getenv('VOICE_ASR_ENGINE', 'whisper').lower(),
         'WHISPER_MODEL': os.getenv('WHISPER_MODEL', 'small.en'),
+        # 'legacy' = Whisper -> LLM -> TTS staged pipeline (default);
+        # 'realtime' = OpenAI Realtime speech-to-speech (doc SS17 Phase 2)
+        'VOICE_BACKEND': os.getenv('VOICE_BACKEND', 'legacy').lower(),
+        'REALTIME_MODEL': os.getenv('REALTIME_MODEL', 'gpt-realtime-2.1-mini'),
+        'REALTIME_VOICE': os.getenv('REALTIME_VOICE', 'marin'),
+        'REALTIME_VAD': os.getenv('REALTIME_VAD', 'server_vad'),
+        'REALTIME_INPUT_DEVICE': os.getenv('REALTIME_INPUT_DEVICE', ''),
+        'REALTIME_OUTPUT_DEVICE': os.getenv('REALTIME_OUTPUT_DEVICE', ''),
+        # 650 ms: server_vad reports speech_stopped ~350 ms after speech
+        # actually ends, so the shortest measured segment took 578 ms wall
+        # (2026-08-22 run). Below ~600 ms a real cough can never be ignored.
+        'REALTIME_GRACE_MS': int(os.getenv('REALTIME_GRACE_MS', '650')),
+        'REALTIME_WINDOW_S': float(os.getenv('REALTIME_WINDOW_S', '45')),
+        'REALTIME_PREROLL_MS': int(os.getenv('REALTIME_PREROLL_MS', '2000')),
         
         # Performance
         'FAST_STARTUP': os.getenv('FAST_STARTUP', 'true').lower() == 'true',

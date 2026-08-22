@@ -122,8 +122,13 @@ class TaskRegistry:
                 self.task_stats[name]['completed'] = datetime.now()
                 self.task_stats[name]['status'] = 'done'
                 
-                # Check for exceptions
-                if task.exception():
+                # Check for exceptions. A CANCELLED task is not a failure:
+                # task.exception() re-raises CancelledError rather than
+                # returning it, which made every shutdown log a traceback
+                # per cancelled task.
+                if task.cancelled():
+                    self.task_stats[name]['status'] = 'cancelled'
+                elif task.exception():
                     self.task_stats[name]['error'] = str(task.exception())
                     logger.error(f"Task {name} failed with error: {task.exception()}")
                     
