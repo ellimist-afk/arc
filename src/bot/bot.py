@@ -85,6 +85,11 @@ class TalkBot:
         self.voice_recognition: Optional[VoiceRecognition] = None
         self.raider_welcome = None  # Optional feature per PRD
         self.context_builder: Optional[OptimizedContextBuilder] = None  # PRD required component
+        self.session_summarizer = None  # rolling 'earlier this stream' memory
+        self.stream_info = None         # live category/title (features.stream_info)
+        self.stream_recap = None        # post-stream recap counters (features.stream_recap)
+        self.first_timer = None         # first-time chatter greeting policy (features.first_timer)
+        self.current_game: Optional[str] = None
         self.response_coordinator: Optional[ResponseCoordinator] = None  # PRD critical component
         self.vad_ducking = None  # VAD ducking for natural interrupts
         self.eventsub: Optional[EventSubWebSocket] = None  # EventSub for automatic ad detection
@@ -290,6 +295,11 @@ class TalkBot:
             
             self.service_registry.register('PersonalityService', self.personality_engine)
 
+            # Rolling session summary: folds chat the LLM can no longer see into
+            # one bounded paragraph. Needs the engine's LLM client, so it's
+            # attached to the context builder here rather than at construction.
+            self._setup_session_summarizer()
+
             # Initialize TwitchTokenRefresher BEFORE TwitchClient for fresh tokens
             from twitch.token_refresher import TwitchTokenRefresher
 
@@ -436,6 +446,9 @@ class TalkBot:
             self.eventsub.on_event('channel.cheer', self._on_cheer)
             logger.info("Event announcer handlers registered")
 
+            # Category/title awareness, stream lifecycle, recap, first-timer policy
+            self._setup_stream_awareness()
+
             self.service_registry.register('EventSubService', self.eventsub)
             self.service_registry.register('AdAnnouncer', self.ad_announcer)
             self.service_registry.register('EventAnnouncer', self.event_announcer)
@@ -525,7 +538,8 @@ class TalkBot:
             
             # Register ad command handler
             self.twitch_client.on_message(self._handle_ad_commands)
-            
+            self._setup_clip_command()
+
             # Wait for Twitch connection to complete
             await twitch_connect_task
             logger.info("Twitch connection established")
@@ -595,6 +609,8 @@ class TalkBot:
                 username=message.get('username', 'unknown'),
                 message=message.get('text') or message.get('message', '')
             )
+            if self.stream_recap:
+                self.stream_recap.record_message(message.get('username', ''))
 
             # Log if this is a mention
             if is_mention:
@@ -616,6 +632,16 @@ class TalkBot:
                     max_time_ms=80
                 )
             
+            # First-time chatter: upgrade to a must-reply welcome. Detection is
+            # the context builder's (positive evidence only); whether to act
+            # on it right now is features/first_timer.py's call.
+            greet = bool(self.first_timer and self.first_timer.should_greet(context))
+            if greet:
+                context['greet_first_timer'] = True
+                is_mention = True
+                priority = 'high'
+                logger.info(f"First-time chatter: {message.get('username')}")
+
             # Get personality response
             response = await self.personality_engine.generate_response(
                 message=message.get('text'),
@@ -627,7 +653,9 @@ class TalkBot:
             if response:
                 # Track last response for repeat command
                 self.last_response = response['text']
-                
+                if greet:
+                    self.first_timer.mark_greeted()
+
                 # Use ResponseCoordinator for synchronized delivery
                 if self.response_coordinator:
                     # Create audio task for TTS if enabled and response says to speak
@@ -656,6 +684,8 @@ class TalkBot:
                         is_mention=is_mention,
                         is_voice=False
                     )
+                    if self.stream_recap:
+                        self.stream_recap.record_response(spoken=audio_task is not None)
                 else:
                     # Fallback to direct sending if coordinator not available
                     await self.twitch_client.send_message(response['text'])
@@ -672,6 +702,9 @@ class TalkBot:
                     username=self.config.get('TWITCH_BOT_USERNAME', 'bot'),
                     message=response['text']
                 )
+
+            # Fold older chat into the session summary if a batch is due
+            self._schedule_summary()
 
             # Track overall response time
             response_time = (time.perf_counter() - start_time) * 1000
@@ -1019,6 +1052,9 @@ class TalkBot:
                         )
                 logger.warning("No response from personality engine for voice input")
             
+            # Fold older chat into the session summary if a batch is due
+            self._schedule_summary()
+
             # Track overall response time
             response_time = (time.perf_counter() - start_time) * 1000
             self.response_times.append(response_time)
@@ -1168,6 +1204,217 @@ class TalkBot:
         except Exception as e:
             logger.error(f"Error handling voice input: {e}")
             
+    def _setup_session_summarizer(self) -> None:
+        """Build the StreamSessionSummarizer from bot_settings.json -> session_summary."""
+        cfg: Dict[str, Any] = {}
+        try:
+            with open('bot_settings.json', 'r') as f:
+                cfg = json.load(f).get('session_summary') or {}
+        except Exception as e:
+            logger.debug(f"No session_summary settings: {e}")
+
+        if not cfg.get('enabled', True):
+            logger.info("Session summary disabled via settings")
+            return
+
+        from bot.session_summarizer import StreamSessionSummarizer
+
+        kwargs = {k: cfg[k] for k in (
+            'turns_per_update', 'min_turns', 'max_interval_s', 'max_words', 'persist_dir'
+        ) if k in cfg}
+        self.session_summarizer = StreamSessionSummarizer(
+            chat_buffer=self.chat_buffer,
+            llm_call=self.personality_engine.complete,
+            bot_name=self.config.get('TWITCH_BOT_USERNAME', 'the co-host'),
+            **kwargs,
+        )
+        if self.context_builder:
+            self.context_builder.session_summarizer = self.session_summarizer
+        self.service_registry.register('SessionSummarizer', self.session_summarizer)
+        logger.info("StreamSessionSummarizer initialized "
+                    f"(every {self.session_summarizer.turns_per_update} turns "
+                    f"or {self.session_summarizer.max_interval_s:.0f}s)")
+
+    def _schedule_summary(self) -> None:
+        """O(1) check; spawns a tracked background fold when a batch is due."""
+        if not self.session_summarizer:
+            return
+        try:
+            self.session_summarizer.maybe_schedule(
+                self.config.get('TWITCH_CHANNEL', ''),
+                lambda coro, name: self.task_registry.create_task(coro, name=name),
+            )
+        except Exception as e:
+            logger.debug(f"Could not schedule session summary: {e}")
+
+    def _setup_stream_awareness(self) -> None:
+        """Wire StreamInfo (category/title), stream lifecycle, recap, first-timer policy."""
+        from features.first_timer import FirstTimerGreeter
+        from features.stream_info import StreamInfo
+        from features.stream_recap import StreamRecap
+
+        channel = self.config.get('TWITCH_CHANNEL', '')
+
+        def on_game_change(old: Optional[str], new: str, title: str) -> None:
+            self.current_game = new
+            if self.raider_welcome:
+                self.raider_welcome.set_current_game(new)
+            if old:  # a real switch, not the boot-time seed
+                if self.session_summarizer:
+                    self.session_summarizer.note_event(channel, f"{channel} switched category to {new}")
+                if self.stream_recap:
+                    self.stream_recap.record_event(f"category changed: {old} -> {new}")
+
+        self.stream_info = StreamInfo(
+            client_id=self.config.get('TWITCH_CLIENT_ID', ''),
+            token_getter=lambda: (getattr(self.twitch_client, 'access_token', None)
+                                  or self.config.get('TWITCH_ACCESS_TOKEN')),
+            channel_name=channel,
+            broadcaster_id=self.config.get('TWITCH_BROADCASTER_ID'),
+            on_change=on_game_change,
+        )
+        if self.context_builder:
+            self.context_builder.stream_info = self.stream_info
+        self.eventsub.on_event('channel.update', self.stream_info.handle_channel_update)
+        self.eventsub.on_event('stream.online', self._on_stream_online)
+        self.eventsub.on_event('stream.offline', self._on_stream_offline)
+        self.task_registry.create_task(self.stream_info.refresh(), name="stream_info_refresh")
+
+        out_dir = 'session_state'
+        if self.session_summarizer and self.session_summarizer.persist_dir:
+            out_dir = str(self.session_summarizer.persist_dir)
+        self.stream_recap = StreamRecap(channel, out_dir=out_dir)
+        self.first_timer = FirstTimerGreeter.from_settings()
+
+        self.service_registry.register('StreamInfo', self.stream_info)
+        self.service_registry.register('StreamRecap', self.stream_recap)
+        self.service_registry.register('FirstTimerGreeter', self.first_timer)
+        logger.info("Stream awareness initialized (category, lifecycle, recap, first-timer)")
+
+    async def _on_stream_online(self, event: dict) -> None:
+        """New stream: fresh session memory and recap counters."""
+        if self.stream_info:
+            await self.stream_info.handle_stream_online(event)
+        channel = self.config.get('TWITCH_CHANNEL', '')
+        if self.session_summarizer:
+            self.session_summarizer.reset(channel)
+        if self.stream_recap:
+            self.stream_recap.reset()
+        if self.stream_info:
+            self.task_registry.create_task(self.stream_info.refresh(), name="stream_info_refresh_online")
+
+    async def _on_stream_offline(self, event: dict) -> None:
+        if self.stream_info:
+            await self.stream_info.handle_stream_offline(event)
+        await self._write_recap("stream offline")
+
+    async def _write_recap(self, reason: str) -> None:
+        """Fold any remaining chat into the summary, then write the recap file."""
+        if not self.stream_recap or not self.stream_recap.has_activity:
+            return
+        channel = self.config.get('TWITCH_CHANNEL', '')
+        summary = ""
+        if self.session_summarizer:
+            try:
+                stats = self.session_summarizer.stats(channel)
+                if stats['unsummarized_turns'] >= self.session_summarizer.min_turns or stats['pending_events']:
+                    await asyncio.wait_for(self.session_summarizer.update(channel), timeout=10.0)
+            except Exception as e:
+                logger.warning(f"Final summary fold skipped: {e}")
+            summary = self.session_summarizer.get_summary(channel)
+
+        extra: Dict[str, Any] = {"Reason": reason}
+        if self.current_game:
+            extra["Category"] = self.current_game
+        if self.personality_engine:
+            st = self.personality_engine.get_stats()
+            extra["Repetition guard"] = (f"{st.get('repetition_rejections', 0)} drafts rejected, "
+                                         f"{st.get('repetition_forced', 0)} forced through")
+        if self.first_timer:
+            ft = self.first_timer.stats()
+            extra["First-timers greeted"] = f"{ft['greeted']} ({ft['suppressed']} suppressed)"
+
+        path = self.stream_recap.write(summary, extra)
+        if path:
+            logger.info(f"Stream recap ({reason}): {path}")
+        self.stream_recap.reset()
+
+    # ------------------------------------------------------------------ clips
+
+    def _setup_clip_command(self) -> None:
+        """`!clip` in chat (mods/broadcaster) and "clip that" by voice."""
+        self.twitch_client.on_message(self._handle_clip_command)
+        if self.voice_commands:
+            from components.voice.voice_commands import CommandType
+            self.voice_commands.register_command(
+                "clip",
+                r"\b(clip (that|it|this)|make a clip|save that clip)\b",
+                self._voice_clip,
+                CommandType.MEDIA,
+                "Clips the last 30 seconds of the stream",
+                cooldown=30.0,
+            )
+        logger.info("Clip command registered (!clip, voice: 'clip that')")
+
+    async def _handle_clip_command(self, message: Dict[str, Any]) -> None:
+        try:
+            text = message.get('text', '').lower().strip()
+            if text != '!clip':
+                return
+            username = message.get('username', '').lower()
+            is_broadcaster = username == self.config.get('TWITCH_CHANNEL', '').lower()
+            if not (message.get('is_mod', False) or is_broadcaster):
+                return
+            clip = await self._create_clip(requested_by=username)
+            if not clip:
+                await self.twitch_client.send_message("couldn't make a clip right now")
+        except Exception as e:
+            logger.error(f"Error handling !clip: {e}")
+
+    async def _voice_clip(self) -> None:
+        clip = await self._create_clip(requested_by="voice")
+        if self.audio_queue:
+            await self.audio_queue.queue_audio("Clipped" if clip else "Couldn't clip that",
+                                               priority="high")
+
+    async def _create_clip(self, requested_by: str = "") -> Optional[Dict[str, Any]]:
+        """Clip the last ~30s. Tries the broadcaster token first (needs clips:edit), then the bot's."""
+        from twitch import helix
+
+        client_id = self.config.get('TWITCH_CLIENT_ID', '')
+        broadcaster_id = (
+            (self.stream_info.broadcaster_id if self.stream_info else None)
+            or getattr(self.eventsub, 'broadcaster_id', None)
+            or self.config.get('TWITCH_BROADCASTER_ID')
+        )
+        if not broadcaster_id:
+            logger.warning("Clip: no broadcaster id available")
+            return None
+
+        tokens = [
+            getattr(self.eventsub, 'broadcaster_token', None) or self.config.get('TWITCH_BROADCASTER_TOKEN'),
+            getattr(self.twitch_client, 'access_token', None) or self.config.get('TWITCH_ACCESS_TOKEN'),
+        ]
+        clip = None
+        for token in [t for t in tokens if t]:
+            clip = await helix.create_clip(client_id, token, broadcaster_id)
+            if clip:
+                break
+        if not clip:
+            logger.warning("Clip failed (both tokens). Does either token have the clips:edit scope?")
+            return None
+
+        channel = self.config.get('TWITCH_CHANNEL', '')
+        note = f"clip saved by {requested_by}: {clip['url']}" if requested_by else f"clip saved: {clip['url']}"
+        logger.info(note)
+        if self.session_summarizer:
+            self.session_summarizer.note_event(channel, f"a clip was made ({requested_by or 'chat'})")
+        if self.stream_recap:
+            self.stream_recap.record_event(note)
+        if self.twitch_client and self.twitch_client.is_connected():
+            await self.twitch_client.send_message(note)
+        return clip
+
     async def _handle_raid_event(self, event: Dict[str, Any]) -> None:
         """
         Handle raid events from IRC USERNOTICE
@@ -1185,7 +1432,17 @@ class TalkBot:
             viewer_count = event.get('viewers', 0)
             
             logger.info(f"Raid event: {raider_name} with {viewer_count} viewers")
-            
+
+            if self.session_summarizer:
+                self.session_summarizer.note_event(
+                    self.config.get('TWITCH_CHANNEL', ''),
+                    f"{raider_name} raided with {viewer_count} viewers"
+                )
+            if self.first_timer:
+                self.first_timer.note_raid()  # raiders aren't "first-timers"; suppress greetings
+            if self.stream_recap:
+                self.stream_recap.record_event(f"{raider_name} raided with {viewer_count} viewers")
+
             # If raider welcome is enabled, pass to it
             if self.raider_welcome:
                 await self.raider_welcome.handle_raid({
@@ -1304,6 +1561,12 @@ class TalkBot:
         """
         logger.info("Starting graceful shutdown...")
         self.running = False
+
+        # Recap needs the LLM and the task registry, so it goes before either is torn down
+        try:
+            await self._write_recap("shutdown")
+        except Exception as e:
+            logger.error(f"Recap on shutdown failed: {e}")
 
         # Stop accepting API requests before the components endpoints read go away
         if self.api_server:

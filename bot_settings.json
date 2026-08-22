@@ -32,5 +32,25 @@
     "timing_mode": "chat_first",
     "dead_air_enabled": false,
     "dead_air_threshold": 3600
+  },
+  "repetition_guard": {
+    "enabled": true,
+    "similarity_threshold": 0.45,
+    "opening_cooldown": 5,
+    "phrase_cooldown": 8,
+    "catchphrase_min_uses": 2
+  },
+  "session_summary": {
+    "enabled": true,
+    "turns_per_update": 40,
+    "min_turns": 8,
+    "max_interval_s": 600,
+    "max_words": 120,
+    "persist_dir": "session_state"
+  },
+  "first_timer_greeting": {
+    "enabled": true,
+    "min_interval_s": 45,
+    "suppress_after_raid_s": 120
   }
 }

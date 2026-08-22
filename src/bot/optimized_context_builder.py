@@ -5,6 +5,7 @@ Multi-level caching and parallel fetching for fast context generation.
 
 import asyncio
 import time
+from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -55,9 +56,14 @@ class LRUCache:
 class OptimizedContextBuilder:
     """Multi-level caching context builder for sub-100ms performance."""
 
-    def __init__(self, memory_system, chat_buffer=None):
+    def __init__(self, memory_system, chat_buffer=None, session_summarizer=None):
         self.memory = memory_system
         self.chat_buffer = chat_buffer
+        # Rolling "earlier this stream" summary; attached late by the bot
+        # because it needs the personality engine's LLM client
+        self.session_summarizer = session_summarizer
+        # Live category/title (features.stream_info.StreamInfo); attached by the bot
+        self.stream_info = None
 
         # Multi-level cache system
         self.l1_cache: Dict[str, Tuple[Dict, float]] = {}  # Hot cache for active conversations
@@ -208,9 +214,7 @@ class OptimizedContextBuilder:
             # L1 cache check (fastest)
             context = self._check_l1_cache(cache_key)
             if context:
-                # Always refresh recent_messages — never serve stale chat history
-                if self.chat_buffer:
-                    context['recent_messages'] = self.chat_buffer.get_recent(channel, limit=10)
+                self._refresh_live_fields(context, channel)
                 build_time = (time.time() - start) * 1000
                 self._track_build_time(build_time)
                 logger.debug(f"Context built from L1 in {build_time:.1f}ms")
@@ -219,9 +223,7 @@ class OptimizedContextBuilder:
             # L2 cache check (fast)
             context = self._check_l2_cache(cache_key)
             if context:
-                # Always refresh recent_messages — never serve stale chat history
-                if self.chat_buffer:
-                    context['recent_messages'] = self.chat_buffer.get_recent(channel, limit=10)
+                self._refresh_live_fields(context, channel)
                 build_time = (time.time() - start) * 1000
                 self._track_build_time(build_time)
                 logger.debug(f"Context built from L2 in {build_time:.1f}ms")
@@ -251,7 +253,10 @@ class OptimizedContextBuilder:
                 "channel_info": data.get("channel_context", {}),
                 "history_summary": self._summarize_history(data.get("interaction_history", [])),
                 "is_returning": bool(data.get("interaction_history")),
-                "engagement_level": self._calculate_engagement(data)
+                "is_first_message": self._is_first_message(data),
+                "engagement_level": self._calculate_engagement(data),
+                "session_summary": self._session_summary(channel),
+                "stream_now": self._stream_now(),
             })
 
         except Exception as e:
@@ -279,6 +284,63 @@ class OptimizedContextBuilder:
             logger.debug(f"Context built in {build_time:.1f}ms")
 
         return context
+
+    def _session_summary(self, channel: str) -> str:
+        if not self.session_summarizer:
+            return ""
+        try:
+            return self.session_summarizer.get_summary(channel) or ""
+        except Exception as e:
+            logger.debug(f"Session summary unavailable: {e}")
+            return ""
+
+    def _stream_now(self) -> str:
+        if not self.stream_info:
+            return ""
+        try:
+            return self.stream_info.describe() or ""
+        except Exception as e:
+            logger.debug(f"Stream info unavailable: {e}")
+            return ""
+
+    @staticmethod
+    def _is_first_message(data: Dict[str, Any], now: Optional[datetime] = None) -> bool:
+        """True only with positive evidence from persistent memory.
+
+        The current message is stored before context is built, so a genuine
+        first-timer's history is exactly [that message]. Exactly one — not
+        zero — because an empty list would also be what a channel-name
+        mismatch or a failed insert returns. A timed-out fetch (None), the
+        in-memory fallback (`from_memory`, resets on restart), or a
+        `first_seen` older than a few minutes (history was pruned) all mean
+        "don't know", and a wrong "welcome, first time!" is worse than none.
+        """
+        history = data.get("interaction_history")
+        viewer = data.get("viewer_data")  # None = fetch timed out: unknown, not "no facts"
+        if not isinstance(history, list) or len(history) != 1:
+            return False
+        if not isinstance(viewer, dict) or viewer.get("from_memory"):
+            return False
+        first_seen = viewer.get("first_seen")
+        if isinstance(first_seen, datetime):
+            ref = now or (datetime.now(first_seen.tzinfo) if first_seen.tzinfo else datetime.now())
+            try:
+                if (ref - first_seen).total_seconds() > 600:
+                    return False
+            except TypeError:
+                return False  # naive/aware mismatch: can't tell, stay quiet
+        return True
+
+    def _refresh_live_fields(self, context: Dict[str, Any], channel: str) -> None:
+        """Fields that must never be served stale, even on a cache hit:
+        the live chat turns, the rolling session summary, the stream category."""
+        if self.chat_buffer:
+            context['recent_messages'] = self.chat_buffer.get_recent(channel, limit=10)
+        context['session_summary'] = self._session_summary(channel)
+        context['stream_now'] = self._stream_now()
+        # A cache hit means we've built context for this viewer before —
+        # by definition not their first message
+        context['is_first_message'] = False
 
     def _summarize_messages(self, messages: List[Dict]) -> str:
         """Quickly summarize recent messages for context."""

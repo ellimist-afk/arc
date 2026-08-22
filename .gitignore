@@ -103,3 +103,6 @@ models/whisper/
 
 # Realtime spike measurement outputs (JSONL/WAV runs, sent back for analysis)
 spike/runs/
+
+# Rolling session summary persisted across restarts
+session_state/

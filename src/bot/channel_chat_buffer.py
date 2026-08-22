@@ -24,6 +24,7 @@ class ChatTurn:
     message: str
     role: str  # 'viewer' or 'assistant'
     timestamp: float
+    seq: int = 0  # per-channel monotonic id; survives ring-buffer eviction
 
 
 class ChannelChatBuffer:
@@ -32,6 +33,10 @@ class ChannelChatBuffer:
     def __init__(self, max_turns_per_channel: int = 50):
         self.max_turns = max_turns_per_channel
         self.buffers: Dict[str, deque] = {}
+        # Monotonic per-channel counters so consumers (e.g. the session
+        # summarizer) can track a watermark even after old turns fall off
+        # the ring buffer.
+        self._seq: Dict[str, int] = {}
 
     def _normalize_channel(self, channel: str) -> str:
         """Normalize channel name: lowercase, strip leading #."""
@@ -50,7 +55,8 @@ class ChannelChatBuffer:
             username=username,
             message=message,
             role='viewer',
-            timestamp=datetime.now().timestamp()
+            timestamp=datetime.now().timestamp(),
+            seq=self._next_seq(channel),
         )
         self.buffers[channel].append(turn)
 
@@ -67,9 +73,25 @@ class ChannelChatBuffer:
             username=username,
             message=message,
             role='assistant',
-            timestamp=datetime.now().timestamp()
+            timestamp=datetime.now().timestamp(),
+            seq=self._next_seq(channel),
         )
         self.buffers[channel].append(turn)
+
+    def _next_seq(self, channel: str) -> int:
+        self._seq[channel] = self._seq.get(channel, 0) + 1
+        return self._seq[channel]
+
+    def last_seq(self, channel: str) -> int:
+        """Highest seq issued for a channel (0 if nothing has been appended)."""
+        return self._seq.get(self._normalize_channel(channel), 0)
+
+    def get_since(self, channel: str, after_seq: int) -> List[Dict]:
+        """Turns with seq > after_seq, oldest-first. Evicted turns are gone."""
+        channel = self._normalize_channel(channel)
+        if channel not in self.buffers:
+            return []
+        return [asdict(t) for t in self.buffers[channel] if t.seq > after_seq]
 
     def get_recent(self, channel: str, limit: int = 10) -> List[Dict]:
         """Get recent messages for a channel, oldest-first."""

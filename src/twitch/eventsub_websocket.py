@@ -405,9 +405,32 @@ class EventSubWebSocket:
                 'condition': {
                     'broadcaster_user_id': self.broadcaster_id
                 }
+            },
+            # Category / title changes (no scope required)
+            {
+                'type': 'channel.update',
+                'version': '2',
+                'condition': {
+                    'broadcaster_user_id': self.broadcaster_id
+                }
+            },
+            # Stream lifecycle, for session reset + post-stream recap
+            {
+                'type': 'stream.online',
+                'version': '1',
+                'condition': {
+                    'broadcaster_user_id': self.broadcaster_id
+                }
+            },
+            {
+                'type': 'stream.offline',
+                'version': '1',
+                'condition': {
+                    'broadcaster_user_id': self.broadcaster_id
+                }
             }
         ]
-        
+
         # Create subscriptions
         for sub in subscriptions:
             await self._create_subscription(sub)

@@ -20,6 +20,7 @@ if str(Path(__file__).parent.parent) not in sys.path:
 
 from core.network_resilience import get_resilience
 from core.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
+from personality.repetition_guard import RepetitionGuard
 
 logger = logging.getLogger(__name__)
 
@@ -104,20 +105,39 @@ class PersonalityEngine:
         self,
         memory_system: Any,
         openai_api_key: Optional[str] = None,
-        config_path: str = "personality_settings"
+        config_path: str = "personality_settings",
+        openai_base_url: Optional[str] = None,
     ):
         """
         Initialize the personality engine
-        
+
         Args:
             memory_system: Memory system for context
             openai_api_key: Optional OpenAI API key for response generation
             config_path: Path to personality configuration files
+            openai_base_url: Optional OpenAI-compatible endpoint (Ollama,
+                LM Studio, vLLM, OpenRouter...). Falls back to the
+                OPENAI_BASE_URL env var. Only affects chat completions —
+                TTS keeps its own client on the real OpenAI API.
         """
         self.memory_system = memory_system
         self.config_path = config_path
-        self.openai_client = AsyncOpenAI(api_key=openai_api_key) if openai_api_key else None
+        self.openai_base_url = openai_base_url or os.getenv('OPENAI_BASE_URL') or None
+        if openai_api_key:
+            self.openai_client = AsyncOpenAI(api_key=openai_api_key, base_url=self.openai_base_url)
+            if self.openai_base_url:
+                logger.info(f"LLM endpoint: {self.openai_base_url}")
+        else:
+            self.openai_client = None
         self.resilience = get_resilience()
+
+        # Anti-loop guard over the bot's own recent outputs. Thresholds are
+        # tunable via bot_settings.json -> repetition_guard (history_size is
+        # construction-only).
+        self.repetition_guard = RepetitionGuard()
+        self.repetition_guard_enabled = True
+        self.repetition_rejections = 0
+        self.repetition_forced = 0  # mention/voice replies delivered despite a failed retry
 
         # LLM model and streamer identity are configurable via bot_settings.json
         self.llm_model = "gpt-4o-mini"
@@ -166,6 +186,13 @@ class PersonalityEngine:
                 settings = json.load(f)
             self.llm_model = settings.get('llm_model', self.llm_model)
             self.streamer_name = settings.get('streamer_name', self.streamer_name)
+
+            guard_cfg = settings.get('repetition_guard') or {}
+            self.repetition_guard_enabled = bool(guard_cfg.get('enabled', True))
+            for key in ('similarity_threshold', 'opening_cooldown',
+                        'phrase_cooldown', 'catchphrase_min_uses'):
+                if key in guard_cfg:
+                    setattr(self.repetition_guard, key, guard_cfg[key])
         except Exception as e:
             logger.debug(f"Could not load LLM settings from bot_settings.json: {e}")
 
@@ -367,7 +394,16 @@ class PersonalityEngine:
             
             if not response_text:
                 return None
-                
+
+            # Anti-loop: reject near-repeats of our own recent output, retry
+            # once with an explicit "don't say that again" hint
+            response_text = await self._enforce_variety(
+                response_text, message, context, user, prompt, is_mention
+            )
+            if not response_text:
+                return None
+            self.repetition_guard.record(response_text)
+
             # Keep the original for TTS — punctuation drives speech pacing
             speech_text = response_text
 
@@ -395,6 +431,88 @@ class PersonalityEngine:
             logger.error(f"Failed to generate response: {e}")
             return None
             
+    async def _enforce_variety(
+        self,
+        text: str,
+        message: str,
+        context: Dict[str, Any],
+        user: str,
+        prompt: str,
+        is_mention: bool,
+    ) -> Optional[str]:
+        """
+        Run the repetition guard over a draft. On failure, regenerate once with
+        the guard's avoid-hint appended to the system prompt.
+
+        Returns the text to deliver, or None to stay silent. Mentions and voice
+        (is_mention=True) must always get a reply, so the less-repetitive of the
+        two drafts is returned even if both fail; unsolicited chatter is dropped
+        instead — a skipped interjection is invisible, a looping one is not.
+        """
+        if not self.repetition_guard_enabled:
+            return text
+
+        verdict = self.repetition_guard.check(text)
+        if verdict.ok:
+            return text
+
+        self.repetition_rejections += 1
+        logger.info(f"Repetition guard rejected draft ({verdict.reason}); regenerating")
+
+        retry_prompt = prompt + "\n\n" + self.repetition_guard.avoid_hint(verdict)
+        retry = await self._generate_text(
+            message=message, context=context, user=user, prompt=retry_prompt
+        )
+        if retry:
+            retry_verdict = self.repetition_guard.check(retry)
+            if retry_verdict.ok:
+                return retry
+            if not is_mention:
+                logger.info(f"Repetition guard: retry also repetitive ({retry_verdict.reason}); skipping")
+                return None
+            self.repetition_forced += 1
+            best = retry if retry_verdict.score <= verdict.score else text
+            logger.warning(
+                f"Repetition guard: both drafts repetitive, delivering least-bad "
+                f"({min(retry_verdict.score, verdict.score):.2f}) because reply is required"
+            )
+            return best
+
+        if is_mention:
+            self.repetition_forced += 1
+            return text
+        return None
+
+    async def complete(
+        self,
+        messages: List[Dict[str, str]],
+        *,
+        max_tokens: int = 300,
+        temperature: float = 0.3,
+    ) -> Optional[str]:
+        """
+        Plain chat completion on the configured model, behind the same circuit
+        breaker as response generation. For side tasks (session summary) that
+        need an LLM but none of the personality framing.
+        """
+        if not self.openai_client:
+            return None
+
+        async def call():
+            response = await self.openai_client.chat.completions.create(
+                model=self.llm_model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+            return response.choices[0].message.content
+
+        try:
+            return await self.circuit_breaker.call(call)
+        except CircuitBreakerOpenError as e:
+            logger.warning(f"Circuit breaker open, skipping completion: {e}")
+            return None
+
     def _build_personality_prompt(self) -> str:
         """Build system prompt: substance-first co-host base, intensity modulated by traits"""
         traits = self.current_traits
@@ -630,6 +748,15 @@ class PersonalityEngine:
         """
         lines = []
 
+        # Widest frame first: what the stream is, then what's happened on it
+        stream_now = context.get('stream_now')
+        if stream_now:
+            lines.append(f"- Stream right now: {stream_now}")
+
+        summary = context.get('session_summary')
+        if summary:
+            lines.append(f"- Earlier this stream: {summary}")
+
         viewer_data = context.get('viewer_data') or {}
         if isinstance(viewer_data, dict):
             facts = []
@@ -654,6 +781,13 @@ class PersonalityEngine:
         # so only use it when there is no message history to insert
         if not context.get('recent_messages') and context.get('recent_context'):
             lines.append(f"- Recent chat: {context['recent_context']}")
+
+        # Last so it's freshest in the model's attention when it applies
+        if context.get('greet_first_timer'):
+            lines.append(
+                f"- {user} is chatting here for the FIRST time ever. Welcome them "
+                f"by name in a few words, then engage with what they actually said."
+            )
 
         if not lines:
             return ""
@@ -755,6 +889,8 @@ class PersonalityEngine:
             'current_traits': asdict(self.current_traits),
             'responses_generated': self.responses_generated,
             'avg_response_time': avg_response_time,
+            'repetition_rejections': self.repetition_rejections,
+            'repetition_forced': self.repetition_forced,
             'last_switch': self.last_switch_time.isoformat() if self.last_switch_time else None
         }
         
