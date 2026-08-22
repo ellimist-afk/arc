@@ -100,3 +100,6 @@ scrub.ps1
 
 # Local Whisper model cache (downloaded at first run, ~460MB)
 models/whisper/
+
+# Realtime spike measurement outputs (JSONL/WAV runs, sent back for analysis)
+spike/runs/
