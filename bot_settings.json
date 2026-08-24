@@ -1,12 +1,12 @@
 {
-  "TTS_ENABLED": true,
+  "TTS_ENABLED": false,
   "tts_voice": "shimmer",
   "tts_speed": 1.25,
-  "llm_model": "gpt-4o-mini",
+  "llm_model": "gpt-5.5",
   "bot_name": "elimist_",
   "streamer_name": "cassova_",
   "personality": {
-    "preset": "sassy",
+    "preset": "roast",
     "custom_traits": {
       "humor": 50,
       "sarcasm": 90,
