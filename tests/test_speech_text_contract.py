@@ -177,6 +177,7 @@ async def test_complete_adapts_params_for_gpt5(engine):
     assert 'max_tokens' not in captured and captured['max_completion_tokens'] == 200
     assert captured['reasoning_effort'] == 'none'
 
+    captured.clear()
     engine.llm_model = 'gpt-4o-mini'
     await engine.complete([{"role": "user", "content": "x"}], max_tokens=200)
     assert captured['max_tokens'] == 200 and 'reasoning_effort' not in captured
