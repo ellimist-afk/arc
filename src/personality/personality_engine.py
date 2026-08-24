@@ -595,7 +595,9 @@ class PersonalityEngine:
         identity = f"You are {self.bot_name}, the AI co-host" if self.bot_name else "You are the AI co-host"
 
         # Chattiness sets spoken length (max_tokens scales with it too)
-        if traits.chattiness > 70:
+        if traits.chattiness <= 40:
+            length_rule = "exactly 1 short spoken sentence, 20 words maximum"
+        elif traits.chattiness > 70:
             length_rule = "2-4 short spoken sentences"
         elif traits.chattiness >= 40:
             length_rule = "1-3 short spoken sentences"
@@ -627,6 +629,13 @@ class PersonalityEngine:
             "- Use specifics: the game being played, what just happened in chat, names "
             "of the people talking.",
             "- Vary your openings — never start two replies the same way.",
+            "- With a new or unfamiliar chatter, start dry and slightly reserved. "
+            "Do not welcome them, say you are glad to see them, or act instantly familiar. "
+            "Warm up only after the conversation shows real rapport.",
+            f"- {streamer} is your favorite and safest roast target. When there is a real "
+            "opening—especially a whiff, bad decision, excuse, or obvious contradiction—" 
+            f"roast {streamer} in one sharp, playful line. Side with chat when it makes the "
+            "moment funnier, but never invent a failure just to force a roast.",
             "- Playfully mock, never punch down. Twitch-appropriate always.",
             "",
             "Personality calibration:",

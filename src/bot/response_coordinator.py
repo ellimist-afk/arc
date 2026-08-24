@@ -12,6 +12,8 @@ from enum import Enum
 import json
 import os
 
+from utils.task_registry import cancel_and_wait
+
 logger = logging.getLogger(__name__)
 
 
@@ -223,9 +225,10 @@ class ResponseCoordinator:
         """
         self.last_activity_time = datetime.now()
         start_time = time.perf_counter()
+        player = None
         try:
             if self.audio_queue:
-                await self.audio_queue.queue_utterance(
+                player = await self.audio_queue.queue_utterance(
                     reply.sentences, priority=priority, user=user,
                     is_mention=is_mention, prefetch_depth=prefetch_depth,
                 )
@@ -244,11 +247,40 @@ class ResponseCoordinator:
                         f"(fell_back={getattr(reply, 'fell_back', False)}, aborted={getattr(reply, 'aborted', False)})")
             return text
         except asyncio.TimeoutError:
-            logger.error("Streamed response timed out waiting for completion")
-            return reply.text
+            # We have stopped waiting, so this utterance must stop existing:
+            # left queued it would speak minutes later, and alongside the
+            # caller's blocking fallback the streamer would hear both.
+            logger.error("Streamed response timed out waiting for completion; "
+                         "abandoning the utterance so it cannot play later")
+            self._abandon_streamed(reply, player)
+            return None
+        except asyncio.CancelledError:
+            self._abandon_streamed(reply, player)
+            raise
         except Exception as e:
             logger.error(f"Error coordinating streamed response: {e}", exc_info=True)
+            self._abandon_streamed(reply, player)
             return reply.text
+
+    def _abandon_streamed(self, reply: Any, player: Any) -> None:
+        """Stop a streamed reply from playing and release its waiters."""
+        try:
+            if player is not None and self.audio_queue is not None:
+                cancel = getattr(self.audio_queue, 'cancel_utterance', None)
+                if cancel is not None:
+                    cancel(player)
+                else:  # older queue: at least stop the player itself
+                    player.skip()
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Could not cancel streamed utterance: {e}")
+        try:
+            stream = getattr(reply, 'sentences', None)
+            if stream is not None and hasattr(stream, 'abandon'):
+                stream.abandon()
+            elif hasattr(reply, 'abandon'):
+                reply.abandon()
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Could not abandon streamed reply: {e}")
 
     async def start_dead_air_prevention(self) -> None:
         """Start the dead air prevention task"""
@@ -261,11 +293,7 @@ class ResponseCoordinator:
     async def stop_dead_air_prevention(self) -> None:
         """Stop the dead air prevention task"""
         if self.dead_air_task:
-            self.dead_air_task.cancel()
-            try:
-                await self.dead_air_task
-            except asyncio.CancelledError:
-                pass
+            await cancel_and_wait(self.dead_air_task, what="dead-air monitor")
             self.dead_air_task = None
             logger.info("Dead air prevention stopped")
             

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import aiohttp
 import asyncpg
 import redis.asyncio as redis
+from utils.task_registry import cancel_and_wait
 
 logger = logging.getLogger(__name__)
 
@@ -70,11 +71,7 @@ class HealthChecker:
         """Stop health monitoring"""
         self.running = False
         if self.check_task:
-            self.check_task.cancel()
-            try:
-                await self.check_task
-            except asyncio.CancelledError:
-                pass
+            await cancel_and_wait(self.check_task, what="health check loop")
         logger.info("Health checker stopped")
     
     async def _health_check_loop(self):

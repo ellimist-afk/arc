@@ -27,7 +27,7 @@ if str(Path(__file__).parent.parent) not in sys.path:
 from core.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
 from audio.utterance_player import UtterancePlayer, UtteranceStats
 from audio.tts_cache_sqlite import TTSCacheSQLite
-from utils.task_registry import get_global_registry
+from utils.task_registry import get_global_registry, cancel_and_wait
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +144,11 @@ class OptimizedAudioQueue:
         # Streamed-utterance metrics
         self.utterances_played = 0
         self.last_time_to_first_audio: Optional[float] = None
+        self.utterances_abandoned = 0
+        self._abandon_seq = 0  # unique TaskRegistry names for cleanup tasks
+        # Shared shutdown outcome: the first caller tears down, every
+        # concurrent or later caller awaits the same future (see shutdown()).
+        self._shutdown_future: Optional[asyncio.Future] = None
 
         # Pre-buffered common responses
         self.common_responses = [
@@ -617,6 +622,53 @@ class OptimizedAudioQueue:
             
         return False
 
+    def _abandon_items(self, items: List[AudioItem], reason: str) -> None:
+        """Release every streamed reply among `items`.
+
+        A streamed item owns a sentence stream that some handler is awaiting.
+        Dropping the item without telling that stream leaves the handler stuck
+        until its 90s timeout, so the notification happens synchronously here
+        (skip/shutdown cannot await) and the generator's own cleanup is
+        scheduled. Both halves are idempotent.
+        """
+        streams = [i.sentences for i in items if getattr(i, 'sentences', None) is not None]
+        if not streams:
+            return
+        for stream in streams:
+            abandon = getattr(stream, 'abandon', None)
+            if abandon is None:
+                continue
+            try:
+                abandon()
+            except Exception as e:  # noqa: BLE001 — never block a skip
+                logger.debug(f"Could not abandon streamed reply: {e}")
+        self.utterances_abandoned += len(streams)
+        logger.info(f"Abandoned {len(streams)} streamed utterance(s) on {reason}")
+
+        async def close_all():
+            for stream in streams:
+                aclose = getattr(stream, 'aclose', None)
+                if aclose is None:
+                    continue
+                try:
+                    await aclose()
+                except Exception as e:  # noqa: BLE001
+                    logger.debug(f"Error closing abandoned sentence stream: {e}")
+
+        self._abandon_seq += 1
+        try:
+            get_global_registry().create_task(
+                close_all(), name=f"audio_abandon_utterance_{self._abandon_seq}")
+        except Exception as e:  # noqa: BLE001 — no loop (e.g. sync shutdown path)
+            logger.debug(f"Deferred sentence-stream cleanup skipped: {e}")
+
+    def _drain_queue(self, reason: str) -> None:
+        """Clear the pending queue, releasing any streamed replies in it."""
+        if not self.queue:
+            return
+        dropped, self.queue = list(self.queue), []
+        self._abandon_items(dropped, reason)
+
     def skip(self) -> None:
         """
         Skip audio: interrupt the clip currently playing AND drop what's queued.
@@ -628,8 +680,30 @@ class OptimizedAudioQueue:
         self._skip_playback = True
         if self.current_item and self.current_item.utterance:
             self.current_item.utterance.skip()  # drop the rest of the streamed reply too
-        self.queue.clear()
+        self._drain_queue("skip")
         logger.info("Skip requested: interrupting current clip and clearing queue")
+
+    def cancel_utterance(self, player: Any) -> bool:
+        """Abandon one streamed reply, wherever it currently is.
+
+        Used when the caller has stopped waiting (timeout or cancellation):
+        the utterance must not be played afterwards, or the streamer hears a
+        reply whose text was never posted -- or worse, hears it twice once a
+        blocking fallback is generated.
+        """
+        if player is None:
+            return False
+        if self.current_item is not None and self.current_item.utterance is player:
+            player.skip()
+            self._skip_playback = True
+            self._abandon_items([self.current_item], "cancel (playing)")
+            return True
+        for i, item in enumerate(self.queue):
+            if item.utterance is player:
+                del self.queue[i]
+                self._abandon_items([item], "cancel (queued)")
+                return True
+        return False
 
     def set_volume(self, volume: float) -> None:
         """
@@ -675,31 +749,89 @@ class OptimizedAudioQueue:
         return silence
     
     async def shutdown(self) -> None:
-        """Shutdown the audio queue"""
+        """Shutdown the audio queue.
+
+        Single-owner with a shared outcome: the first caller performs the
+        teardown, and every concurrent or later caller returns only when that
+        teardown has finished -- "close once" alone let a second caller return
+        while the first was still closing. Failures are reported to all
+        callers; cancellation of the owner is never recorded as success.
+        """
+        if self._shutdown_future is not None:
+            await asyncio.shield(self._shutdown_future)
+            return
+        loop = asyncio.get_running_loop()
+        fut = loop.create_future()
+        self._shutdown_future = fut
+        try:
+            failures = await self._shutdown_impl()
+        except asyncio.CancelledError:
+            self._shutdown_future = None   # retriable: closed handles are already None
+            fut.cancel()
+            raise
+        except BaseException as e:
+            fut.set_exception(e)
+            fut.exception()
+            raise
+        if failures:
+            err = RuntimeError("OptimizedAudioQueue shutdown: "
+                               + "; ".join(f"{name} ({type(e).__name__}: {e})" for name, e in failures))
+            fut.set_exception(err)
+            fut.exception()
+            raise err
+        fut.set_result(True)
+
+    async def _shutdown_impl(self) -> List[Tuple[str, BaseException]]:
+        """Order matters: stop the processor first (it may still be reading
+        the cache or writing the stream), release streamed waiters, then the
+        device, then the cache last. Every handle is cleared before it is
+        closed so nothing can be closed twice; every step is attempted."""
+        failures: List[Tuple[str, BaseException]] = []
         logger.info("Shutting down OptimizedAudioQueue...")
-        
-        # Close SQLite cache database
-        await self.cache.close()
-        logger.info("Closed TTS cache database")
-        
-        # Cancel processing task
-        if self.processing_task:
-            self.processing_task.cancel()
+
+        # 1. Stop processing before touching anything it uses. The handle is
+        # cleared only once the processor has actually finished: if the owner
+        # is cancelled while the processor is still cleaning up, a retried
+        # shutdown must wait for it again rather than tear down under it.
+        if self.processing_task is not None:
+            await cancel_and_wait(self.processing_task, what="audio processor")
+            self.processing_task = None
+        self._skip_playback = True
+
+        # 2. Release anyone waiting on a streamed reply
+        if self.current_item is not None and self.current_item.utterance:
+            self.current_item.utterance.skip()
+            self._abandon_items([self.current_item], "shutdown")
+        self._drain_queue("shutdown")
+
+        # 3. Close the output device
+        stream, self.stream = self.stream, None
+        if stream is not None:
             try:
-                await self.processing_task
-            except asyncio.CancelledError:
-                pass
-        
-        # Clear queue
-        self.queue.clear()
-        
-        # Close audio stream
-        if self.stream:
-            self.stream.stop_stream()
-            self.stream.close()
-            
-        # Terminate PyAudio
-        if self.pyaudio:
-            self.pyaudio.terminate()
-            
-        logger.info("OptimizedAudioQueue shutdown complete")
+                stream.stop_stream()
+                stream.close()
+            except Exception as e:  # noqa: BLE001 — device may already be gone
+                logger.warning(f"Error closing audio stream: {e}")
+                failures.append(("stream", e))
+
+        pa, self.pyaudio = self.pyaudio, None
+        if pa is not None:
+            try:
+                pa.terminate()
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Error terminating PyAudio: {e}")
+                failures.append(("pyaudio", e))
+
+        # 4. Cache last: nothing can use it any more
+        try:
+            await self.cache.close()
+            logger.info("Closed TTS cache database")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Error closing TTS cache: {e}")
+            failures.append(("cache", e))
+
+        logger.info("OptimizedAudioQueue shutdown complete"
+                    + (f" with {len(failures)} failure(s)" if failures else ""))
+        return failures

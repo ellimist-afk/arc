@@ -133,6 +133,8 @@ class TTSCacheSQLite:
         
         # Connection pool
         self.db: Optional[aiosqlite.Connection] = None
+        # Shared close outcome (see close())
+        self._close_future: Optional[asyncio.Future] = None
         
         logger.info(f"Initializing SQLite TTS cache at {self.db_path}")
         
@@ -581,7 +583,32 @@ class TTSCacheSQLite:
         }
         
     async def close(self):
-        """Close database connection"""
-        if self.db:
-            await self.db.close()
-            logger.info("TTS cache database closed")
+        """Close the database connection.
+
+        Every caller returns only once the underlying close has finished:
+        the first caller closes, concurrent and later callers await that same
+        outcome (including its failure). The connection is closed exactly
+        once; an owner cancelled mid-close leaves the close retriable.
+        """
+        fut = getattr(self, '_close_future', None)
+        if fut is not None:
+            await asyncio.shield(fut)
+            return
+        loop = asyncio.get_running_loop()
+        fut = loop.create_future()
+        self._close_future = fut
+        db, self.db = self.db, None
+        try:
+            if db is not None:
+                await db.close()
+                logger.info("TTS cache database closed")
+        except asyncio.CancelledError:
+            self.db = db                 # not closed: let a retry do it
+            self._close_future = None
+            fut.cancel()
+            raise
+        except BaseException as e:
+            fut.set_exception(e)
+            fut.exception()
+            raise
+        fut.set_result(True)

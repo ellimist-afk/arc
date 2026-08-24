@@ -102,6 +102,11 @@ class MicCapture:
         self.on_chunk, self.on_error, self.fake = on_chunk, on_error, fake
         self.ring = collections.deque(
             maxlen=max(1, bytes_of_ms(preroll_ms) // CHUNK_BYTES))
+        # The capture thread appends to `ring` while arm() (event loop) drains
+        # it. Without this lock the drain could raise "deque mutated during
+        # iteration", lose chunks, or set armed=True after a chunk had already
+        # been ringed -- leaving LISTENING with an effectively unarmed mic.
+        self._ring_lock = threading.Lock()
         self.armed = False
         self.preroll_flushed_ms = 0.0
         self._stop = threading.Event()
@@ -115,11 +120,16 @@ class MicCapture:
         self._stop.set()
 
     def arm(self) -> float:
-        """Flush pre-roll to the consumer, then stream live. Returns ms flushed."""
-        flushed = b"".join(self.ring)
-        self.ring.clear()
-        self.armed = True
-        self.preroll_flushed_ms = ms_of_bytes(len(flushed))
+        """Flush pre-roll to the consumer, then stream live. Returns ms flushed.
+
+        The snapshot-and-arm is atomic against the capture thread; delivery
+        happens outside the lock so capture never blocks on loop/network work.
+        """
+        with self._ring_lock:
+            flushed = b"".join(self.ring)
+            self.ring.clear()
+            self.armed = True
+            self.preroll_flushed_ms = ms_of_bytes(len(flushed))
         if flushed:
             self._deliver(flushed)
         return self.preroll_flushed_ms
@@ -153,10 +163,15 @@ class MicCapture:
                     chunk = b"\x00" * CHUNK_BYTES
                 else:
                     chunk = stream.read(CHUNK_FRAMES, exception_on_overflow=False)
-                if self.armed:
+                # Re-check `armed` under the lock: arm() may land between the
+                # read above and the append below, and a chunk ringed after
+                # the flush would be stranded until the next arm().
+                with self._ring_lock:
+                    live = self.armed
+                    if not live:
+                        self.ring.append(chunk)
+                if live:
                     self._deliver(chunk)
-                else:
-                    self.ring.append(chunk)
         except OSError as e:
             logger.error(f"Realtime mic capture error: {e!r}")
             if self.on_error:
@@ -198,9 +213,19 @@ class Player:
         self.device_error: Optional[str] = None
         self._done_items = set()
         self._stop_item: Optional[str] = None
+        # Items stopped by hard_stop(). `_stop_item` is cleared as soon as the
+        # playback loop observes it, so it cannot keep rejecting the deltas
+        # still in flight from the provider; this does, until the provider
+        # signals the item is terminally done (mark_done). Insertion-ordered
+        # so that when the bound is hit the OLDEST cancellation is forgotten,
+        # never a recent one whose deltas may still be arriving.
+        self._cancelled: "collections.OrderedDict[str, None]" = collections.OrderedDict()
         self._shutdown = False
         self.thread = threading.Thread(target=self._run, daemon=True,
                                        name="realtime-player")
+
+    # Bound on remembered cancellations (see hard_stop).
+    _MAX_CANCELLED = 256
 
     def start(self) -> None:
         self.thread.start()
@@ -212,6 +237,10 @@ class Player:
 
     def enqueue(self, item_id: str, pcm: bytes) -> None:
         with self.cv:
+            if item_id in self._cancelled:
+                # Late delta for speech the user already interrupted: dropping
+                # it is what stops a barge-in from resuming a second later.
+                return
             self.q.append((item_id, pcm))
             self.cv.notify()
 
@@ -219,6 +248,9 @@ class Player:
         """The producer has no more audio for item_id."""
         with self.cv:
             self._done_items.add(item_id)
+            # Terminal for this item: no further deltas can arrive, so stop
+            # tracking it (this is what keeps _cancelled from growing).
+            self._cancelled.pop(item_id, None)
             self.cv.notify()
 
     def pause(self) -> float:
@@ -240,6 +272,14 @@ class Player:
         with self.cv:
             item = item_id or self.current_item
             self._stop_item = item
+            if item is not None:
+                # Re-cancelling refreshes recency
+                self._cancelled.pop(item, None)
+                self._cancelled[item] = None
+                while len(self._cancelled) > self._MAX_CANCELLED:
+                    # Provider never sent a terminal event for the oldest id;
+                    # forget it rather than grow without bound.
+                    self._cancelled.popitem(last=False)
             self.paused = False
             self.q.clear()
             self.cv.notify()

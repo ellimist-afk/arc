@@ -319,6 +319,61 @@ class TaskRegistry:
         
         logger.info(f"TaskRegistry shutdown complete. Cancelled {cancelled} tasks")
 
+async def cancel_and_wait(task: Optional["asyncio.Future"], *, what: str = "task") -> None:
+    """Cancel `task` and wait for it to finish -- without swallowing a
+    cancellation aimed at the CALLER.
+
+    The naive form
+
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    catches two very different things: the CancelledError the child raises
+    because we cancelled it (expected, quiet) and the CancelledError delivered
+    because the *current* task -- a shutdown owner -- was cancelled while it
+    waited (must propagate). A child that catches its cancellation and keeps
+    cleaning up is exactly when the two coincide. We tell them apart by the
+    current task's cancellation count: if it rose across the await, the owner
+    was cancelled, whatever the child did.
+
+    The wait goes through asyncio.shield(): cancelling a task that is awaiting
+    a child also cancels the child (Task.cancel() cancels its _fut_waiter),
+    which would interrupt the very cleanup we are waiting for. Shielded, an
+    owner cancellation reaches the owner only; the child finishes its
+    cleanup and a retried shutdown waits for it again. The child's OWN
+    cancellation still surfaces through the shield, so the quiet path is
+    unchanged.
+
+    A child that fails with an ordinary exception is logged, not raised --
+    this runs in teardown paths where the remaining steps must still happen.
+    """
+    if task is None:
+        return
+    current = asyncio.current_task()
+    before = current.cancelling() if current is not None else 0
+
+    def owner_cancelled() -> bool:
+        return current is not None and current.cancelling() > before
+
+    if not task.done():
+        task.cancel()
+    try:
+        await asyncio.shield(task)
+    except asyncio.CancelledError:
+        if owner_cancelled():
+            raise
+        # the child's own cancellation surfacing: expected
+    except Exception as e:  # noqa: BLE001 -- teardown must continue
+        logger.warning(f"{what} raised during cancellation: {e!r}")
+    if owner_cancelled():
+        # The child completed (possibly after suppressing its cancellation)
+        # in the same tick the owner was cancelled; honour the owner's.
+        raise asyncio.CancelledError()
+
+
 # Global registry instance (singleton pattern)
 _global_registry: Optional[TaskRegistry] = None
 

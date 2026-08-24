@@ -9,6 +9,8 @@ import sys
 import time
 import json
 import re
+import inspect
+import itertools
 from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime
 import signal
@@ -48,6 +50,60 @@ def strip_mentions_for_tts(text: str) -> str:
     """Remove @mentions from text for TTS (sounds unnatural when read aloud)."""
     return re.sub(r'@\w+\s*', '', text).strip()
 
+
+def is_bot_addressed(text: str, twitch_username: str, display_name: str = "") -> bool:
+    """Return whether chat is directly addressing the bot."""
+    lowered = (text or "").lower()
+    username = (twitch_username or "").lower().lstrip('@')
+    if username and f"@{username}" in lowered:
+        return True
+    if "hey bot" in lowered or "hey talkbot" in lowered:
+        return True
+
+    for candidate in (username, (display_name or "").lower().strip()):
+        if not candidate:
+            continue
+        escaped = re.escape(candidate)
+        if re.search(
+            rf"(?:^|@|\bhey\s+){escaped}(?:\b|$)|{escaped}[,:!?]",
+            lowered,
+        ):
+            return True
+    return False
+
+
+def is_spoken_bot_addressed(
+    text: str, twitch_username: str, display_name: str = ""
+) -> bool:
+    """Recognize the bot's account name in a speech transcript."""
+    lowered = (text or "").lower()
+    names = {
+        name.lower().strip().strip('@').rstrip('_')
+        for name in (twitch_username, display_name)
+        if name
+    }
+    names.discard("")
+    if any(re.search(rf"\b{re.escape(name)}\b", lowered) for name in names):
+        return True
+
+    # Observed medium.en rendering of spoken "elimist". Restrict the alias
+    # to address position so ordinary discussion of "game elements" does not
+    # wake the bot.
+    words = re.findall(r"[a-z]+", lowered)
+    return "elimist" in names and bool(words) and (
+        words[0] == "elements" or words[-1] == "elements"
+    )
+
+class ShutdownError(RuntimeError):
+    """One or more components failed to shut down. Every component still got
+    its turn; `failures` lists (step name, exception) in teardown order."""
+
+    def __init__(self, failures):
+        self.failures = list(failures)
+        names = ", ".join(name for name, _ in self.failures)
+        super().__init__(f"{len(self.failures)} shutdown step(s) failed: {names}")
+
+
 class TalkBot:
     """
     Main bot class implementing all documented fixes
@@ -61,6 +117,7 @@ class TalkBot:
             config: Configuration dictionary with API keys and settings
         """
         self.config = config  # Keep for backward compatibility
+        self._bot_settings: Dict[str, Any] = {}
         
         # Initialize BotState (PRD Section 3.3 - Single source of truth)
         self.state = BotState(
@@ -131,14 +188,48 @@ class TalkBot:
         self.last_response = None  # Track last response for repeat command
         self.voice_commands = None  # Will be initialized if voice enabled
         
+        # Shutdown is single-owner: the first shutdown() call performs the
+        # teardown, every later or concurrent call awaits that same teardown.
+        self._shutdown_future: Optional[asyncio.Future] = None
+        self._stop_event: Optional[asyncio.Event] = None  # created on the loop in run()
+        self._loop: Optional[asyncio.AbstractEventLoop] = None  # captured in run()
+        self.shutdown_requested = False
+
         # Set up signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
-        
+
     def _signal_handler(self, signum, frame):
-        """Handle shutdown signals gracefully"""
-        logger.info(f"Received signal {signum}, initiating graceful shutdown...")
-        asyncio.create_task(self.shutdown())
+        """Handle shutdown signals: REQUEST termination, never perform it.
+
+        Tearing down from here raced run()'s own `finally: shutdown()` -- two
+        teardowns interleaving on the same components -- and used a raw
+        asyncio.create_task the registry never saw. The loop in run() observes
+        the request and exits; its finally block is the one teardown.
+        """
+        logger.info(f"Received signal {signum}, requesting graceful shutdown...")
+        self.request_shutdown()
+
+    def request_shutdown(self) -> None:
+        """Ask the main loop to exit. Safe from signal handlers and threads."""
+        self.shutdown_requested = True
+        self.running = False
+        event = self._stop_event
+        if event is None or event.is_set():
+            return
+        # asyncio.Event.set() is only safe on the loop's own thread; always
+        # hop through the loop run() registered (signal handlers share that
+        # thread, but a watchdog thread would not).
+        loop = getattr(self, '_loop', None)
+        if loop is None:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+        if loop is not None and not loop.is_closed():
+            loop.call_soon_threadsafe(event.set)
+        else:
+            event.set()
         
     _TTS_STREAMING_DEFAULTS = {'enabled': False, 'min_sentence_chars': 12, 'prefetch_depth': 2}
 
@@ -159,6 +250,7 @@ class TalkBot:
             if os.path.exists(settings_file):
                 with open(settings_file, 'r') as f:
                     bot_settings = json.load(f)
+                self._bot_settings = bot_settings
 
                 # Update TTS settings if present
                 if 'TTS_ENABLED' in bot_settings:
@@ -193,6 +285,7 @@ class TalkBot:
             if os.path.exists(settings_file):
                 with open(settings_file, 'r') as f:
                     bot_settings = json.load(f)
+                self._bot_settings = bot_settings
                     
                 # Update TTS settings if present  
                 if 'TTS_ENABLED' in bot_settings:
@@ -214,6 +307,9 @@ class TalkBot:
                 # Reload response coordinator settings if present
                 if self.response_coordinator and 'response_coordination' in bot_settings:
                     await self.response_coordinator.reload_settings()
+
+                if self.ad_announcer and 'ad_announcer' in bot_settings:
+                    self.ad_announcer.update_settings(bot_settings['ad_announcer'])
                 
                 # Update personality if present and personality engine is initialized
                 if self.personality_engine and 'personality' in bot_settings and 'preset' in bot_settings['personality']:
@@ -451,6 +547,7 @@ class TalkBot:
                 chat_buffer=self.chat_buffer,
                 channel_name=self.config.get('TWITCH_CHANNEL')
             )
+            self.ad_announcer.update_settings(self._bot_settings.get('ad_announcer', {}))
             
             # Register EventSub handler for automatic ad detection
             self.eventsub.on_event('channel.ad_break.begin', self.ad_announcer.handle_ad_break_begin)
@@ -616,12 +713,15 @@ class TalkBot:
             if self.response_coordinator:
                 self.response_coordinator.last_activity_time = datetime.now()
             
-            # Check for @mention or "hey bot" and boost priority
+            # Check for a direct address and boost priority. The public bot
+            # name can differ from its Twitch account name.
             text_lower = message.get('text', '').lower()
-            is_mention = (
-                f"@{self.config['TWITCH_BOT_USERNAME'].lower()}" in text_lower or
-                "hey bot" in text_lower or
-                "hey talkbot" in text_lower
+            is_mention = is_bot_addressed(
+                text_lower,
+                self.config['TWITCH_BOT_USERNAME'],
+                self._bot_settings.get(
+                    'bot_name', self.config['TWITCH_BOT_USERNAME']
+                ),
             )
             priority = 'high' if is_mention else 'normal'
             
@@ -660,8 +760,14 @@ class TalkBot:
             # First-time chatter: upgrade to a must-reply welcome. Detection is
             # the context builder's (positive evidence only); whether to act
             # on it right now is features/first_timer.py's call.
+            #
+            # build_context() hands back the SAME dict it keeps in its L1/L2
+            # caches, so writing a per-request flag onto it would make every
+            # later cache hit for this viewer still claim "first time ever".
+            # Copy before mutating.
             greet = bool(self.first_timer and self.first_timer.should_greet(context))
             if greet:
+                context = dict(context)
                 context['greet_first_timer'] = True
                 is_mention = True
                 priority = 'high'
@@ -793,15 +899,23 @@ class TalkBot:
             name="loop_lag_monitor"
         )
 
+        self._loop = asyncio.get_running_loop()
+        self._stop_event = asyncio.Event()
+        if self.shutdown_requested:       # signal arrived during setup
+            self._stop_event.set()
         try:
-            while self.running:
-                await asyncio.sleep(1)
-                
+            while self.running and not self._stop_event.is_set():
+                # Wake promptly on a shutdown request instead of polling
+                try:
+                    await asyncio.wait_for(self._stop_event.wait(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    pass
+
                 # Check for WebSocket reconnection needs
                 if self.websocket_manager and not self.websocket_manager.is_connected():
                     logger.warning("WebSocket disconnected, attempting reconnect...")
                     await self.websocket_manager.reconnect()
-                    
+
         except KeyboardInterrupt:
             logger.info("Received interrupt signal")
         finally:
@@ -1020,7 +1134,7 @@ class TalkBot:
                 context=context,
                 user=message.get('username'),
                 is_mention=True,
-                priority='high',
+                priority=priority,
                 is_voice=True,
                 speaker_label=speaker,
             )
@@ -1127,6 +1241,35 @@ class TalkBot:
                     priority='high'
                 )
     
+    # Coroutines that are long-lived singletons inside the realtime stack.
+    # These get stable names (a restart replaces its own predecessor); every
+    # other realtime coroutine is a short-lived callback and gets a unique one.
+    _REALTIME_SINGLETON_TASKS = frozenset({'_supervise', '_pump_mic', '_poll_loop'})
+
+    def _realtime_task_factory(self, prefix: str):
+        """Build a TaskRegistry factory that never lets siblings cancel each other.
+
+        TaskRegistry.create_task() cancels any existing task registered under
+        the same name. Passing one fixed name for a whole subsystem therefore
+        made the mic pump cancel the session supervisor, and every backend
+        callback cancel the poll loop (and each other). Long-lived loops keep
+        distinct stable names; callbacks get a unique suffix.
+        """
+        counter = itertools.count()
+
+        def factory(coro):
+            try:
+                coro_name = coro.cr_code.co_name
+            except AttributeError:
+                coro_name = getattr(coro, '__name__', 'task')
+            if coro_name in self._REALTIME_SINGLETON_TASKS:
+                name = f"{prefix}_{coro_name}"
+            else:
+                name = f"{prefix}_{coro_name}_{next(counter)}"
+            return self.task_registry.create_task(coro, name=name)
+
+        return factory
+
     async def _setup_realtime_backend(self) -> None:
         """Wire VOICE_BACKEND=realtime. Any failure falls back to legacy."""
         try:
@@ -1155,8 +1298,7 @@ class TalkBot:
                 vad=self.config.get('REALTIME_VAD', 'server_vad'),
                 instructions_provider=self._realtime_instructions,
                 api_key=self.config.get('OPENAI_API_KEY'),
-                create_task=lambda coro: self.task_registry.create_task(
-                    coro, name="realtime_session"))
+                create_task=self._realtime_task_factory("realtime_session"))
 
             router = AttentionRouter(AttentionConfig(
                 bot_username=self.config.get('TWITCH_BOT_USERNAME', ''),
@@ -1168,8 +1310,7 @@ class TalkBot:
                 audio=audio, session=session, router=router,
                 streamer_username=self.config.get('TWITCH_CHANNEL', ''),
                 channel=self.config.get('TWITCH_CHANNEL', ''),
-                create_task=lambda coro: self.task_registry.create_task(
-                    coro, name="realtime_backend"))
+                create_task=self._realtime_task_factory("realtime_backend"))
             await self.realtime_backend.start()
             self.service_registry.register('RealtimeVoiceService',
                                            self.realtime_backend)
@@ -1182,6 +1323,26 @@ class TalkBot:
                 f"REALTIME BACKEND FAILED TO START -- staying on the legacy "
                 f"voice pipeline for this session. Reason: {e}")
             self.realtime_backend = None
+
+    async def _deactivate_realtime_backend(self) -> None:
+        """Retire a realtime backend that can no longer serve turns.
+
+        Clearing the attribute is what restores the legacy voice path, so it
+        happens first and unconditionally -- a failure while stopping the dead
+        backend must not leave voice input routed into it.
+        """
+        backend, self.realtime_backend = self.realtime_backend, None
+        if backend is None:
+            return
+        try:
+            await backend.stop()
+        except Exception as e:
+            logger.warning(f"Error stopping unhealthy realtime backend: {e}")
+        try:
+            self.service_registry.remove('RealtimeVoiceService')
+        except Exception as e:
+            logger.debug(f"RealtimeVoiceService not deregistered: {e}")
+        logger.info("Legacy voice pipeline restored (Whisper -> LLM -> TTS)")
 
     def _realtime_instructions(self) -> str:
         """Persona text for the Realtime session (doc SS11 'in')."""
@@ -1207,10 +1368,28 @@ class TalkBot:
 
             # VOICE_BACKEND=realtime: legacy transcripts are wake-phrase
             # candidates only. The Realtime session owns the conversation, so
-            # the staged pipeline below must not also answer.
+            # the staged pipeline below must not also answer -- but only while
+            # that session can actually answer. Routing on "the object exists"
+            # sent wake phrases into a dead session and the streamer got
+            # silence; route on health instead and hand this very utterance
+            # back to the legacy pipeline when realtime has given up.
             if self.realtime_backend is not None:
-                await self.realtime_backend.on_legacy_transcript(text)
-                return
+                if self.realtime_backend.ready:
+                    await self.realtime_backend.on_legacy_transcript(text)
+                    return
+                if self.realtime_backend.healthy:
+                    # Recoverable: the supervisor is reconnecting. Keep the
+                    # backend, but this wake phrase can't be sent anywhere
+                    # right now, so the legacy pipeline answers it.
+                    logger.warning(
+                        "Realtime session not connected (reconnecting); answering "
+                        "this utterance via the legacy voice pipeline")
+                else:
+                    logger.error(
+                        "REALTIME BACKEND IS NO LONGER HEALTHY -- restoring the legacy "
+                        "voice pipeline for this and every following utterance")
+                    await self._deactivate_realtime_backend()
+                # fall through: this utterance is answered by the legacy path
             
             # Filter out short/noisy inputs
             if len(text) < 4:
@@ -1250,7 +1429,6 @@ class TalkBot:
                     return
             
             # MORE RESTRICTIVE: Only respond to direct questions or bot mentions
-            bot_name = self.config.get('BOT_NAME', 'talkbot').lower()
             needs_response = False
             
             # 1. Respond to various "hey" greetings directed at the bot.
@@ -1266,7 +1444,11 @@ class TalkBot:
                                 f"(recognizer misfire tolerated): '{text}'")
                 logger.info(f"Voice: Bot triggered - '{text}'")
             # Also respond if bot name is mentioned
-            elif bot_name in text_lower and len(text_lower.split()) <= 10:
+            elif is_spoken_bot_addressed(
+                text_lower,
+                self.config.get('TWITCH_BOT_USERNAME', ''),
+                self._bot_settings.get('bot_name', ''),
+            ) and len(text_lower.split()) <= 10:
                 needs_response = True
                 logger.info(f"Voice: Bot name mentioned - '{text}'")
             
@@ -1753,70 +1935,138 @@ class TalkBot:
 
     async def shutdown(self) -> None:
         """
-        Gracefully shutdown all bot components
+        Gracefully shutdown all bot components.
+
+        Single-owner and idempotent: the first caller runs the teardown; any
+        concurrent or later caller awaits that same teardown and returns when
+        it has finished. Components are therefore stopped exactly once.
         """
-        logger.info("Starting graceful shutdown...")
         self.running = False
-
-        # Recap needs the LLM and the task registry, so it goes before either is torn down
+        self.shutdown_requested = True
+        if self._shutdown_future is not None:
+            # Someone else owns the teardown: wait for ITS outcome. A failure
+            # or cancellation there is raised here too, so every caller sees
+            # the same truth.
+            await asyncio.shield(self._shutdown_future)
+            return
+        if not hasattr(self, '_shutdown_steps_done'):
+            self._shutdown_steps_done = set()
+        loop = asyncio.get_running_loop()
+        fut = loop.create_future()
+        self._shutdown_future = fut
         try:
-            await self._write_recap("shutdown")
-        except Exception as e:
-            logger.error(f"Recap on shutdown failed: {e}")
+            failures = await self._shutdown_impl()
+        except asyncio.CancelledError:
+            # The owning caller was cancelled mid-teardown. Never record that
+            # as success: waiters are released with the cancellation, and the
+            # shared future is dropped so a later shutdown() resumes the steps
+            # that did not complete (finished steps are remembered and skipped).
+            self._shutdown_future = None
+            fut.cancel()
+            raise
+        except BaseException as e:
+            fut.set_exception(e)
+            fut.exception()  # mark retrieved; the owner re-raises it below
+            raise
+        if failures:
+            err = ShutdownError(failures)
+            fut.set_exception(err)
+            fut.exception()
+            raise err
+        fut.set_result(True)
 
+    async def _shutdown_step(self, name: str, fn, failures: List[Tuple[str, BaseException]]) -> None:
+        """Run one teardown step, best-effort.
+
+        A failing component is logged with its name and recorded; the
+        remaining components still get their turn. Completed steps (including
+        failed ones -- they ran) are remembered so a resumed teardown after a
+        cancellation does not repeat them. CancelledError is never swallowed.
+        """
+        if name in self._shutdown_steps_done:
+            return
+        try:
+            result = fn()
+            if inspect.isawaitable(result):
+                await result
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"Shutdown step '{name}' failed ({type(e).__name__}: {e}); "
+                         f"continuing with the remaining components", exc_info=True)
+            failures.append((name, e))
+        self._shutdown_steps_done.add(name)
+
+    async def _close_memory_system(self) -> None:
+        redis_client = getattr(self.memory_system, 'redis_client', None)
+        if redis_client is not None:
+            await redis_client.aclose()
+            self.memory_system.redis_client = None
+        # The supported database close path is the memory system's own
+        # close() (-> DatabaseSessionManager.close()); the previous
+        # db_manager.cleanup() call targeted a method that never existed
+        if hasattr(self.memory_system, 'close'):
+            await self.memory_system.close()
+        elif getattr(self.memory_system, 'db_manager', None) is not None:
+            await self.memory_system.db_manager.close()
+
+    async def _stop_realtime_backend_for_shutdown(self) -> None:
+        backend, self.realtime_backend = self.realtime_backend, None
+        if backend is not None:
+            await backend.stop()
+
+    def _stop_api_server(self) -> None:
         # Stop accepting API requests before the components endpoints read go away
         if self.api_server:
             self.api_server.should_exit = True
-        
+
+    async def _shutdown_impl(self) -> List[Tuple[str, BaseException]]:
+        """Tear down every component in dependency-safe order.
+
+        Returns the list of (step, exception) for steps that failed. Nothing
+        here raises except CancelledError.
+        """
+        logger.info("Starting graceful shutdown...")
+        failures: List[Tuple[str, BaseException]] = []
+
+        async def step(name, fn):
+            await self._shutdown_step(name, fn, failures)
+
+        # Recap needs the LLM and the task registry, so it goes before either is torn down
+        await step("recap", lambda: self._write_recap("shutdown"))
+        await step("api_server", self._stop_api_server)
         # Cancel all tasks via TaskRegistry
-        await self.task_registry.shutdown()
-        
+        await step("task_registry", lambda: self.task_registry.shutdown())
+
         # Shutdown components in reverse order
         if hasattr(self, 'token_refresher'):
-            try:
-                await self.token_refresher.stop()
-            except Exception as e:
-                logger.error(f"Error stopping token refresher: {e}")
-
+            await step("token_refresher", lambda: self.token_refresher.stop())
         if self.response_coordinator:
-            await self.response_coordinator.stop_dead_air_prevention()
-
+            await step("response_coordinator",
+                       lambda: self.response_coordinator.stop_dead_air_prevention())
         if self.voice_recognition:
-            self.voice_recognition.stop_listening()
-            
+            await step("voice_recognition", lambda: self.voice_recognition.stop_listening())
         if self.realtime_backend:
-            try:
-                await self.realtime_backend.stop()
-            except Exception as e:
-                logger.warning(f"Realtime backend shutdown error: {e}")
-            self.realtime_backend = None
-
+            await step("realtime_backend", self._stop_realtime_backend_for_shutdown)
         if self.vad_ducking:
-            self.vad_ducking.shutdown()
-            
+            await step("vad_ducking", lambda: self.vad_ducking.shutdown())
         if self.websocket_manager:
-            await self.websocket_manager.shutdown()
-            
+            await step("websocket_manager", lambda: self.websocket_manager.shutdown())
         if self.audio_queue:
-            await self.audio_queue.shutdown()
-            
+            await step("audio_queue", lambda: self.audio_queue.shutdown())
         if self.twitch_client:
-            await self.twitch_client.disconnect()
-            
+            await step("twitch_client", lambda: self.twitch_client.disconnect())
         if self.personality_engine:
-            await self.personality_engine.shutdown()
-            
+            await step("personality_engine", lambda: self.personality_engine.shutdown())
         if self.memory_system:
-            # ResilientMemorySystem doesn't have shutdown method, just close connections
-            try:
-                if hasattr(self.memory_system, 'redis_client') and self.memory_system.redis_client:
-                    await self.memory_system.redis_client.aclose()
-                if hasattr(self.memory_system, 'db_manager') and self.memory_system.db_manager:
-                    await self.memory_system.db_manager.cleanup()
-            except Exception as e:
-                logger.error(f"Error during memory system cleanup: {e}")
-            
-        logger.info("Shutdown complete")
+            await step("memory_system", self._close_memory_system)
+
+        if failures:
+            logger.error(f"Shutdown finished with {len(failures)} failed step(s): "
+                         + ", ".join(name for name, _ in failures))
+        else:
+            logger.info("Shutdown complete")
+        return failures
         
     def get_stats(self) -> Dict[str, Any]:
         """

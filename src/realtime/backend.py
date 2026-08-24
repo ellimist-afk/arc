@@ -86,6 +86,30 @@ class RealtimeVoiceBackend:
     def state(self) -> ConvState:
         return self.router.state
 
+    @property
+    def healthy(self) -> bool:
+        """Can this backend still serve a turn?
+
+        False once it has been stopped, or once the session's supervisor has
+        permanently given up reconnecting. A transient disconnect while the
+        supervisor is still retrying stays healthy on purpose -- the session
+        reconnects within seconds and the alternative is flapping between
+        backends mid-conversation.
+        """
+        return bool(self._running) and not getattr(self.session, 'gave_up', False)
+
+    @property
+    def ready(self) -> bool:
+        """Can this backend take a turn RIGHT NOW?
+
+        `healthy` answers "is it worth keeping"; this answers "can it send".
+        A healthy-but-reconnecting session would silently drop the wake
+        phrase (every send is a no-op without a socket), so the bot routes
+        that utterance through the legacy pipeline instead -- without
+        retiring the backend.
+        """
+        return self.healthy and bool(getattr(self.session, 'connected', False))
+
     async def _poll_loop(self) -> None:
         import asyncio
         while self._running:

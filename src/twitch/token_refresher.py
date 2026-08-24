@@ -11,6 +11,7 @@ import logging
 from typing import Dict, Optional, Callable
 from datetime import datetime, timedelta
 import aiohttp
+from utils.task_registry import cancel_and_wait
 
 logger = logging.getLogger(__name__)
 
@@ -338,10 +339,11 @@ class TwitchTokenRefresher:
         self.running = False
 
         if self.task:
-            self.task.cancel()
             try:
-                await self.task
+                await cancel_and_wait(self.task, what="token refresher loop")
             except asyncio.CancelledError:
-                pass
+                self.running = True      # not stopped: the owner was cancelled mid-wait
+                raise
+            self.task = None
 
         logger.info("Token refresher stopped")

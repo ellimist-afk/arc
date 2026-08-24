@@ -22,7 +22,12 @@ class FakeWS:
         self.closed = False
 
     async def send(self, raw):
-        self.outbound.append(json.loads(raw))
+        msg = json.loads(raw)
+        self.outbound.append(msg)
+        if msg.get("type") == "session.update":
+            # the real server acknowledges the configuration; the session is
+            # not "connected" until it does
+            self.inbound.put_nowait({"type": "session.updated"})
 
     async def recv(self):
         item = await self.inbound.get()

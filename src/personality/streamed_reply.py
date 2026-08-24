@@ -12,6 +12,12 @@ notifies the reply — including when nothing ever pulled from it. A bare
 async generator's `finally` does not run on `aclose()` if the generator was
 never started, which would leave `done` unset and the coordinator waiting
 for a reply that expired in the audio queue before it began.
+
+It also exposes a synchronous `abandon()`, because the audio queue drops
+utterances from `skip()` and `shutdown()` — both sync, both called from
+places (voice command, VAD, shutdown) that cannot await. Waiters must be
+released immediately there; the generator's own cleanup is awaited
+separately and is idempotent with respect to the notification.
 """
 
 from __future__ import annotations
@@ -61,18 +67,23 @@ class StreamedReply:
 
 class SentenceStream:
     """Async iterator over an inner async generator with a close hook that
-    fires whether or not iteration ever began."""
+    fires exactly once, whether or not iteration ever began, and whether the
+    caller can await or not."""
 
     def __init__(self, inner: AsyncIterator[str], on_close: Optional[Callable[[], None]] = None) -> None:
         self._inner = inner
         self._on_close = on_close
         self.started = False
-        self.closed = False
+        self.closed = False        # inner generator has been closed
+        self.finalized = False     # on_close has fired
 
     def __aiter__(self) -> "SentenceStream":
         return self
 
     async def __anext__(self) -> str:
+        if self.finalized:
+            # Abandoned by skip/shutdown while a consumer was mid-iteration.
+            raise StopAsyncIteration
         self.started = True
         try:
             return await self._inner.__anext__()
@@ -80,18 +91,31 @@ class SentenceStream:
             await self.aclose()
             raise
 
-    async def aclose(self) -> None:
-        if self.closed:
+    def _finalize(self) -> None:
+        if self.finalized:
             return
-        self.closed = True
-        aclose = getattr(self._inner, "aclose", None)
-        if aclose is not None:
-            try:
-                await aclose()
-            except Exception:  # noqa: BLE001 — closing must not raise into the consumer
-                pass
+        self.finalized = True
         if self._on_close:
             try:
                 self._on_close()
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001 — notification must never raise
                 pass
+
+    def abandon(self) -> None:
+        """Synchronous release for callers that cannot await (audio skip and
+        shutdown). Unblocks anyone waiting on the reply straight away; the
+        generator itself is closed later by `aclose()`."""
+        self._finalize()
+
+    async def aclose(self) -> None:
+        """Close the inner generator and release waiters. Safe to call after
+        `abandon()`, and safe to call more than once."""
+        if not self.closed:
+            self.closed = True
+            aclose = getattr(self._inner, "aclose", None)
+            if aclose is not None:
+                try:
+                    await aclose()
+                except Exception:  # noqa: BLE001 — closing must not raise into the consumer
+                    pass
+        self._finalize()

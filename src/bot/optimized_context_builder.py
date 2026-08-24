@@ -341,6 +341,10 @@ class OptimizedContextBuilder:
         # A cache hit means we've built context for this viewer before —
         # by definition not their first message
         context['is_first_message'] = False
+        # Per-request flags must never survive in a cached context. Callers
+        # copy before setting these, but a cached dict that ever acquired one
+        # would keep greeting the same viewer forever, so clear defensively.
+        context.pop('greet_first_timer', None)
 
     def _summarize_messages(self, messages: List[Dict]) -> str:
         """Quickly summarize recent messages for context."""

@@ -6,8 +6,6 @@ Time is an injected counter. No real I/O except tmp_path for persistence.
 import asyncio
 import json
 
-import pytest
-
 from bot.channel_chat_buffer import ChannelChatBuffer
 from bot.session_summarizer import StreamSessionSummarizer
 
@@ -268,3 +266,76 @@ def test_corrupt_persisted_file_ignored(tmp_path):
     (tmp_path / "session_summary_cassova_.json").write_text("{not json")
     s, *_ = make(persist_dir=str(tmp_path))
     assert s.get_summary(CH) == ""
+
+
+# ------------------------------------------- turn preservation (Bugbot F9)
+
+async def test_turns_are_not_lost_when_the_ring_buffer_evicts_during_a_fold():
+    """The chat buffer is a small ring sized for prompting. Reading it only at
+    fold time meant a busy channel could evict turns that had never been
+    summarized -- they vanished from the co-host's memory of the stream."""
+    small = ChannelChatBuffer(max_turns_per_channel=10)
+    s, b, llm, clock = make(buffer=small, turns_per_update=5, min_turns=2)
+    llm.block = asyncio.Event()
+
+    fill(b, 5)
+    assert s.should_update(CH) is True          # harvests 1..5
+    task = asyncio.create_task(s.update(CH))
+    await asyncio.sleep(0)
+
+    # 12 more turns arrive mid-call: more than the ring can hold, so the
+    # buffer evicts everything the summarizer had not already taken.
+    for i in range(5, 17):
+        b.append_viewer(CH, "viewer", f"message number {i}")
+        s.should_update(CH)                     # the per-message hook harvests
+
+    llm.block.set()
+    await task
+
+    assert s.stats(CH)["watermark"] == 5
+    assert s.stats(CH)["unsummarized_turns"] == 12, \
+        "every turn that arrived during the fold must still be owed"
+
+    # The next fold sees all 12, including ones the ring has already dropped.
+    llm.reply = "summary v2"
+    await s.update(CH)
+    folded = llm.calls[-1][1]["content"]
+    for i in (5, 10, 16):
+        assert f"message number {i}" in folded, f"turn {i} was lost"
+    assert s.stats(CH)["unsummarized_turns"] == 0
+
+
+async def test_backlog_survives_a_failed_fold_without_duplicating():
+    s, b, llm, clock = make(turns_per_update=3, min_turns=1)
+    fill(b, 3)
+
+    llm.reply = ""                               # empty result == failure
+    assert await s.update(CH) is False
+    assert s.stats(CH)["unsummarized_turns"] == 3, "a failed fold must keep its turns"
+    assert s.stats(CH)["watermark"] == 0, "watermark advances only on success"
+
+    llm.reply = "summary v1"
+    assert await s.update(CH) is True
+    folded = llm.calls[-1][1]["content"]
+    assert folded.count("message number 0") == 1, "retry must not duplicate turns"
+    assert s.stats(CH)["unsummarized_turns"] == 0
+
+
+async def test_backlog_is_capped():
+    s, b, llm, clock = make(max_pending_turns=20, turns_per_update=1000)
+    fill(b, 50)
+    s.should_update(CH)
+    assert s.stats(CH)["unsummarized_turns"] == 20
+
+
+async def test_reset_drops_the_previous_streams_backlog():
+    s, b, llm, clock = make()
+    fill(b, 6)
+    s.should_update(CH)
+    assert s.stats(CH)["unsummarized_turns"] == 6
+
+    s.reset(CH)
+    assert s.stats(CH)["unsummarized_turns"] == 0, "a new stream starts clean"
+    fill(b, 2, start=6)
+    s.should_update(CH)
+    assert s.stats(CH)["unsummarized_turns"] == 2, "new turns are still harvested"

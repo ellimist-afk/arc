@@ -31,6 +31,8 @@ import time
 from dataclasses import dataclass, field
 from typing import AsyncIterator, Awaitable, Callable, List, Optional
 
+from utils.task_registry import cancel_and_wait
+
 logger = logging.getLogger(__name__)
 
 TTSFn = Callable[[str], Awaitable[Optional[bytes]]]
@@ -129,15 +131,19 @@ class UtterancePlayer:
             if self._producer is None or self._producer.done():
                 return None
             getter = asyncio.ensure_future(q.get())
-            done, _ = await asyncio.wait({getter, self._producer}, return_when=asyncio.FIRST_COMPLETED)
+            try:
+                done, _ = await asyncio.wait({getter, self._producer},
+                                             return_when=asyncio.FIRST_COMPLETED)
+            except asyncio.CancelledError:
+                # asyncio.wait leaves its futures running; a run() cancelled
+                # here must not orphan the pending Queue.get()
+                getter.cancel()
+                raise
             if getter in done:
                 return getter.result()
-            # Producer finished first; re-check the queue before giving up
-            getter.cancel()
-            try:
-                await getter
-            except (asyncio.CancelledError, Exception):  # noqa: BLE001
-                pass
+            # Producer finished first; re-check the queue before giving up.
+            # (cancel_and_wait: a cancelled run() must not keep looping here.)
+            await cancel_and_wait(getter, what="utterance getter")
 
     async def run(self, sentences: AsyncIterator[str]) -> UtteranceStats:
         """Play every sentence in order, overlapping TTS with playback."""
@@ -166,10 +172,8 @@ class UtterancePlayer:
                     logger.error("Playback failed mid-utterance: %s", e)
         finally:
             if not self._producer.done():
-                self._producer.cancel()
-                try:
-                    await self._producer
-                except (asyncio.CancelledError, Exception):  # noqa: BLE001
-                    pass
+                # Propagates if run() itself is cancelled while the producer
+                # is still cleaning up -- never let that look like a finish.
+                await cancel_and_wait(self._producer, what="utterance producer")
             self.stats.finished_at = self._clock()
         return self.stats

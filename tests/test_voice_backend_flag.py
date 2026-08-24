@@ -28,12 +28,21 @@ def _bot(**config):
 
 
 class SpyRealtime:
-    def __init__(self):
+    """Stands in for RealtimeVoiceBackend, including its `healthy` property:
+    the bot routes voice on backend health, not on the object existing."""
+
+    def __init__(self, healthy=True, ready=None):
         self.transcripts = []
+        self.healthy = healthy
+        self.ready = healthy if ready is None else ready
+        self.stopped = False
 
     async def on_legacy_transcript(self, text):
         self.transcripts.append(text)
         return None
+
+    async def stop(self):
+        self.stopped = True
 
 
 async def test_realtime_routes_transcripts_to_wake_detection_only():

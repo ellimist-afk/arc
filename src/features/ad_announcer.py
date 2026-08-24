@@ -35,6 +35,7 @@ class AdAnnouncer:
         self.enabled = True
         self.announce_in_chat = True
         self.announce_with_voice = True
+        self.announce_at_end = True
         self.min_time_between_ads = 480  # 8 minutes
 
         # Fallback messages
@@ -269,7 +270,7 @@ Generate ONE welcoming return message:"""
             return
         self.ad_active = False
 
-        if self.enabled:
+        if self.enabled and self.announce_at_end:
             # Try LLM first
             message = await self._generate_return_message()
             if not message:
@@ -314,6 +315,8 @@ Generate ONE welcoming return message:"""
             self.announce_in_chat = settings['announce_in_chat']
         if 'announce_with_voice' in settings:
             self.announce_with_voice = settings['announce_with_voice']
+        if 'announce_at_end' in settings:
+            self.announce_at_end = settings['announce_at_end']
         if 'min_time_between_ads' in settings:
             self.min_time_between_ads = settings['min_time_between_ads']
         logger.info(f"Ad announcer settings updated: enabled={self.enabled}")
@@ -326,7 +329,8 @@ Generate ONE welcoming return message:"""
             'ad_duration': self.ad_duration if self.ad_active else 0,
             'time_remaining': self._get_time_remaining(),
             'announce_in_chat': self.announce_in_chat,
-            'announce_with_voice': self.announce_with_voice
+            'announce_with_voice': self.announce_with_voice,
+            'announce_at_end': self.announce_at_end
         }
 
     def _get_time_remaining(self) -> int:

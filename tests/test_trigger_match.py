@@ -19,6 +19,7 @@ from components.voice.trigger_match import (
     ('hey boss what do you think', 'exact'),
     ('hay bot hello', 'exact'),
     ('hey bott', 'exact'),
+    ('hey elimist roast the streamer', 'exact'),
     # Normalized: misheard leading word, clean second token
     ('play bot are you there', 'normalized'),
     ('okay boss what next', 'normalized'),

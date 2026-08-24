@@ -202,7 +202,12 @@ class VoiceRecognition:
             # (verified: pure silence -> "You"); Silero VAD drops
             # non-speech segments in ~3ms before they hit the decoder
             segments, _info = self._whisper_model.transcribe(
-                samples, language='en', beam_size=1, vad_filter=True
+                samples,
+                language='en',
+                beam_size=5,
+                condition_on_previous_text=False,
+                hotwords='elimist cassova Overwatch',
+                vad_filter=True,
             )
             text = ' '.join(seg.text for seg in segments)
             # Downstream matching (trigger_match, voice-command substring

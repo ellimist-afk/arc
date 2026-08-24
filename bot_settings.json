@@ -13,7 +13,7 @@
       "helpfulness": 60,
       "enthusiasm": 60,
       "formality": 20,
-      "chattiness": 30,
+      "chattiness": 35,
       "creativity": 60,
       "empathy": 50,
       "assertiveness": 60,
@@ -34,6 +34,9 @@
     "dead_air_enabled": false,
     "dead_air_threshold": 3600
   },
+  "ad_announcer": {
+    "announce_at_end": false
+  },
   "repetition_guard": {
     "enabled": true,
     "similarity_threshold": 0.45,
@@ -50,7 +53,7 @@
     "persist_dir": "session_state"
   },
   "first_timer_greeting": {
-    "enabled": true,
+    "enabled": false,
     "min_interval_s": 45,
     "suppress_after_raid_s": 120
   },

@@ -120,3 +120,66 @@ def test_base_url_env_is_picked_up(monkeypatch):
     assert str(e.openai_client.base_url).startswith("http://localhost:11434/v1")
     e2 = PersonalityEngine(memory_system=None, openai_api_key="x", openai_base_url="http://h:1/v1")
     assert e2.openai_base_url == "http://h:1/v1"
+
+
+# ------------------------------- first-timer flag must not leak (Bugbot F7)
+
+class _FakeL2:
+    def __init__(self):
+        self.store = {}
+
+    def get(self, key):
+        return self.store.get(key)
+
+    def put(self, key, value):
+        self.store[key] = value
+
+
+class _StubMemory:
+    """Positive first-message evidence: exactly one stored turn, fresh user."""
+    def __init__(self):
+        self.history = [{"message": "hi", "seq": 1}]
+
+    async def get_viewer_context(self, viewer, channel):
+        return {"username": viewer, "first_seen": datetime.now()}
+
+    async def get_recent_messages(self, channel=None, limit=50, username=None):
+        return list(self.history)
+
+    async def get_interaction_history(self, viewer, channel, limit=5):
+        return list(self.history)
+
+    async def get_channel_context(self, channel):
+        return {"channel": channel}
+
+
+async def test_greeting_flag_never_leaks_into_the_cached_context():
+    """bot.py copies before setting greet_first_timer, because build_context
+    hands back the very dict it keeps in L1/L2. A leaked flag would greet the
+    same viewer as a first-timer for the rest of the stream."""
+    b = OptimizedContextBuilder(memory_system=_StubMemory())
+    b.l2_cache = _FakeL2()
+
+    ctx1 = await b.build_context(viewer="newbie", channel="ch", message="hi")
+    assert ctx1["is_first_message"] is True
+
+    # What the bot does: copy, then flag.
+    per_request = dict(ctx1)
+    per_request["greet_first_timer"] = True
+
+    second = await b.build_context(viewer="newbie", channel="ch", message="hello again")
+    assert "greet_first_timer" not in second, "the greeting instruction leaked via cache"
+    assert second["is_first_message"] is False, "a cache hit is never a first message"
+
+
+async def test_refresh_clears_a_greeting_flag_that_somehow_got_cached():
+    """Defence in depth: even if some caller mutates a cached context, the
+    live-field refresh strips the transient flag on the next hit."""
+    b = OptimizedContextBuilder(memory_system=_StubMemory())
+    b.l2_cache = _FakeL2()
+
+    ctx = await b.build_context(viewer="newbie", channel="ch", message="hi")
+    ctx["greet_first_timer"] = True          # simulate the old leaking write
+
+    again = await b.build_context(viewer="newbie", channel="ch", message="hi again")
+    assert "greet_first_timer" not in again

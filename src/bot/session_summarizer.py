@@ -63,6 +63,17 @@ class _ChannelState:
     last_attempt: float = 0.0
     in_flight: bool = False
     pending_events: List[str] = field(default_factory=list)
+    # Turns harvested out of the chat buffer but not yet folded. The buffer is
+    # a small ring sized for prompting; anything still owed to the summary
+    # lives here so eviction can't lose it.
+    pending_turns: List[Dict[str, Any]] = field(default_factory=list)
+    harvest_seq: int = 0        # highest seq pulled out of the chat buffer
+    # The batch a running fold is summarizing. Moved out of pending_turns /
+    # pending_events for the duration so harvesting (and the backlog cap)
+    # can only ever touch turns that are NOT in the batch; committed on
+    # success, restored to the front on failure.
+    in_flight_turns: List[Dict[str, Any]] = field(default_factory=list)
+    in_flight_events: List[str] = field(default_factory=list)
     updates: int = 0
     failures: int = 0
 
@@ -83,6 +94,7 @@ class StreamSessionSummarizer:
         max_chars: int = 900,
         persist_dir: Optional[str] = None,
         max_age_s: float = 6 * 3600,
+        max_pending_turns: int = 500,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self.chat_buffer = chat_buffer
@@ -95,6 +107,8 @@ class StreamSessionSummarizer:
         self.max_chars = max_chars
         self.persist_dir = Path(persist_dir) if persist_dir else None
         self.max_age_s = max_age_s
+        # Hard cap on our own backlog so a wedged LLM can't grow it forever.
+        self.max_pending_turns = max_pending_turns
         self._clock = clock
         self._channels: Dict[str, _ChannelState] = {}
 
@@ -121,6 +135,15 @@ class StreamSessionSummarizer:
         st = self._state(channel)
         st.summary = ""
         st.pending_events.clear()
+        # A new stream: the previous one's backlog is not worth folding, but
+        # we must not re-harvest it either.
+        st.pending_turns.clear()
+        st.in_flight_turns, st.in_flight_events = [], []
+        try:
+            st.harvest_seq = self.chat_buffer.last_seq(channel)
+            st.watermark = st.harvest_seq
+        except Exception as e:  # noqa: BLE001 — reset must not fail on a stub buffer
+            logger.debug("Could not read last_seq on reset: %s", e)
         st.updated_at = 0.0
         st.started_at = self._clock()
         path = self._path(self._norm(channel))
@@ -143,7 +166,9 @@ class StreamSessionSummarizer:
             "summary_chars": len(st.summary),
             "watermark": st.watermark,
             "unsummarized_turns": self._unsummarized(channel, st),
-            "pending_events": len(st.pending_events),
+            "harvest_seq": st.harvest_seq,
+            "in_flight_turns": len(st.in_flight_turns),
+            "pending_events": len(st.pending_events) + len(st.in_flight_events),
             "in_flight": st.in_flight,
             "updates": st.updates,
             "failures": st.failures,
@@ -152,11 +177,51 @@ class StreamSessionSummarizer:
 
     # ------------------------------------------------------------ scheduling
 
+    def _harvest(self, channel: str, st: _ChannelState) -> int:
+        """Move newly-arrived turns out of the chat buffer into our own list.
+
+        The chat buffer is a ~50-turn ring sized for *prompting*, not for
+        bookkeeping. Reading it only at fold time meant a busy channel could
+        evict turns that had never been summarized -- they simply vanished
+        from the co-host's memory of the stream. Harvesting on every
+        append-driven check (maybe_schedule runs once per message) means
+        eviction can only ever drop turns we already hold a copy of.
+
+        Returns the number of turns harvested. A detected gap is logged
+        rather than hidden: it means the buffer outran us anyway.
+        """
+        new = self.chat_buffer.get_since(channel, st.harvest_seq)
+        if not new:
+            return 0
+        first = int(new[0].get("seq", 0))
+        if st.harvest_seq and first > st.harvest_seq + 1:
+            logger.warning(
+                "Session summary: %d turn(s) were evicted from the chat buffer "
+                "before they could be harvested for %s (seq %d..%d)",
+                first - st.harvest_seq - 1, channel, st.harvest_seq + 1, first - 1)
+        st.pending_turns.extend(new)
+        st.harvest_seq = max(st.harvest_seq,
+                             max(int(t.get("seq", 0)) for t in new))
+        overflow = len(st.pending_turns) - self.max_pending_turns
+        if overflow > 0:
+            del st.pending_turns[:overflow]
+            logger.warning("Session summary: backlog for %s exceeded %d turns; "
+                           "dropped the %d oldest", channel,
+                           self.max_pending_turns, overflow)
+        return len(new)
+
     def _unsummarized(self, channel: str, st: _ChannelState) -> int:
-        return max(0, self.chat_buffer.last_seq(channel) - st.watermark)
+        # Harvest before counting so the number reflects what has actually
+        # arrived, not just what a previous call happened to pull in.
+        # _harvest is idempotent: it only ever pulls seq > harvest_seq.
+        self._harvest(channel, st)
+        return len(st.pending_turns) + len(st.in_flight_turns)
 
     def should_update(self, channel: str) -> bool:
         st = self._state(channel)
+        # Harvest first: this is the per-message hook, and it must run even
+        # while a fold is in flight or the buffer could evict turns mid-call.
+        self._harvest(channel, st)
         if st.in_flight:
             return False
         n = self._unsummarized(channel, st)
@@ -198,12 +263,23 @@ class StreamSessionSummarizer:
                 lines.append(f"{t.get('username', 'someone')}: {text}")
         return "\n".join(lines)
 
-    def build_messages(self, channel: str) -> Optional[List[Dict[str, str]]]:
-        """Prompt for one fold, or None if there's nothing to fold."""
+    def build_messages(
+        self,
+        channel: str,
+        turns: Optional[List[Dict[str, Any]]] = None,
+        events: Optional[List[str]] = None,
+    ) -> Optional[List[Dict[str, str]]]:
+        """Prompt for one fold, or None if there's nothing to fold.
+
+        `update()` passes the exact in-flight batch; other callers get
+        whatever is currently pending."""
         st = self._state(channel)
-        turns = self.chat_buffer.get_since(channel, st.watermark)
+        if turns is None:
+            turns = st.pending_turns
+        if events is None:
+            events = st.pending_events
         rendered = self._render_turns(turns)
-        events = "\n".join(f"[event] {e}" for e in st.pending_events)
+        events = "\n".join(f"[event] {e}" for e in events)
         if not rendered and not events:
             return None
 
@@ -228,12 +304,22 @@ class StreamSessionSummarizer:
         st = self._state(channel)
         st.in_flight = True
         try:
-            # Snapshot the watermark *before* the call so turns arriving
-            # during the LLM round-trip are picked up next time.
-            target = self.chat_buffer.last_seq(channel)
-            events_taken = len(st.pending_events)
-            messages = self.build_messages(channel)
+            # Harvest anything that landed since the last check, then snapshot
+            # exactly what this fold covers. Turns that arrive during the LLM
+            # round-trip stay in pending_turns for the next fold; nothing is
+            # removed until the summary that contains it actually succeeded,
+            # so a failed fold retries the same turns without duplicating them.
+            self._harvest(channel, st)
+            # Move the batch out of the pending lists. Anything that arrives
+            # while the LLM call is in flight lands in pending_* and is
+            # untouched by this fold, whichever way it ends.
+            st.in_flight_turns, st.pending_turns = st.pending_turns, []
+            st.in_flight_events, st.pending_events = st.pending_events, []
+            target = max((int(t.get("seq", 0)) for t in st.in_flight_turns),
+                         default=st.watermark)
+            messages = self.build_messages(channel, st.in_flight_turns, st.in_flight_events)
             if messages is None:
+                st.in_flight_turns, st.in_flight_events = [], []
                 st.watermark = target
                 return False
 
@@ -242,6 +328,7 @@ class StreamSessionSummarizer:
             if not text:
                 st.failures += 1
                 logger.warning("Session summary: empty result for %s", channel)
+                self._restore_in_flight(channel, st)
                 return False
 
             if len(text) > self.max_chars:
@@ -249,7 +336,8 @@ class StreamSessionSummarizer:
 
             st.summary = text
             st.watermark = target
-            del st.pending_events[:events_taken]
+            # Commit exactly the batch that was summarized
+            st.in_flight_turns, st.in_flight_events = [], []
             st.updated_at = self._clock()
             st.updates += 1
             self._save(self._norm(channel), st)
@@ -259,9 +347,27 @@ class StreamSessionSummarizer:
         except Exception as e:  # noqa: BLE001 - background task must not die loudly
             st.failures += 1
             logger.error("Session summary failed for %s: %s", channel, e)
+            self._restore_in_flight(channel, st)
             return False
         finally:
             st.in_flight = False
+
+    def _restore_in_flight(self, channel: str, st: _ChannelState) -> None:
+        """A fold failed: put its batch back at the FRONT of the pending
+        lists (it is older than anything harvested meanwhile), then re-apply
+        the backlog cap. Nothing is duplicated -- the batch was moved, not
+        copied -- and nothing newer is deleted."""
+        if not st.in_flight_turns and not st.in_flight_events:
+            return
+        st.pending_turns = st.in_flight_turns + st.pending_turns
+        st.pending_events = st.in_flight_events + st.pending_events
+        st.in_flight_turns, st.in_flight_events = [], []
+        overflow = len(st.pending_turns) - self.max_pending_turns
+        if overflow > 0:
+            del st.pending_turns[:overflow]
+            logger.warning("Session summary: backlog for %s exceeded %d turns after a "
+                           "failed fold; dropped the %d oldest", channel,
+                           self.max_pending_turns, overflow)
 
     # ------------------------------------------------------------ persistence
 

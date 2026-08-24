@@ -22,6 +22,8 @@ import logging
 import time
 from typing import Any, Awaitable, Callable, Dict, Optional
 
+from utils.task_registry import cancel_and_wait
+
 logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 24000
@@ -67,15 +69,37 @@ class RealtimeVoiceSession(_Callbacks):
                  api_key: Optional[str], url: Optional[str] = None,
                  connect: Optional[Callable[..., Awaitable[Any]]] = None,
                  create_task: Optional[Callable] = None,
-                 max_reconnects: int = 5):
+                 max_reconnects: int = 5,
+                 stable_uptime_s: float = 60.0,
+                 sleep: Optional[Callable[[float], Awaitable[None]]] = None,
+                 handshake_timeout_s: float = 5.0):
         self.model, self.voice, self.vad = model, voice, vad
         self.instructions_provider = instructions_provider
         self.api_key, self.url = api_key, url
         self._connect = connect or _default_connect
         self._create_task = create_task or asyncio.create_task
         self.max_reconnects = max_reconnects
+        # A connection that stayed up this long is "stable": the reconnect
+        # budget is about CONSECUTIVE failures, not lifetime ones, so
+        # intermittent drops hours apart never exhaust it.
+        self.stable_uptime_s = stable_uptime_s
+        # Injectable so tests can exercise the retry budget without waiting
+        # out the real exponential backoff.
+        self._sleep = sleep or asyncio.sleep
+        # The session is "connected" only once the server has acknowledged
+        # session.update. A send that fails, an error reply, or silence past
+        # this deadline is a failed attempt for the supervisor to retry.
+        self.handshake_timeout_s = handshake_timeout_s
         self.ws = None
         self.connected = False
+        # True only once the supervisor has permanently stopped reconnecting.
+        # The bot reads this to restore the legacy voice path.
+        self.gave_up = False
+        # Set when the handshake succeeds; None while connecting. Uptime for
+        # the "stable connection" test is measured from here, not from the
+        # start of the attempt, so a slow *failed* connect can't reset the
+        # reconnect budget.
+        self._connected_at: Optional[float] = None
         self.active_response: Optional[str] = None
         self.item_of_response: Dict[str, str] = {}
         self.reconnects = 0
@@ -87,6 +111,7 @@ class RealtimeVoiceSession(_Callbacks):
     # ------------------------------------------------------------ lifecycle
     async def start(self) -> None:
         self._stopping = False
+        self.gave_up = False
         self._supervisor = self._create_task(self._supervise())
 
     async def stop(self) -> None:
@@ -97,27 +122,37 @@ class RealtimeVoiceSession(_Callbacks):
             except Exception:
                 pass
         if self._supervisor is not None:
-            self._supervisor.cancel()
-            try:
-                await self._supervisor
-            except (asyncio.CancelledError, Exception):
-                pass
+            # Cleared only after the supervisor has really finished, so a
+            # stop() whose owner was cancelled mid-wait can be retried.
+            await cancel_and_wait(self._supervisor, what="realtime supervisor")
             self._supervisor = None
 
     async def _supervise(self) -> None:
         attempts = 0
         while not self._stopping:
+            self._connected_at = None
             try:
                 await self._run_once()
                 if self._stopping:
                     return
-                attempts += 1
                 reason = "closed"
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                attempts += 1
                 reason = repr(e)
+
+            # Consecutive, not lifetime: a connection that lasted long enough
+            # to be stable clears the budget, so six intermittent drops spread
+            # over an evening can't retire the session permanently. Only a
+            # connection that actually completed its handshake counts.
+            uptime = (time.monotonic() - self._connected_at) if self._connected_at else 0.0
+            self._connected_at = None
+            if uptime >= self.stable_uptime_s and attempts:
+                logger.info("Realtime session: %.0fs stable before this drop, "
+                            "reconnect budget reset", uptime)
+                attempts = 0
+            attempts += 1
+
             self.connected = False
             self.ws = None
             self.active_response = None
@@ -127,9 +162,11 @@ class RealtimeVoiceSession(_Callbacks):
             if self.on_disconnected:
                 self.on_disconnected(reason)
             if attempts > self.max_reconnects or self._stopping:
-                logger.error("Realtime session: giving up reconnecting")
+                logger.error("Realtime session: giving up reconnecting "
+                             "(%d consecutive failures)", attempts - 1)
+                self.gave_up = True
                 return
-            await asyncio.sleep(min(2 ** attempts, 8))
+            await self._sleep(min(2 ** attempts, 8))
 
     async def _run_once(self) -> None:
         url = self.url or f"{DEFAULT_URL}?model={self.model}"
@@ -143,8 +180,15 @@ class RealtimeVoiceSession(_Callbacks):
         try:
             while not self._mic_q.empty():      # drop stale mic backlog
                 self._mic_q.get_nowait()
-            await self._send(self._session_update())
+            # Handshake: the configuration must reach the server AND be
+            # acknowledged before anyone is told we're connected. Previously
+            # a failed send still marked the session ready, started the mic
+            # pump, and counted toward stable uptime.
+            if not await self._send(self._session_update()):
+                raise RuntimeError("Realtime handshake failed: session.update could not be sent")
+            await self._await_handshake_ack(ws)
             self.connected = True
+            self._connected_at = time.monotonic()
             logger.info(f"Realtime session connected: model={self.model} "
                         f"voice={self.voice} vad={self.vad}")
             if self.on_connected:
@@ -170,6 +214,43 @@ class RealtimeVoiceSession(_Callbacks):
                 await ws.close()
             except Exception:
                 pass
+
+    async def _await_handshake_ack(self, ws) -> None:
+        """Block until the server acknowledges session.update.
+
+        Accepts `session.updated` as the acknowledgement. A server `error`
+        during the handshake, a closed socket, or silence past
+        handshake_timeout_s all raise, which the supervisor counts as a
+        failed attempt. Informational frames that legitimately precede the
+        ack (session.created, rate_limits.updated) are ignored.
+        """
+        deadline = time.monotonic() + self.handshake_timeout_s
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError(
+                    f"Realtime handshake timed out after {self.handshake_timeout_s:.1f}s "
+                    "waiting for session.updated")
+            try:
+                raw = await asyncio.wait_for(ws.recv(), timeout=remaining)
+            except asyncio.TimeoutError:
+                raise RuntimeError(
+                    f"Realtime handshake timed out after {self.handshake_timeout_s:.1f}s "
+                    "waiting for session.updated") from None
+            if raw is None:
+                raise RuntimeError("Realtime handshake failed: socket closed before acknowledgement")
+            ev = json.loads(raw)
+            if not isinstance(ev, dict):
+                raise RuntimeError("Realtime handshake failed: malformed frame before acknowledgement")
+            t = ev.get("type")
+            if t == "session.updated":
+                return
+            if t == "error":
+                err = ev.get("error") or {}
+                raise RuntimeError(
+                    f"Realtime handshake rejected by server: "
+                    f"{err.get('type', 'error')}: {err.get('message', ev)}")
+            logger.debug(f"Realtime handshake: ignoring pre-ack frame {t}")
 
     def _session_update(self) -> dict:
         return {
