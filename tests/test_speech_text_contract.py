@@ -160,6 +160,28 @@ async def _aret(v):
 
 # ------------------------------------------------------------- gpt-5 params
 
+async def test_complete_adapts_params_for_gpt5(engine):
+    """The summarizer's fold path. On the 2026-08-23 stream every fold failed
+    because complete() sent raw max_tokens to gpt-5.5 -- no session summary
+    for a 136-message stream."""
+    captured = {}
+
+    class FakeCompletions:
+        async def create(self, **kw):
+            captured.update(kw)
+            return SimpleNamespace(choices=[SimpleNamespace(
+                message=SimpleNamespace(content="folded"))])
+    engine.openai_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+    engine.llm_model = 'gpt-5.5'
+    assert await engine.complete([{"role": "user", "content": "x"}], max_tokens=200) == "folded"
+    assert 'max_tokens' not in captured and captured['max_completion_tokens'] == 200
+    assert captured['reasoning_effort'] == 'none'
+
+    engine.llm_model = 'gpt-4o-mini'
+    await engine.complete([{"role": "user", "content": "x"}], max_tokens=200)
+    assert captured['max_tokens'] == 200 and 'reasoning_effort' not in captured
+
+
 def test_gpt5_param_adaptation(engine):
     engine.llm_model = 'gpt-5.5'
     engine.response_modifiers = {'temperature': 0.9, 'max_tokens': 120, 'presence_penalty': 0.3}

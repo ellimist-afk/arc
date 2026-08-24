@@ -573,12 +573,15 @@ class PersonalityEngine:
         if not self.openai_client:
             return None
 
+        params = self._adapt_openai_params(
+            {"max_tokens": max_tokens, "temperature": temperature}
+        )
+
         async def call():
             response = await self.openai_client.chat.completions.create(
                 model=self.llm_model,
                 messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
+                **params,
             )
             return response.choices[0].message.content
 

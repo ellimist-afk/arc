@@ -23,7 +23,10 @@ logging.basicConfig(
     handlers=[
         logging.StreamHandler(sys.stdout),
         logging.FileHandler('talkbot.log', encoding='utf-8')
-    ]
+    ],
+    # bot.py's import-time basicConfig already configured the root logger;
+    # without force=True this call is a no-op and talkbot.log stays empty
+    force=True
 )
 
 logger = logging.getLogger(__name__)
