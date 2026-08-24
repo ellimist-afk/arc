@@ -68,7 +68,8 @@ def test_busy_chat_damps():
 
 def test_multiplier_is_monotonic_in_rate():
     mults = []
-    for spacing in (30.0, 12.0, 8.0, 5.0, 3.0, 2.0, 1.0):
+    # spacing 45s -> 2 msgs in the 60s window (quiet floor); 1s -> 60/min (busy)
+    for spacing in (45.0, 12.0, 8.0, 5.0, 3.0, 2.0, 1.0):
         v, c = make()
         feed(v, c, int(120 / spacing) or 1, spacing)
         mults.append(v.multiplier())
@@ -86,7 +87,9 @@ def test_middle_of_the_band_is_near_one():
 # ----------------------------------------------------- adaptive thresholds
 
 def test_big_channel_baseline_raises_the_quiet_bar():
-    v, c = make(baseline_alpha=0.5)
+    # alpha 0.2: converges over the 10-minute busy stretch but decays slowly
+    # enough that 2 minutes of lull can't erase the channel's history
+    v, c = make(baseline_alpha=0.2)
     # sustain ~20 msgs/min for a while: baseline climbs
     feed(v, c, 200, 3.0)
     assert v.baseline() > 10
@@ -132,8 +135,9 @@ def test_regime_transitions_are_logged_once(caplog):
         feed(v, c, 40, 0.5)             # busy
         feed(v, c, 40, 0.5)             # still busy: no new line
     lines = [r.message for r in caplog.records if "Chat pace" in r.message]
-    assert len(lines) == 2
-    assert "-> quiet" in lines[0] and "-> busy" in lines[1]
+    # the ramp legitimately passes through the middle band: quiet -> normal -> busy
+    assert len(lines) == 3, lines
+    assert "-> quiet" in lines[0] and "-> normal" in lines[1] and "-> busy" in lines[2]
 
 
 def test_stats_shape():
