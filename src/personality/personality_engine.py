@@ -206,6 +206,9 @@ class PersonalityEngine:
         self.streamer_name: Optional[str] = None
         self.bot_name: Optional[str] = None
         self.current_personality_name: Optional[str] = None  # named preset, for register anchors
+        # Chat-velocity pacing (features/chat_velocity.py), attached by the
+        # bot: scales the unprompted-reply roll by how busy chat is
+        self.pacing_multiplier: Optional[Callable[[], float]] = None
         self.reload_llm_settings()
         
         # Initialize circuit breaker for OpenAI API
@@ -722,8 +725,18 @@ class PersonalityEngine:
         if any(greeting in message.lower() for greeting in greetings):
             base_probability += 0.03  # Only 3% boost for greetings
             
-        # Random decision based on probability
-        return random.random() < min(base_probability, 0.1)  # Cap at 10% maximum
+        # Chat-velocity pacing: quiet chat boosts the roll (a co-host earns
+        # its keep in the lulls), busy chat damps it (don't compete with a
+        # popping chat). Mentions never reach this branch.
+        if self.pacing_multiplier is not None:
+            try:
+                base_probability *= self.pacing_multiplier()
+            except Exception as e:  # noqa: BLE001 — pacing must never block replies
+                logger.debug(f"Pacing multiplier unavailable: {e}")
+
+        # Random decision based on probability (cap slightly raised so the
+        # quiet-chat boost has room to matter)
+        return random.random() < min(base_probability, 0.15)
         
     def _should_speak(self, message: str, is_mention: bool) -> bool:
         """

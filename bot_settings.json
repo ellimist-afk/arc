@@ -61,5 +61,12 @@
     "enabled": true,
     "min_sentence_chars": 12,
     "prefetch_depth": 2
+  },
+  "chat_velocity": {
+    "enabled": true,
+    "quiet_per_min": 2,
+    "busy_per_min": 12,
+    "quiet_boost": 2.5,
+    "busy_damp": 0.35
   }
 }

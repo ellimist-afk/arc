@@ -146,6 +146,7 @@ class TalkBot:
         self.stream_info = None         # live category/title (features.stream_info)
         self.stream_recap = None        # post-stream recap counters (features.stream_recap)
         self.first_timer = None         # first-time chatter greeting policy (features.first_timer)
+        self.chat_velocity = None       # chat pace tracker / pacing multiplier (features.chat_velocity)
         self.current_game: Optional[str] = None
         # Sentence-streamed TTS (bot_settings.json -> tts_streaming). Off by default.
         self._tts_streaming: Dict[str, Any] = dict(self._TTS_STREAMING_DEFAULTS)
@@ -736,6 +737,8 @@ class TalkBot:
             )
             if self.stream_recap:
                 self.stream_recap.record_message(message.get('username', ''))
+            if self.chat_velocity:
+                self.chat_velocity.note_message()
 
             # Log if this is a mention
             if is_mention:
@@ -1664,6 +1667,26 @@ class TalkBot:
         self.stream_recap = StreamRecap(channel, out_dir=out_dir)
         self.first_timer = FirstTimerGreeter.from_settings()
 
+        # Chat-velocity pacing: quiet chat -> speak up, busy chat -> hold back
+        from features.chat_velocity import ChatVelocity
+        cv_cfg = {}
+        try:
+            with open('bot_settings.json', 'r') as f:
+                cv_cfg = json.load(f).get('chat_velocity') or {}
+        except Exception as e:
+            logger.debug(f"No chat_velocity settings: {e}")
+        if cv_cfg.pop('enabled', True):
+            allowed = ('window_s', 'quiet_per_min', 'busy_per_min', 'quiet_boost',
+                       'busy_damp', 'baseline_alpha', 'burst_ratio', 'burst_min_messages')
+            self.chat_velocity = ChatVelocity(**{k: cv_cfg[k] for k in allowed if k in cv_cfg})
+            if self.personality_engine:
+                self.personality_engine.pacing_multiplier = self.chat_velocity.multiplier
+            self.service_registry.register('ChatVelocity', self.chat_velocity)
+            logger.info("Chat-velocity pacing active (quiet boost x%.2f, busy damp x%.2f)",
+                        self.chat_velocity.quiet_boost, self.chat_velocity.busy_damp)
+        else:
+            logger.info("Chat-velocity pacing disabled via settings")
+
         self.service_registry.register('StreamInfo', self.stream_info)
         self.service_registry.register('StreamRecap', self.stream_recap)
         self.service_registry.register('FirstTimerGreeter', self.first_timer)
@@ -1711,6 +1734,10 @@ class TalkBot:
         if self.first_timer:
             ft = self.first_timer.stats()
             extra["First-timers greeted"] = f"{ft['greeted']} ({ft['suppressed']} suppressed)"
+        if self.chat_velocity:
+            cv = self.chat_velocity.stats()
+            extra["Chat pace"] = (f"baseline {cv['baseline']}/min, peak {cv['peak_per_minute']}/min, "
+                                  f"ended {cv['regime']}")
 
         path = self.stream_recap.write(summary, extra)
         if path:
