@@ -37,9 +37,10 @@ env/
 .env.*
 .env.local
 
-# Local settings (shared .claude/settings.json IS tracked)
-.claude/*
-!.claude/settings.json
+# Local settings
+.claude/
+CLAUDE.md
+AGENTS.md
 
 # Database
 *.db
@@ -106,3 +107,12 @@ spike/runs/
 
 # Rolling session summary persisted across restarts
 session_state/
+
+# Credential-bearing local variants. The committed helpers read from .env;
+# these patterns stop a personal copy with pasted secrets from being added.
+*.local.py
+*_secrets.py
+*.secret
+*.secrets
+credentials.json
+client_secret*.json
