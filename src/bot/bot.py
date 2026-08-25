@@ -500,6 +500,8 @@ class TalkBot:
             )
             # Connect personality engine for dynamic dead air messages
             self.response_coordinator.personality_engine = self.personality_engine
+            # Dead-air lines get the same situational awareness as chat replies
+            self.response_coordinator.context_provider = self._dead_air_context
             await self.response_coordinator.start_dead_air_prevention()
             self.service_registry.register('ResponseCoordinator', self.response_coordinator)
             
@@ -1763,6 +1765,8 @@ class TalkBot:
             cv = self.chat_velocity.stats()
             extra["Chat pace"] = (f"baseline {cv['baseline']}/min, peak {cv['peak_per_minute']}/min, "
                                   f"ended {cv['regime']}")
+        if self.response_coordinator and getattr(self.response_coordinator, 'fillers_sent', 0):
+            extra["Dead-air lines"] = self.response_coordinator.fillers_sent
         if getattr(self, 'event_announcer', None):
             ev = self.event_announcer.stats()
             extra["Event reactions"] = (f"{ev['reactions_generated']} in character, "
@@ -1813,6 +1817,30 @@ class TalkBot:
         if self.audio_queue:
             await self.audio_queue.queue_audio("Clipped" if clip else "Couldn't clip that",
                                                priority="high")
+
+    def _dead_air_context(self) -> Dict[str, Any]:
+        """What the co-host knows when chat goes quiet: what is being
+        played, what has happened this stream, and the last things said
+        before the lull. Without this the filler is generated blind and
+        can only produce "anyone there"."""
+        context: Dict[str, Any] = {}
+        channel = self.config.get('TWITCH_CHANNEL', '')
+        if self.chat_buffer:
+            try:
+                context['recent_messages'] = self.chat_buffer.get_recent(channel, limit=10)
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"Dead-air chat history unavailable: {e}")
+        if self.stream_info:
+            try:
+                context['stream_now'] = self.stream_info.describe()
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"Dead-air stream info unavailable: {e}")
+        if self.session_summarizer:
+            try:
+                context['session_summary'] = self.session_summarizer.get_summary(channel)
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"Dead-air session summary unavailable: {e}")
+        return context
 
     async def _auto_clip(self) -> None:
         """Burst-triggered clip. Cooldown was already started by the caller,

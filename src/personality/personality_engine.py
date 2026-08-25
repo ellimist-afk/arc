@@ -452,10 +452,10 @@ class PersonalityEngine:
             # Build personality prompt
             # Special handling for dead air filler requests
             if message == "[DEAD_AIR_FILLER]":
-                prompt = "Generate ONLY a very short casual twitch chat message (3-6 words max). Be natural. Examples: 'anyone there' or 'chat seems quiet' or 'whats up chat'. IMPORTANT: Output ONLY the message text, nothing else. No punctuation. No capitals. No sarcasm about dead air."
+                prompt = self._build_dead_air_prompt()
             else:
                 prompt = self._build_personality_prompt()
-            
+
             # Determine if should respond (always respond to dead air)
             if message != "[DEAD_AIR_FILLER]" and not self._should_respond(message, is_mention):
                 return None
@@ -697,6 +697,26 @@ class PersonalityEngine:
 
         return "\n".join(prompt_parts)
         
+    def _build_dead_air_prompt(self) -> str:
+        """Prompt for filling a lull.
+
+        The old filler prompt threw the personality away and asked for
+        3-6 words with no punctuation, which is how a roast co-host ended
+        up saying "anyone there". Dead air is the moment a co-host most
+        has to earn its keep, so it keeps the full character prompt (and
+        the knowledge block appended to it) and adds one directive: say
+        something SPECIFIC. The repetition guard already stops it from
+        recycling the same opener across a night of lulls.
+        """
+        return self._build_personality_prompt() + (
+            "\n\nRight now chat has gone quiet. Break the silence with something "
+            "specific: react to what is happening in the game, call back to a joke "
+            "or moment from earlier this stream, ask chat a real question worth "
+            "answering, or give an opinion someone would argue with. NEVER remark on "
+            "the silence itself, never ask if anyone is there, and never announce that "
+            "you are filling dead air -- a co-host just talks. One or two sentences."
+        )
+
     def _should_respond(self, message: str, is_mention: bool) -> bool:
         """
         Determine if bot should respond based on personality
@@ -979,10 +999,7 @@ class PersonalityEngine:
             return None
         self._update_response_modifiers()
         if message == "[DEAD_AIR_FILLER]":
-            prompt = ("Generate ONLY a very short casual twitch chat message (3-6 words max). "
-                      "Be natural. Examples: 'anyone there' or 'chat seems quiet' or 'whats up chat'. "
-                      "IMPORTANT: Output ONLY the message text, nothing else. No punctuation. "
-                      "No capitals. No sarcasm about dead air.")
+            prompt = self._build_dead_air_prompt()
         else:
             prompt = self._build_personality_prompt()
         if message != "[DEAD_AIR_FILLER]" and not self._should_respond(message, is_mention):

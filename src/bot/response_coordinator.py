@@ -66,6 +66,11 @@ class ResponseCoordinator:
         self.filler_messages = []
         self.filler_index = 0
         self.personality_engine = None  # Will be set by bot
+        # Returns the situational context for a dead-air line (game,
+        # session summary, the chat that preceded the lull). Set by the
+        # bot; without it the filler is generated blind.
+        self.context_provider = None
+        self.fillers_sent = 0
         
         # Performance metrics
         self.response_count = 0
@@ -326,6 +331,11 @@ class ResponseCoordinator:
                                 'time_since_activity': time_since_activity,
                                 'stream_duration': time_since_startup
                             }
+                            if self.context_provider is not None:
+                                try:
+                                    context.update(self.context_provider() or {})
+                                except Exception as e:  # noqa: BLE001
+                                    logger.debug(f"Dead-air context unavailable: {e}")
                             
                             response = await self.personality_engine.generate_response(
                                 message="[DEAD_AIR_FILLER]",
@@ -345,7 +355,9 @@ class ResponseCoordinator:
                         # Ultra simple fallback
                         filler_msg = "hello"
                     
-                    logger.info(f"Dead air detected ({time_since_activity:.0f}s), sending filler")
+                    self.fillers_sent += 1
+                    logger.info(f"Dead air detected ({time_since_activity:.0f}s), "
+                                f"sending filler: {filler_msg[:60]!r}")
                     
                     # Send filler with low priority
                     await self.coordinate_response(
