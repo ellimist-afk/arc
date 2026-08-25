@@ -202,3 +202,28 @@ async def test_switch_preset_by_enum_clears_named_anchor_selection(engine):
     assert engine.current_personality_name == 'uwu'
     await engine.switch_preset(PersonalityPreset.FRIENDLY)
     assert engine.current_personality_name is None
+
+# ---------------------------------------------------------------- brevity
+
+@pytest.mark.parametrize('chattiness, cap', [(30, '20 words'), (60, '25 words'), (90, '35 words')])
+def test_every_length_rule_carries_a_word_cap(engine, chattiness, cap):
+    """Sentence counts alone were read as licence for two dense sentences
+    that scroll off Twitch chat before anyone reads them."""
+    engine.current_traits.chattiness = chattiness
+    prompt = engine._build_personality_prompt()
+    assert cap in prompt, prompt.split('Style:')[1][:200]
+
+
+def test_prompt_forbids_stacking_targets_and_clauses(engine):
+    p = engine._build_personality_prompt().lower()
+    assert 'one target per reply' in p
+    assert 'say the funny thing and stop' in p
+    assert 'punch once' in p
+
+
+@pytest.mark.parametrize('chattiness', [0, 40, 60, 100])
+def test_token_budget_stays_tight_enough_to_discourage_rambling(engine, chattiness):
+    engine.current_traits.chattiness = chattiness
+    engine._update_response_modifiers()
+    budget = engine.response_modifiers['max_tokens']
+    assert 60 <= budget <= 140, budget

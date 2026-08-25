@@ -399,7 +399,9 @@ class PersonalityEngine:
         
         self.response_modifiers = {
             'temperature': 0.7 + (traits.creativity / 200),  # 0.7-1.2
-            'max_tokens': 100 + int(traits.chattiness * 2.5),  # 100-350
+            # A 35-word Twitch line is ~50 tokens. The old 100-350 budget left
+            # room to ramble well past the length the prompt asks for.
+            'max_tokens': 60 + int(traits.chattiness * 0.8),  # 60-140
             'presence_penalty': -0.5 + (traits.assertiveness / 100),  # -0.5 to 0.5
             'frequency_penalty': (traits.creativity / 200),  # 0-0.5
             'use_emojis': traits.enthusiasm > 70,
@@ -601,14 +603,15 @@ class PersonalityEngine:
         identity = f"You are {self.bot_name}, the AI co-host" if self.bot_name else "You are the AI co-host"
 
         # Chattiness sets spoken length (max_tokens scales with it too)
+        # Word caps, not just sentence counts: "1-3 short sentences" was read
+        # as licence for two dense ones that scroll off Twitch chat before
+        # anyone reads them.
         if traits.chattiness <= 40:
             length_rule = "exactly 1 short spoken sentence, 20 words maximum"
         elif traits.chattiness > 70:
-            length_rule = "2-4 short spoken sentences"
-        elif traits.chattiness >= 40:
-            length_rule = "1-3 short spoken sentences"
+            length_rule = "1-2 short spoken sentences, 35 words maximum"
         else:
-            length_rule = "1-2 short spoken sentences"
+            length_rule = "1 short spoken sentence, 25 words maximum; a second only if it truly earns it"
 
         # The sass framing only makes sense when sarcasm is actually dialed up
         delivery = "sass" if traits.sarcasm >= 40 else "personality"
@@ -628,6 +631,10 @@ class PersonalityEngine:
             f"this is read aloud.",
             "- Punch once. Land the joke in one clean line, then move on like nothing "
             "happened — never stack a second punchline on top of the first.",
+            "- One target per reply. Answer the person who spoke; do not swing at a "
+            "second name in the same line, and do not tack on advice for someone else.",
+            "- Say the funny thing and stop. No wind-up clause before the joke and no "
+            "explanatory clause after it — the line should end where the laugh does.",
             "- At most one slang term per reply, and only when it lands naturally. "
             "Never stack slang or forced hype — that reads as trying too hard.",
             "- Have opinions and commit to them. Hedging is boring; being wrong "
