@@ -189,6 +189,42 @@ async def test_no_client_returns_none():
     assert await e.generate_response_streamed("hi", CTX, "viewer", is_mention=True) is None
 
 
+def test_current_message_is_not_duplicated_from_history():
+    """The chat buffer stores the incoming message before context is built, so
+    it arrives in recent_messages AND as the final turn. On stream, gpt-5.5
+    noticed the duplicate and roasted viewers for "asking twice"."""
+    e = make_engine()
+    ctx = {"recent_messages": [
+        {"username": "gsb", "message": "are periods worse than pooping", "role": "viewer"},
+        {"username": "bot", "message": "earlier reply", "role": "assistant"},
+        {"username": "gsb", "message": "are periods worse than pooping", "role": "viewer"},  # = current
+    ]}
+    msgs = e._build_messages("are periods worse than pooping", ctx, "gsb", "SYS")
+    contents = [m["content"] for m in msgs if m["role"] == "user"]
+    # 3 copies reached the model before the fix (old ask + buffered current +
+    # final turn); now 2: the genuine earlier ask stays, the buffer echo goes
+    assert contents.count("gsb: are periods worse than pooping") == 2, contents
+    assert msgs[-1]["content"] == "gsb: are periods worse than pooping"
+
+    # a DIFFERENT viewer asking the same thing is kept — that's a real repeat
+    ctx2 = {"recent_messages": [
+        {"username": "other", "message": "same question", "role": "viewer"},
+        {"username": "gsb", "message": "same question", "role": "viewer"},  # = current
+    ]}
+    msgs2 = e._build_messages("same question", ctx2, "gsb", "SYS")
+    user_lines = [m["content"] for m in msgs2 if m["role"] == "user"]
+    assert "other: same question" in user_lines
+    assert user_lines.count("gsb: same question") == 1
+
+    # voice path: the label wraps the username; still deduped
+    ctx3 = {"recent_messages": [
+        {"username": "cassova_", "message": "hey bot what up", "role": "viewer"},
+    ]}
+    msgs3 = e._build_messages("hey bot what up", ctx3,
+                              "cassova_ (the streamer, your co-host partner)", "SYS")
+    assert len([m for m in msgs3 if m["role"] == "user"]) == 1
+
+
 def test_build_messages_matches_blocking_path_shape():
     e = make_engine()
     ctx = {"recent_messages": [
