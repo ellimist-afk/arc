@@ -70,6 +70,14 @@ class ResponseCoordinator:
         # session summary, the chat that preceded the lull). Set by the
         # bot; without it the filler is generated blind.
         self.context_provider = None
+        # Returns False when a filler would be pointless (stream offline).
+        # Set by the bot; without it the monitor assumes it is worth talking.
+        self.should_fill = None
+        self.filler_timeout = 10.0
+        # Consecutive fillers with no real chat in between. Each one doubles
+        # the wait, so an empty room gets quieter instead of a monologue.
+        self._consecutive_fillers = 0
+        self.max_filler_backoff = 8      # multiplier cap
         self.fillers_sent = 0
         
         # Performance metrics
@@ -287,6 +295,20 @@ class ResponseCoordinator:
         except Exception as e:  # noqa: BLE001
             logger.debug(f"Could not abandon streamed reply: {e}")
 
+    def note_activity(self) -> None:
+        """Real activity happened (a chat message, a viewer event).
+
+        Resets both the dead-air timer and the backoff: someone is there,
+        so the next lull is worth filling at the normal threshold again.
+        """
+        self.last_activity_time = datetime.now()
+        self._consecutive_fillers = 0
+
+    def _effective_threshold(self) -> float:
+        """Threshold for the next filler, doubled per unanswered filler."""
+        multiplier = min(2 ** self._consecutive_fillers, self.max_filler_backoff)
+        return self.dead_air_threshold * multiplier
+
     async def start_dead_air_prevention(self) -> None:
         """Start the dead air prevention task"""
         if self.dead_air_task:
@@ -318,10 +340,19 @@ class ResponseCoordinator:
                 if time_since_startup < startup_grace_period:
                     continue  # Skip dead air detection during startup grace period
                     
+                # Nothing to fill if nobody is watching -- an offline bot
+                # would otherwise talk to an empty room all night.
+                if self.should_fill is not None:
+                    try:
+                        if not self.should_fill():
+                            continue
+                    except Exception as e:  # noqa: BLE001
+                        logger.debug(f"Dead-air liveness check failed: {e}")
+
                 # Calculate time since last activity
                 time_since_activity = (datetime.now() - self.last_activity_time).total_seconds()
-                
-                if time_since_activity >= self.dead_air_threshold:
+
+                if time_since_activity >= self._effective_threshold():
                     # Generate dynamic filler using personality engine if available
                     if self.personality_engine:
                         try:
@@ -337,10 +368,13 @@ class ResponseCoordinator:
                                 except Exception as e:  # noqa: BLE001
                                     logger.debug(f"Dead-air context unavailable: {e}")
                             
-                            response = await self.personality_engine.generate_response(
-                                message="[DEAD_AIR_FILLER]",
-                                context=context,
-                                user="system"
+                            response = await asyncio.wait_for(
+                                self.personality_engine.generate_response(
+                                    message="[DEAD_AIR_FILLER]",
+                                    context=context,
+                                    user="system"
+                                ),
+                                timeout=self.filler_timeout,
                             )
                             
                             if response and response.get('text'):
@@ -348,16 +382,24 @@ class ResponseCoordinator:
                             else:
                                 # Fallback to simple message
                                 filler_msg = "chat seems quiet"
+                        except asyncio.TimeoutError:
+                            logger.warning(
+                                f"Dead-air line timed out after {self.filler_timeout:.0f}s; staying quiet")
+                            continue
                         except Exception as e:
                             logger.error(f"Error generating dynamic filler: {e}")
-                            filler_msg = "anyone there"
+                            # A generic line is worse than silence now that
+                            # fillers are supposed to carry substance
+                            continue
                     else:
-                        # Ultra simple fallback
-                        filler_msg = "hello"
-                    
+                        # No engine: nothing worth saying
+                        continue
+
+                    self._consecutive_fillers += 1
                     self.fillers_sent += 1
-                    logger.info(f"Dead air detected ({time_since_activity:.0f}s), "
-                                f"sending filler: {filler_msg[:60]!r}")
+                    logger.info(f"Dead air detected ({time_since_activity:.0f}s, "
+                                f"filler {self._consecutive_fillers} unanswered): "
+                                f"{filler_msg[:60]!r}")
                     
                     # Send filler with low priority
                     await self.coordinate_response(

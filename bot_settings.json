@@ -31,8 +31,8 @@
   },
   "response_coordination": {
     "timing_mode": "chat_first",
-    "dead_air_enabled": false,
-    "dead_air_threshold": 3600
+    "dead_air_enabled": true,
+    "dead_air_threshold": 120
   },
   "ad_announcer": {
     "announce_at_end": false

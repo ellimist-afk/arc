@@ -502,6 +502,9 @@ class TalkBot:
             self.response_coordinator.personality_engine = self.personality_engine
             # Dead-air lines get the same situational awareness as chat replies
             self.response_coordinator.context_provider = self._dead_air_context
+            # Never fill dead air into an offline stream
+            self.response_coordinator.should_fill = lambda: (
+                self.stream_info is None or self.stream_info.is_live is not False)
             await self.response_coordinator.start_dead_air_prevention()
             self.service_registry.register('ResponseCoordinator', self.response_coordinator)
             
@@ -715,9 +718,10 @@ class TalkBot:
             self.message_count += 1
             start_time = time.perf_counter()
             
-            # CRITICAL: Update dead air timer for ANY chat activity
+            # CRITICAL: Update dead air timer for ANY chat activity (this
+            # also clears the unanswered-filler backoff: someone is here)
             if self.response_coordinator:
-                self.response_coordinator.last_activity_time = datetime.now()
+                self.response_coordinator.note_activity()
             
             # Check for a direct address and boost priority. The public bot
             # name can differ from its Twitch account name.
