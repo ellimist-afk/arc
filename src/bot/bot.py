@@ -486,6 +486,8 @@ class TalkBot:
                 enable_pre_buffering=True
             )
             await self.audio_queue.initialize()
+            # All audio honors the TTS flag, including announcers and dead-air
+            self.audio_queue.tts_gate = lambda: bool(self.config.get('TTS_ENABLED', True))
             self.service_registry.register('AudioService', self.audio_queue)
             
             # Initialize ResponseCoordinator for synchronized delivery (PRD critical)

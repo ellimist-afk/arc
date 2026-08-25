@@ -8,7 +8,7 @@ import hashlib
 import json
 import os
 import time
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List, Tuple, Callable
 from datetime import datetime, timedelta
 from collections import deque
 from dataclasses import dataclass, field
@@ -132,6 +132,12 @@ class OptimizedAudioQueue:
         self.total_processing_time = 0
         self.quality_degradations = 0
         
+        # Global TTS gate, injected by the bot (reads config live so the
+        # bot_settings.json hot-reload applies). Every audio producer funnels
+        # through queue_audio, so gating here covers the paths that never
+        # checked TTS_ENABLED themselves: dead-air filler, ad announcer,
+        # event announcer, voice-command feedback.
+        self.tts_gate: Optional[Callable[[], bool]] = None
         # Volume control for VAD ducking. Read live inside the chunked
         # playback loop so ducking takes effect mid-clip, not just per-clip.
         self.current_volume = 1.0
@@ -255,6 +261,15 @@ class OptimizedAudioQueue:
             priority: Priority level (low, normal, high, critical)
             user: User who triggered the audio
         """
+        if self.tts_gate is not None:
+            try:
+                enabled = bool(self.tts_gate())
+            except Exception:  # noqa: BLE001 — a broken gate must not read as muteness
+                enabled = True
+            if not enabled:
+                logger.debug(f"TTS disabled; dropping audio: '{text[:40]}...'")
+                return
+
         # Detect @mention and boost priority
         is_mention = "@" in text and any(
             word.startswith("@") for word in text.split()
