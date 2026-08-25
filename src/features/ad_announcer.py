@@ -9,6 +9,8 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 import random
 
+from utils.task_registry import get_global_registry
+
 logger = logging.getLogger(__name__)
 
 
@@ -37,6 +39,7 @@ class AdAnnouncer:
         self.announce_with_voice = True
         self.announce_at_end = True
         self.min_time_between_ads = 480  # 8 minutes
+        self._end_task = None  # scheduler for the current break's end
 
         # Fallback messages
         self.ad_start_messages = [
@@ -68,11 +71,28 @@ class AdAnnouncer:
         ]
         logger.info("AdAnnouncer initialized")
 
+    @staticmethod
+    def _coerce_duration(value: Any, default: int) -> int:
+        """Ad length as a usable number of seconds.
+
+        The raw value reaches arithmetic, formatting and asyncio.sleep, so a
+        null or a numeric string must not survive. Clamped to Twitch's own
+        1-180s range."""
+        try:
+            seconds = int(float(value))
+        except (TypeError, ValueError):
+            return default
+        if seconds <= 0:
+            return default
+        return min(seconds, 180)
+
     async def handle_ad_break_begin(self, event: Dict[str, Any]) -> None:
         """Handle ad break begin event from EventSub"""
         try:
-            duration = event.get('duration_seconds', 30)
-            is_automatic = event.get('is_automatic', False)
+            # duration_seconds has been observed as a string as well as an
+            # int, and a null would propagate into arithmetic and asyncio.sleep
+            duration = self._coerce_duration(event.get('duration_seconds'), default=30)
+            is_automatic = bool(event.get('is_automatic'))
             logger.info(f"Ad break detected via EventSub: {duration}s, automatic={is_automatic}")
             await self._handle_ad_start({'type': 'commercial_start', 'length': duration, 'is_automatic': is_automatic})
         except Exception as e:
@@ -240,7 +260,7 @@ Generate ONE welcoming return message:"""
 
         self.ad_active = True
         self.ad_start_time = datetime.now()
-        self.ad_duration = event.get('length', 90)
+        self.ad_duration = self._coerce_duration(event.get('length'), default=90)
 
         # Try LLM first
         message = await self._generate_hook_message(self.ad_duration)
@@ -260,7 +280,15 @@ Generate ONE welcoming return message:"""
                     duration=self.ad_duration, minutes=minutes, s="s" if minutes != 1 else "")
 
         await self._announce_ad(message, is_start=True)
-        asyncio.create_task(self._schedule_ad_end())
+        # TaskRegistry, never a raw task (CLAUDE.md): this sleeps for up to
+        # three minutes, so an untracked one outlives shutdown. Any scheduler
+        # from a previous break is cancelled so it cannot end THIS one early.
+        if self._end_task is not None and not self._end_task.done():
+            self._end_task.cancel()
+        self._end_task = get_global_registry().create_task(
+            self._schedule_ad_end(),
+            name="ad_break_end",
+        )
         self.last_ad_time = datetime.now()
         logger.info(f"Ad break started: {self.ad_duration} seconds")
 
@@ -269,6 +297,7 @@ Generate ONE welcoming return message:"""
         if not self.ad_active:
             return
         self.ad_active = False
+        self._end_task = None
 
         if self.enabled and self.announce_at_end:
             # Try LLM first
