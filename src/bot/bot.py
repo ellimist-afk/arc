@@ -148,6 +148,9 @@ class TalkBot:
         self.first_timer = None         # first-time chatter greeting policy (features.first_timer)
         self.chat_velocity = None       # chat pace tracker / pacing multiplier (features.chat_velocity)
         self.auto_clipper = None        # burst -> clip policy (features.auto_clipper)
+        # Raids arrive over IRC and EventSub both; keyed by (raider, viewers)
+        self._recent_raid_keys: Dict[Any, float] = {}
+        self._raid_dedup_window_s = 60.0
         self.current_game: Optional[str] = None
         # Sentence-streamed TTS (bot_settings.json -> tts_streaming). Off by default.
         self._tts_streaming: Dict[str, Any] = dict(self._TTS_STREAMING_DEFAULTS)
@@ -1896,23 +1899,66 @@ class TalkBot:
             await self.twitch_client.send_message(note)
         return clip
 
-    async def _handle_raid_event(self, event: Dict[str, Any]) -> None:
+    @staticmethod
+    def _normalize_raid(event: Dict[str, Any]) -> Dict[str, Any]:
+        """One raid shape from either source.
+
+        EventSub channel.raid uses from_broadcaster_USER_login/name; the IRC
+        USERNOTICE path builds from_broadcaster_login/name. Reading only the
+        IRC spelling left EventSub raids anonymous ("unknown"), which also
+        broke the Helix enrichment and the repeat-raider check.
         """
-        Handle raid events from IRC USERNOTICE
-        
-        Args:
-            event: Raid event data from IRC
-        """
+        login = (event.get('from_broadcaster_user_login')
+                 or event.get('from_broadcaster_login') or '')
+        display = (event.get('from_broadcaster_user_name')
+                   or event.get('from_broadcaster_name') or login or 'Unknown')
         try:
-            # IRC raid event contains (from twitch_client.py):
-            # - from_broadcaster_login
-            # - from_broadcaster_name
-            # - viewers
-            
-            raider_name = event.get('from_broadcaster_name', 'Unknown')
-            viewer_count = event.get('viewers', 0)
-            
-            logger.info(f"Raid event: {raider_name} with {viewer_count} viewers")
+            viewers = max(0, int(event.get('viewers') or 0))
+        except (TypeError, ValueError):
+            viewers = 0
+        return {'from_broadcaster_login': login.lower(),
+                'from_broadcaster_name': display,
+                'viewers': viewers}
+
+    def _is_duplicate_raid(self, raid: Dict[str, Any]) -> bool:
+        """True if this raid was already handled from the other source.
+
+        Twitch announces a raid over BOTH IRC USERNOTICE and EventSub, and
+        both were wired to the welcome -- every raid got welcomed twice.
+        """
+        key = (raid['from_broadcaster_login'] or raid['from_broadcaster_name'].lower(),
+               raid['viewers'])
+        # monotonic, not time(): interval math must not be affected by clock
+        # changes, and time() is only ~15ms granular on Windows -- two events
+        # in the same tick would compare as simultaneous
+        now = time.monotonic()
+        seen_at = self._recent_raid_keys.get(key)
+        # Drop stale keys so a re-raid later in the stream is still welcomed
+        for k, ts in list(self._recent_raid_keys.items()):
+            if now - ts > self._raid_dedup_window_s:
+                del self._recent_raid_keys[k]
+        if seen_at is not None and (now - seen_at) <= self._raid_dedup_window_s:
+            return True
+        self._recent_raid_keys[key] = now
+        return False
+
+    async def _handle_raid_event(self, event: Dict[str, Any]) -> None:
+        """Raid from IRC USERNOTICE (primary, most reliable source)."""
+        await self._process_raid(event, source='irc')
+
+    async def _process_raid(self, event: Dict[str, Any], source: str) -> None:
+        """Announce and remember one raid, whichever source reported it."""
+        try:
+            raid = self._normalize_raid(event)
+            raider_name = raid['from_broadcaster_name']
+            viewer_count = raid['viewers']
+
+            if self._is_duplicate_raid(raid):
+                logger.debug(f"Raid from {raider_name} already handled; "
+                             f"ignoring duplicate from {source}")
+                return
+
+            logger.info(f"Raid event ({source}): {raider_name} with {viewer_count} viewers")
 
             if self.session_summarizer:
                 self.session_summarizer.note_event(
@@ -1926,15 +1972,14 @@ class TalkBot:
 
             # If raider welcome is enabled, pass to it
             if self.raider_welcome:
-                await self.raider_welcome.handle_raid({
-                    'from_broadcaster_name': raider_name,
-                    'viewers': viewer_count
-                })
-            else:
+                if self.current_game:
+                    self.raider_welcome.set_current_game(self.current_game)
+                await self.raider_welcome.handle_raid(raid)
+            elif self.twitch_client:
                 # Simple announcement if no raider welcome
                 message = f"Welcome raiders from {raider_name}! Thanks for bringing {viewer_count} viewers!"
                 await self.twitch_client.send_message(message)
-                
+
         except Exception as e:
             logger.error(f"Error handling raid event: {e}")
     
@@ -2220,18 +2265,9 @@ class TalkBot:
             await self.event_announcer.handle_cheer(event)
 
     async def on_raid(self, event: dict):
-        """Handle raid events with dynamic LLM-powered welcomes"""
-        if hasattr(self, 'raider_welcome') and self.raider_welcome:
-            # Update current game context if available
-            if hasattr(self, 'current_game') and self.current_game:
-                self.raider_welcome.set_current_game(self.current_game)
-
-            # Fire and forget with timeout
-            self.task_registry.create_task(
-                self.raider_welcome.handle_raid(event),
-                name=f"raid_welcome_{event.get('from_broadcaster_login', 'unknown')}",
-                timeout=3.0
-            )
+        """Raid from EventSub. Same path as IRC; whichever arrives first
+        wins and the other is dropped as a duplicate."""
+        await self._process_raid(event, source='eventsub')
     
     def _load_feature_flags(self) -> Dict[str, bool]:
         """Load feature flags from configuration file per PRD section 10"""

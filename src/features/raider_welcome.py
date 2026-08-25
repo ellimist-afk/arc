@@ -26,14 +26,23 @@ class RaiderWelcome:
         
     async def handle_raid(self, raid_event: Dict[str, Any]) -> None:
         """Handle raid with dynamic analysis."""
-        raider = raid_event.get('from_broadcaster_login', 'unknown')
-        raider_display = raid_event.get('from_broadcaster_name', raider)
-        size = raid_event.get('viewers', 0)
-        
+        # Accept either event shape; the bot normalizes, but a caller that
+        # hands us a raw EventSub payload must not become "unknown".
+        raider = (raid_event.get('from_broadcaster_login')
+                  or raid_event.get('from_broadcaster_user_login') or '').lower()
+        raider_display = (raid_event.get('from_broadcaster_name')
+                          or raid_event.get('from_broadcaster_user_name')
+                          or raider or 'someone')
+        try:
+            size = max(0, int(raid_event.get('viewers') or 0))
+        except (TypeError, ValueError):
+            size = 0
+
         logger.info(f"Processing raid from {raider_display} with {size} viewers")
-        
-        # Check repeat raider
-        is_repeat = any(r['raider'] == raider for r in self.recent_raids)
+
+        # Check repeat raider. Only a known login counts: comparing empty
+        # logins made every raid after the first look like a repeat.
+        is_repeat = bool(raider) and any(r['raider'] == raider for r in self.recent_raids)
         
         try:
             # Use wait_for instead of async with timeout for Python 3.10 compatibility
@@ -88,6 +97,11 @@ class RaiderWelcome:
         }
 
         content = {}
+        if not raider:
+            # No login to look up: Helix would 400 on an empty login and the
+            # welcome is better off generic than delayed by a doomed call
+            logger.debug("Raid enrichment skipped: no raider login")
+            return {'channel': None, 'vods': None, 'clip': None}
 
         try:
             async with aiohttp.ClientSession() as session:
