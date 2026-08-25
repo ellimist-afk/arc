@@ -88,7 +88,7 @@ class EventAnnouncer:
         if not self.enabled:
             return
 
-        user = event.get('user_name', 'Someone')
+        user = event.get('user_name') or 'Someone'
 
         # Check cooldown
         now = datetime.now()
@@ -129,8 +129,8 @@ class EventAnnouncer:
         if not self.enabled:
             return
 
-        user = event.get('user_name', 'Someone')
-        tier = event.get('tier', '1000')  # 1000, 2000, 3000
+        user = event.get('user_name') or 'Someone'
+        tier = event.get('tier') or '1000'  # 1000, 2000, 3000
         is_gift = event.get('is_gift', False)
 
         # Determine tier name
@@ -162,9 +162,14 @@ class EventAnnouncer:
         if not self.enabled:
             return
 
-        user = event.get('user_name', 'Someone')
-        months = event.get('cumulative_months', 1)
-        message_text = event.get('message', {}).get('text', '')
+        user = event.get('user_name') or 'Someone'
+        try:
+            months = max(1, int(event.get('cumulative_months') or 1))
+        except (TypeError, ValueError):
+            months = 1
+        # channel.subscription.message nests the text; a null message object
+        # would break .get() chaining
+        message_text = (event.get('message') or {}).get('text') or ''
 
         fallback = random.choice(self.resub_messages).format(user=user, months=months)
         scenario = (f"{user} just resubscribed for {months} months running. "
@@ -238,9 +243,15 @@ class EventAnnouncer:
         if not self.enabled:
             return
 
-        user = event.get('user_name', 'Anonymous')
-        bits = event.get('bits', 0)
-        cheer_message = event.get('message', '')
+        # Anonymous cheers send user_name: null (present but null), so a
+        # .get() default would leave it None and announce "None cheered".
+        anonymous = bool(event.get('is_anonymous'))
+        user = 'Anonymous' if anonymous else (event.get('user_name') or 'Anonymous')
+        try:
+            bits = max(0, int(event.get('bits') or 0))
+        except (TypeError, ValueError):
+            bits = 0
+        cheer_message = event.get('message') or ''
 
         # Use big messages for large cheers
         if bits >= 1000:
@@ -252,6 +263,8 @@ class EventAnnouncer:
 
         scenario = (f"{user} just dropped {size} {bits} bits. React in character "
                     f"in one short line -- real money, make it land.")
+        if anonymous:
+            scenario += " They cheered anonymously, so do not guess who it was."
 
         # Include their message if present
         if cheer_message and len(cheer_message) < 100:

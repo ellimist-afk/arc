@@ -160,3 +160,44 @@ async def test_disabled_announcer_still_ignores_gifts(rig):
     ann.enabled = False
     await ann.handle_gift_sub(gift_event())
     assert announced == []
+
+
+# ------------------------------------------- null-vs-missing across events
+
+async def test_anonymous_cheer_is_not_announced_as_none(rig):
+    """Twitch sends user_name: null (present but null) for anonymous cheers,
+    so a .get() default left it None -- "None just dropped 500 bits"."""
+    ann, bot, announced = rig
+    await ann.handle_cheer({'user_name': None, 'is_anonymous': True, 'bits': 500})
+    scenario, actor = bot.personality_engine.scenarios[-1]
+    assert actor == 'Anonymous'
+    assert 'None' not in scenario
+    assert 'anonymously' in scenario
+    assert len(announced) == 1
+
+
+async def test_named_cheer_still_credits_the_cheerer(rig):
+    ann, bot, _ = rig
+    await ann.handle_cheer({'user_name': 'erin', 'bits': 100, 'is_anonymous': False})
+    scenario, actor = bot.personality_engine.scenarios[-1]
+    assert actor == 'erin' and 'erin' in scenario
+
+
+@pytest.mark.parametrize('bits, expected', [(None, 0), ('250', 250), (-5, 0), ('junk', 0)])
+async def test_malformed_bit_counts_degrade(rig, bits, expected):
+    ann, bot, announced = rig
+    await ann.handle_cheer({'user_name': 'erin', 'bits': bits})
+    assert len(announced) == 1
+    assert str(expected) in bot.personality_engine.scenarios[-1][0]
+
+
+async def test_null_names_and_counts_never_reach_chat(rig):
+    """Every handler: a null where a value was expected must not surface."""
+    ann, bot, announced = rig
+    await ann.handle_follow({'user_name': None})
+    await ann.handle_subscribe({'user_name': None, 'tier': None})
+    await ann.handle_resub({'user_name': None, 'cumulative_months': None, 'message': None})
+    for scenario, actor in bot.personality_engine.scenarios:
+        assert 'None' not in scenario, scenario
+        assert actor is not None
+    assert len(announced) == 3
