@@ -380,8 +380,15 @@ class ResponseCoordinator:
                             if response and response.get('text'):
                                 filler_msg = response['text']
                             else:
-                                # Fallback to simple message
-                                filler_msg = "chat seems quiet"
+                                # No line, most often because the repetition
+                                # guard rejected it twice (unsolicited chatter
+                                # is dropped rather than forced). Staying quiet
+                                # beats a canned line: generic filler is what
+                                # this feature exists to remove, and the prompt
+                                # forbids remarking on the silence at all.
+                                # The backoff will try again later.
+                                logger.info("Dead air: no line worth sending; staying quiet")
+                                continue
                         except asyncio.TimeoutError:
                             logger.warning(
                                 f"Dead-air line timed out after {self.filler_timeout:.0f}s; staying quiet")

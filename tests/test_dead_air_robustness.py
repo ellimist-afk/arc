@@ -8,6 +8,7 @@ substance).
 """
 import asyncio
 import json
+from pathlib import Path
 from datetime import datetime, timedelta
 
 import pytest
@@ -130,3 +131,23 @@ def test_live_settings_file_enables_dead_air_at_120():
 def test_counters_start_clean():
     rc = make()
     assert rc.fillers_sent == 0 and rc._consecutive_fillers == 0
+
+# ------------------------------------------- no generic filler ever escapes
+
+def test_no_generic_filler_strings_remain_in_the_monitor():
+    """The whole point of the substance work: a lull gets a specific line or
+    nothing. A guard-rejected filler used to fall back to "chat seems quiet",
+    which is both generic and the meta-commentary the prompt forbids."""
+    source = Path("src/bot/response_coordinator.py").read_text(encoding="utf-8")
+    monitor = source.split("async def _dead_air_monitor")[1]
+    for banned in ('"chat seems quiet"', '"anyone there"', '"hello"'):
+        assert banned not in monitor, f"{banned} is still a fallback"
+
+
+def test_monitor_stays_quiet_when_generation_returns_nothing():
+    """response is None (guard rejected it twice) -> no message at all."""
+    source = Path("src/bot/response_coordinator.py").read_text(encoding="utf-8")
+    monitor = source.split("async def _dead_air_monitor")[1]
+    head = monitor.split("if response and response.get('text'):")[1]
+    else_branch = head.split("else:")[1].split("except")[0]
+    assert "continue" in else_branch, "an empty result must skip the send"
