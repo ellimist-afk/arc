@@ -147,6 +147,7 @@ class TalkBot:
         self.stream_recap = None        # post-stream recap counters (features.stream_recap)
         self.first_timer = None         # first-time chatter greeting policy (features.first_timer)
         self.chat_velocity = None       # chat pace tracker / pacing multiplier (features.chat_velocity)
+        self.auto_clipper = None        # burst -> clip policy (features.auto_clipper)
         self.current_game: Optional[str] = None
         # Sentence-streamed TTS (bot_settings.json -> tts_streaming). Off by default.
         self._tts_streaming: Dict[str, Any] = dict(self._TTS_STREAMING_DEFAULTS)
@@ -741,6 +742,17 @@ class TalkBot:
                 self.stream_recap.record_message(message.get('username', ''))
             if self.chat_velocity:
                 self.chat_velocity.note_message()
+                # Chat exploding over its own baseline = something clip-worthy
+                # just happened. One clip per cooldown; the Helix call runs off
+                # the message path.
+                if (self.auto_clipper
+                        and self.auto_clipper.should_clip(self.chat_velocity.is_burst())):
+                    self.auto_clipper.mark_triggered()
+                    self.task_registry.create_task(
+                        self._auto_clip(),
+                        name=f"auto_clip_{self.auto_clipper.clips_triggered}",
+                        timeout=15.0,
+                    )
 
             # Log if this is a mention
             if is_mention:
@@ -1684,6 +1696,17 @@ class TalkBot:
             if self.personality_engine:
                 self.personality_engine.pacing_multiplier = self.chat_velocity.multiplier
             self.service_registry.register('ChatVelocity', self.chat_velocity)
+
+            # Burst -> clip: only meaningful with the velocity tracker alive
+            from features.auto_clipper import AutoClipper
+            self.auto_clipper = AutoClipper.from_settings()
+            if self.auto_clipper.enabled:
+                self.service_registry.register('AutoClipper', self.auto_clipper)
+                logger.info("Auto-clip on chat bursts active (cooldown %.0fs)",
+                            self.auto_clipper.cooldown_s)
+            else:
+                self.auto_clipper = None
+                logger.info("Auto-clip disabled via settings")
             logger.info("Chat-velocity pacing active (quiet boost x%.2f, busy damp x%.2f)",
                         self.chat_velocity.quiet_boost, self.chat_velocity.busy_damp)
         else:
@@ -1740,6 +1763,9 @@ class TalkBot:
             cv = self.chat_velocity.stats()
             extra["Chat pace"] = (f"baseline {cv['baseline']}/min, peak {cv['peak_per_minute']}/min, "
                                   f"ended {cv['regime']}")
+        if self.auto_clipper:
+            ac = self.auto_clipper.stats()
+            extra["Auto-clips"] = f"{ac['clips_triggered']} ({ac['bursts_suppressed']} burst signals held by cooldown)"
 
         path = self.stream_recap.write(summary, extra)
         if path:
@@ -1783,6 +1809,17 @@ class TalkBot:
         if self.audio_queue:
             await self.audio_queue.queue_audio("Clipped" if clip else "Couldn't clip that",
                                                priority="high")
+
+    async def _auto_clip(self) -> None:
+        """Burst-triggered clip. Cooldown was already started by the caller,
+        so a failure here (offline, missing clips:edit) cannot retry-spam
+        within the same burst."""
+        if self.stream_info is not None and self.stream_info.is_live is False:
+            logger.info("Auto-clip skipped: stream is offline")
+            return
+        clip = await self._create_clip(requested_by="chat hype")
+        if not clip:
+            logger.warning("Auto-clip failed (see earlier Helix log line)")
 
     async def _create_clip(self, requested_by: str = "") -> Optional[Dict[str, Any]]:
         """Clip the last ~30s. Tries the broadcaster token first (needs clips:edit), then the bot's."""

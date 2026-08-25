@@ -68,5 +68,9 @@
     "busy_per_min": 12,
     "quiet_boost": 2.5,
     "busy_damp": 0.35
+  },
+  "auto_clip": {
+    "enabled": true,
+    "cooldown_s": 180
   }
 }
