@@ -10,6 +10,8 @@ from typing import Optional, Callable, Dict, Any, List
 from datetime import datetime
 import ssl
 
+from utils.task_registry import create_task as registry_create_task
+
 logger = logging.getLogger(__name__)
 
 
@@ -265,6 +267,15 @@ class TwitchClient:
         except Exception as e:
             logger.error(f"Error handling PRIVMSG: {e}")
             
+    @staticmethod
+    def _tag_int(tags: dict, key: str, default: int) -> int:
+        """An IRC tag as an int. Empty or malformed values fall back rather
+        than raising, which previously discarded the whole USERNOTICE."""
+        try:
+            return int(str(tags.get(key, '')).strip() or default)
+        except (TypeError, ValueError):
+            return default
+
     async def _handle_usernotice(
         self,
         tags: Dict[str, str],
@@ -286,7 +297,9 @@ class TwitchClient:
             if msg_id == 'raid':
                 raider_name = tags.get('msg-param-login', '')
                 raider_display = tags.get('msg-param-displayName', raider_name)
-                viewer_count = int(tags.get('msg-param-viewerCount', 0))
+                # IRC tags arrive empty as often as absent; int('') raises
+                # ValueError, and the outer handler would swallow the whole raid
+                viewer_count = self._tag_int(tags, 'msg-param-viewerCount', 0)
                 
                 raid_event = {
                     'type': 'raid',
@@ -299,8 +312,10 @@ class TwitchClient:
                 
                 # Trigger raid handlers
                 if 'raid' in self.event_handlers:
-                    for handler in self.event_handlers['raid']:
-                        asyncio.create_task(handler(raid_event))
+                    for i, handler in enumerate(self.event_handlers['raid']):
+                        registry_create_task(
+                            handler(raid_event),
+                            name=f"irc_raid_{raider_name or 'unknown'}_{i}")
                         
             # Handle subscriptions
             elif msg_id in ['sub', 'resub']:
@@ -308,7 +323,7 @@ class TwitchClient:
                     'type': msg_id,
                     'username': tags.get('login', ''),
                     'display_name': tags.get('display-name', ''),
-                    'months': int(tags.get('msg-param-cumulative-months', 1)),
+                    'months': self._tag_int(tags, 'msg-param-cumulative-months', 1),
                     'tier': tags.get('msg-param-sub-plan', '1000'),
                     'message': params[-1] if params else '',
                     'timestamp': datetime.now(),
@@ -316,8 +331,8 @@ class TwitchClient:
                 }
                 
                 if 'subscription' in self.event_handlers:
-                    for handler in self.event_handlers['subscription']:
-                        asyncio.create_task(handler(sub_event))
+                    for i, handler in enumerate(self.event_handlers['subscription']):
+                        registry_create_task(handler(sub_event), name=f"irc_sub_{msg_id}_{i}")
                         
             # Handle gift subs
             elif msg_id == 'subgift':
@@ -333,8 +348,8 @@ class TwitchClient:
                 }
                 
                 if 'subgift' in self.event_handlers:
-                    for handler in self.event_handlers['subgift']:
-                        asyncio.create_task(handler(gift_event))
+                    for i, handler in enumerate(self.event_handlers['subgift']):
+                        registry_create_task(handler(gift_event), name=f"irc_subgift_{i}")
                         
         except Exception as e:
             logger.error(f"Error handling USERNOTICE: {e}")

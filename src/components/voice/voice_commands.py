@@ -42,6 +42,7 @@ class VoiceCommandSystem:
         self.bot = bot
         self.commands: Dict[str, VoiceCommand] = {}
         self.wake_words = ["hey bot", "ok bot", "yo bot", "bot"]
+        self._wake_pattern = self._compile_wake_pattern(self.wake_words)
         self.confirmation_words = ["yes", "yeah", "yep", "confirm", "do it"]
         self.cancel_words = ["no", "nope", "cancel", "nevermind", "stop"]
         
@@ -54,13 +55,27 @@ class VoiceCommandSystem:
         
         logger.info("VoiceCommandSystem initialized")
     
+    @staticmethod
+    def _compile_wake_pattern(wake_words):
+        """Wake words as whole words/phrases, longest first."""
+        parts = [re.escape(w.strip().lower()) for w in wake_words if w and w.strip()]
+        parts.sort(key=len, reverse=True)
+        if not parts:
+            return re.compile(r"(?!)")          # matches nothing
+        return re.compile(r"\b(?:" + "|".join(parts) + r")\b")
+
+    def set_wake_words(self, wake_words) -> None:
+        """Replace the wake words and recompile the matcher."""
+        self.wake_words = list(wake_words)
+        self._wake_pattern = self._compile_wake_pattern(self.wake_words)
+
     def _register_default_commands(self):
         """Register built-in voice commands."""
         
         # Control commands
         self.register_command(
             "mute",
-            r"(mute|shut up|be quiet|silence)",
+            r"\b(mute|shut up|be quiet|silence)\b",
             self._cmd_mute,
             CommandType.CONTROL,
             "Mutes the bot temporarily"
@@ -68,7 +83,9 @@ class VoiceCommandSystem:
         
         self.register_command(
             "unmute",
-            r"(unmute|speak|talk|you can talk)",
+            # "talk" must not swallow the talk more / talk less commands,
+            # which are registered after this one and so never matched
+            r"\b(unmute|speak|talk(?! more| less)|you can talk)\b",
             self._cmd_unmute,
             CommandType.CONTROL,
             "Unmutes the bot"
@@ -76,7 +93,7 @@ class VoiceCommandSystem:
         
         self.register_command(
             "volume",
-            r"(volume|louder|quieter|turn (up|down))",
+            r"\b(volume|louder|quieter|turn (up|down))\b",
             self._cmd_volume,
             CommandType.CONTROL,
             "Adjusts bot volume"
@@ -85,7 +102,7 @@ class VoiceCommandSystem:
         # Chat commands
         self.register_command(
             "respond_more",
-            r"(talk more|be more active|respond more)",
+            r"\b(talk more|be more active|respond more)\b",
             self._cmd_increase_response_rate,
             CommandType.CHAT,
             "Increases bot response frequency"
@@ -93,7 +110,7 @@ class VoiceCommandSystem:
         
         self.register_command(
             "respond_less",
-            r"(talk less|be quieter|respond less|chill)",
+            r"\b(talk less|be quieter|respond less|chill)\b",
             self._cmd_decrease_response_rate,
             CommandType.CHAT,
             "Decreases bot response frequency"
@@ -111,24 +128,29 @@ class VoiceCommandSystem:
         
         self.register_command(
             "toggle_tts",
-            r"(toggle (tts|text to speech)|turn (on|off) voice)",
+            r"\b(toggle (tts|text to speech)|turn (on|off) voice)\b",
             self._cmd_toggle_tts,
             CommandType.SETTINGS,
             "Toggles text-to-speech"
         )
         
         # Media commands
+        # Deliberately NOT bare "skip"/"next": both are said constantly in
+        # game ("skip the objective", "okay next round") and this command
+        # needs no wake word, so a bare word would cut the co-host off.
         self.register_command(
             "skip",
-            r"(skip|next|stop talking)",
+            r"\b(skip (that|this|it)|stop talking)\b",
             self._cmd_skip_audio,
             CommandType.MEDIA,
             "Skips current audio"
         )
         
+        # "what did you say" is said to teammates far more often than to the
+        # co-host, and this command needs no wake word either.
         self.register_command(
             "repeat",
-            r"(repeat|say that again|what did you say)",
+            r"\b(say that again|repeat that)\b",
             self._cmd_repeat_last,
             CommandType.MEDIA,
             "Repeats last message"
@@ -180,15 +202,24 @@ class VoiceCommandSystem:
         if self.awaiting_confirmation:
             return await self._handle_confirmation(text_lower)
         
-        # Check for wake word
-        wake_word_found = any(wake in text_lower for wake in self.wake_words)
+        # Check for wake word. Word-bounded: a bare `"bot" in text` matched
+        # inside "both", "robot", "bottle" and "sabotage", so "both of us
+        # need to be quiet" muted the co-host for the rest of the stream.
+        wake_word_found = bool(self._wake_pattern.search(text_lower))
         
         # Process commands
         for name, command in self.commands.items():
-            if re.search(command.pattern, text_lower):
+            match = re.search(command.pattern, text_lower)
+            if match:
                 # Check if wake word required
-                if not wake_word_found and command.type != CommandType.MEDIA:
-                    continue  # Skip non-media commands without wake word
+                if not wake_word_found:
+                    if command.type != CommandType.MEDIA:
+                        continue  # Skip non-media commands without wake word
+                    # MEDIA commands need no wake word, so they must BE the
+                    # utterance rather than appear inside it: "skip that" is
+                    # an instruction, "we should skip this boss" is game talk.
+                    if match.start() != 0:
+                        continue
                 
                 # Check cooldown
                 import time
