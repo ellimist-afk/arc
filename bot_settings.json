@@ -72,5 +72,9 @@
   "auto_clip": {
     "enabled": true,
     "cooldown_s": 180
+  },
+  "event_reactions": {
+    "enabled": true,
+    "timeout_s": 8
   }
 }

@@ -1763,6 +1763,10 @@ class TalkBot:
             cv = self.chat_velocity.stats()
             extra["Chat pace"] = (f"baseline {cv['baseline']}/min, peak {cv['peak_per_minute']}/min, "
                                   f"ended {cv['regime']}")
+        if getattr(self, 'event_announcer', None):
+            ev = self.event_announcer.stats()
+            extra["Event reactions"] = (f"{ev['reactions_generated']} in character, "
+                                        f"{ev['reactions_fell_back']} from templates")
         if self.auto_clipper:
             ac = self.auto_clipper.stats()
             extra["Auto-clips"] = f"{ac['clips_triggered']} ({ac['bursts_suppressed']} burst signals held by cooldown)"
