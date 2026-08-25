@@ -7,7 +7,6 @@ lull keeps the full character prompt plus a be-specific directive, and the
 coordinator hands it the game, the session summary and the chat that
 preceded the silence.
 """
-import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -99,9 +98,10 @@ async def test_provider_context_reaches_the_engine():
     """The monitor's own loop is slow by design (10s ticks, 10min grace), so
     this exercises the same merge the monitor performs."""
     context = {'type': 'dead_air', 'time_since_activity': 300}
-    provider = lambda: {'stream_now': 'playing Overwatch',
-                        'session_summary': 'bob has died 9 times',
-                        'recent_messages': [{'username': 'v', 'message': 'gg'}]}
+    def provider():
+        return {'stream_now': 'playing Overwatch',
+                'session_summary': 'bob has died 9 times',
+                'recent_messages': [{'username': 'v', 'message': 'gg'}]}
     context.update(provider() or {})
     assert context['stream_now'] == 'playing Overwatch'
     assert context['session_summary'] == 'bob has died 9 times'
