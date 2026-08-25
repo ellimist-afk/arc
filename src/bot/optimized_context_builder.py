@@ -24,28 +24,53 @@ class ContextTemplate:
 
 
 class LRUCache:
-    """Simple LRU cache implementation."""
+    """LRU cache with an age limit.
 
-    def __init__(self, maxsize: int = 100):
+    The age limit is the point: without it, entries only left on eviction at
+    `maxsize`, so a channel with fewer distinct chatters than that never
+    evicted anything -- a viewer's context stayed frozen at whatever it was
+    on their first message for the rest of the stream.
+    """
+
+    def __init__(self, maxsize: int = 100, ttl: Optional[float] = None,
+                 clock=time.time):
         self.cache: OrderedDict = OrderedDict()
         self.maxsize = maxsize
+        self.ttl = ttl
+        self._clock = clock
         self.hits = 0
         self.misses = 0
+        self.expirations = 0
 
     def get(self, key: str) -> Optional[Any]:
-        if key in self.cache:
-            self.hits += 1
-            self.cache.move_to_end(key)
-            return self.cache[key]
+        entry = self.cache.get(key)
+        if entry is not None:
+            value, stored_at = entry
+            if self.ttl is None or (self._clock() - stored_at) < self.ttl:
+                self.hits += 1
+                self.cache.move_to_end(key)
+                return value
+            del self.cache[key]
+            self.expirations += 1
         self.misses += 1
         return None
 
     def put(self, key: str, value: Any):
         if key in self.cache:
             self.cache.move_to_end(key)
-        self.cache[key] = value
+        self.cache[key] = (value, self._clock())
         if len(self.cache) > self.maxsize:
             self.cache.popitem(last=False)
+
+    def delete_prefix(self, prefix: str) -> int:
+        """Drop every entry whose key starts with `prefix`. Returns the count."""
+        doomed = [k for k in self.cache if k.startswith(prefix)]
+        for k in doomed:
+            del self.cache[k]
+        return len(doomed)
+
+    def clear(self) -> None:
+        self.cache.clear()
 
     @property
     def hit_rate(self) -> float:
@@ -114,6 +139,9 @@ class OptimizedContextBuilder:
         # Cache configuration
         self.l1_ttl = 60  # 1 minute for hot cache
         self.l2_ttl = 300  # 5 minutes for warm cache
+        # l2_ttl was declared here and never applied, so the warm cache only
+        # ever dropped entries by LRU eviction at maxsize
+        self.l2_cache.ttl = self.l2_ttl
 
         # Performance tracking
         self.build_times: List[float] = []
@@ -396,25 +424,22 @@ class OptimizedContextBuilder:
 
     def invalidate_cache(self, viewer: Optional[str] = None, channel: Optional[str] = None):
         """Invalidate cache entries."""
+        # Both tiers, always: dropping only L1 left the stale copy in L2,
+        # which the very next read promotes straight back into L1.
         if viewer and channel:
-            # Invalidate specific viewer
-            pattern = f"{channel}:{viewer}:"
-            keys_to_remove = [k for k in self.l1_cache if k.startswith(pattern)]
-            for key in keys_to_remove:
-                del self.l1_cache[key]
-            logger.debug(f"Invalidated cache for {viewer} in {channel}")
+            prefix = f"{channel}:{viewer}:"
         elif channel:
-            # Invalidate entire channel
-            pattern = f"{channel}:"
-            keys_to_remove = [k for k in self.l1_cache if k.startswith(pattern)]
-            for key in keys_to_remove:
-                del self.l1_cache[key]
-            logger.debug(f"Invalidated cache for channel {channel}")
+            prefix = f"{channel}:"
         else:
-            # Clear all caches
             self.l1_cache.clear()
-            self.l2_cache = LRUCache(maxsize=100)
+            self.l2_cache.clear()
             logger.info("Cleared all context caches")
+            return
+
+        for key in [k for k in self.l1_cache if k.startswith(prefix)]:
+            del self.l1_cache[key]
+        dropped = self.l2_cache.delete_prefix(prefix)
+        logger.debug(f"Invalidated context cache for {prefix} ({dropped} warm entries)")
 
     def get_stats(self) -> Dict[str, Any]:
         """Get performance statistics."""
