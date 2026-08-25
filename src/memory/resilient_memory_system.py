@@ -122,6 +122,16 @@ class ResilientMemorySystem:
                     self.db_available = False
                     self.db_failures += 1
     
+    def _note_buffer_pressure(self) -> None:
+        """Warn when the outage buffer is about to overwrite unsaved items."""
+        maxlen = self.memory_buffer.maxlen
+        if maxlen is None or len(self.memory_buffer) < maxlen:
+            return
+        self.buffer_overflows = getattr(self, 'buffer_overflows', 0) + 1
+        if self.buffer_overflows == 1 or self.buffer_overflows % 100 == 0:
+            logger.warning(f"Memory buffer full ({maxlen}); dropping the oldest "
+                           f"unsaved item ({self.buffer_overflows} dropped so far)")
+
     async def _flush_buffer_to_database(self):
         """Flush in-memory buffer to database when connection is restored"""
         if not self.db or not self.memory_buffer:
@@ -132,10 +142,23 @@ class ResilientMemorySystem:
         
         for item in list(self.memory_buffer):
             try:
+                # These return False on failure; they do not raise. Counting
+                # every item as flushed regardless meant the popleft() below
+                # discarded messages that were never written -- silently
+                # losing exactly the data this buffer exists to protect.
                 if item['type'] == 'message':
-                    await self._store_message_to_db(item['data'])
+                    stored = await self._store_message_to_db(item['data'])
                 elif item['type'] == 'memory':
-                    await self._store_memory_to_db(item['data'])
+                    stored = await self._store_memory_to_db(item['data'])
+                else:
+                    # Unknown type: nothing can ever write it, so drop it
+                    # rather than wedge the queue behind it forever
+                    logger.warning(f"Dropping unflushable buffered item: {item.get('type')!r}")
+                    stored = True
+                if not stored:
+                    logger.warning("Flush stopped: the database rejected a buffered item; "
+                                   "keeping it and the rest buffered for the next attempt")
+                    break
                 flushed += 1
             except Exception as e:
                 logger.error(f"Failed to flush item to database: {e}")
@@ -143,9 +166,13 @@ class ResilientMemorySystem:
         
         if flushed > 0:
             logger.info(f"Successfully flushed {flushed} items to database")
-            # Clear flushed items
+            # Only the items that were actually written leave the buffer
             for _ in range(flushed):
+                if not self.memory_buffer:
+                    break
                 self.memory_buffer.popleft()
+        if self.memory_buffer:
+            logger.info(f"{len(self.memory_buffer)} item(s) still buffered")
     
     async def store_message(self, message: Dict[str, Any]) -> None:
         """
@@ -156,7 +183,10 @@ class ResilientMemorySystem:
         """
         self.write_count += 1
         
-        # Always store in memory buffer
+        # Always store in memory buffer. deque(maxlen) drops the OLDEST
+        # silently when full, so say it out loud -- during a long outage that
+        # is the difference between "delayed" and "gone".
+        self._note_buffer_pressure()
         self.memory_buffer.append({
             'type': 'message',
             'data': message,
@@ -321,7 +351,10 @@ class ResilientMemorySystem:
         """
         self.write_count += 1
         
-        # Always store in memory buffer
+        # Always store in memory buffer. deque(maxlen) drops the OLDEST
+        # silently when full, so say it out loud -- during a long outage that
+        # is the difference between "delayed" and "gone".
+        self._note_buffer_pressure()
         self.memory_buffer.append({
             'type': 'memory',
             'data': memory,
