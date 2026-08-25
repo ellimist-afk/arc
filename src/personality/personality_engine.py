@@ -852,12 +852,22 @@ class PersonalityEngine:
             # Iterate oldest-first so insertion order is chronological (oldest
             # just after system prompt, newest just before current message)
             recent = context['recent_messages'][-15:]
+            # The chat buffer already holds the CURRENT message (it is stored
+            # before context is built), so it would appear twice: once in the
+            # history and once as the final turn. The model then roasts people
+            # for "asking twice". Skip exactly one newest matching occurrence;
+            # genuinely repeated earlier messages are kept.
+            current_skipped = False
             for msg in reversed(recent):
                 text = msg.get('message') or msg.get('text', '')
                 if not text:
                     continue
                 username = msg.get('username', 'User')
                 role = msg.get('role', 'viewer')
+                if (not current_skipped and role != 'assistant'
+                        and text == message and user.startswith(username)):
+                    current_skipped = True
+                    continue
                 if role == 'assistant':
                     # Bot's own past response — tell the LLM "I said this"
                     messages.insert(1, {"role": "assistant", "content": text})
