@@ -40,6 +40,9 @@ class EventAnnouncer:
         self.last_follow_time: Optional[datetime] = None
         self.follow_cooldown = 10  # seconds between follow announcements
         self.follow_queue = []  # Queue follows to batch announce
+        # Recipients seen via channel.subscribe(is_gift) since the last gift
+        # event; drained when the gift bomb itself is announced.
+        self.gift_recipients = []
 
         # Message templates
         self.follow_messages = [
@@ -175,23 +178,60 @@ class EventAnnouncer:
                           note=f"{user} resubbed ({months} months)")
         logger.info(f"Resub announced: {user} ({months} months)")
 
+    def note_gift_recipient(self, event: dict) -> None:
+        """A channel.subscribe carrying is_gift: one recipient of a gift bomb.
+
+        Deliberately silent. Twitch sends one of these per recipient, so
+        announcing them meant N messages for a single gift -- each crediting
+        the recipient as the gifter and claiming one sub. The gift event
+        (handle_gift_sub) is the one that names the gifter and the count.
+        The recipient is still remembered so the co-host can call back to it.
+        """
+        recipient = event.get('user_name', 'someone')
+        self.gift_recipients.append(recipient)
+        logger.debug(f"Gift recipient noted (not announced): {recipient}")
+
     async def handle_gift_sub(self, event: dict):
-        """Handle gift subscription event."""
+        """Handle a gift-sub bomb: one event per gift, whatever the count."""
         if not self.enabled:
             return
 
-        user = event.get('user_name', 'Anonymous')
-        count = event.get('total', 1)
+        # channel.subscription.gift: user_* is the GIFTER (null when
+        # anonymous), total is this gift's count, cumulative_total is their
+        # lifetime count on the channel (null when anonymous).
+        anonymous = bool(event.get('is_anonymous'))
+        user = 'Anonymous' if anonymous else (event.get('user_name') or 'Anonymous')
+        try:
+            count = max(1, int(event.get('total') or 1))
+        except (TypeError, ValueError):
+            count = 1
+        tier_names = {'1000': 'Tier 1', '2000': 'Tier 2', '3000': 'Tier 3'}
+        tier_name = tier_names.get(str(event.get('tier', '1000')), 'Tier 1')
+
+        recipients = self.gift_recipients[-count:]
+        self.gift_recipients = []
+
+        plural = "subscription" if count == 1 else "subscriptions"
+        scenario = (f"{user} just gifted {count} {tier_name} {plural} to the community. "
+                    f"React in character in one short line -- real money, make it land.")
+        if anonymous:
+            scenario += " The gifter chose to stay anonymous."
+        if count >= 5:
+            scenario += f" {count} at once is a big drop, treat it that way."
+        if recipients and count <= 3:
+            scenario += f" It went to: {', '.join(recipients)}."
+        cumulative = event.get('cumulative_total')
+        if not anonymous and cumulative and int(cumulative) > count:
+            scenario += f" They have gifted {cumulative} on this channel in total."
 
         await self._react(
-            scenario=(f"{user} just gifted {count} subscription(s) to the community. "
-                      f"React in character in one short line."),
+            scenario=scenario,
             actor=user,
             fallback=random.choice(self.gift_sub_messages).format(user=user, count=count),
             priority="high",
             note=f"{user} gifted {count} sub(s)",
         )
-        logger.info(f"Gift sub announced: {user} ({count} gifts)")
+        logger.info(f"Gift sub announced: {user} ({count} gifts, {tier_name})")
 
     async def handle_cheer(self, event: dict):
         """Handle bits/cheer event."""

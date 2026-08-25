@@ -398,6 +398,17 @@ class EventSubWebSocket:
                     'broadcaster_user_id': self.broadcaster_id
                 }
             },
+            # Gift subs. Twitch also sends one channel.subscribe per
+            # RECIPIENT for the same gift; this event is the only one that
+            # names the gifter and carries the count, so it is the one we
+            # announce (see _on_subscribe, which stays quiet for recipients).
+            {
+                'type': 'channel.subscription.gift',
+                'version': '1',
+                'condition': {
+                    'broadcaster_user_id': self.broadcaster_id
+                }
+            },
             # Bits/Cheers
             {
                 'type': 'channel.cheer',

@@ -93,7 +93,8 @@ async def test_reaction_gets_game_summary_and_recent_chat():
     ("handle_subscribe", {"user_name": "alice", "tier": "1000", "is_gift": True,
                           "gifter_name": "bob"}, "gifted subscription from bob"),
     ("handle_resub", {"user_name": "carol", "cumulative_months": 14}, "14 months"),
-    ("handle_gift_sub", {"user_name": "dave", "total": 5}, "gifted 5 subscription"),
+    # gift scenarios now carry the tier as well as the count
+    ("handle_gift_sub", {"user_name": "dave", "total": 5}, "gifted 5 Tier 1 subscriptions"),
     ("handle_cheer", {"user_name": "erin", "bits": 5000}, "massive cheer of 5000 bits"),
     ("handle_follow", {"user_name": "frank"}, "just followed"),
 ])

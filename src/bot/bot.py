@@ -569,6 +569,7 @@ class TalkBot:
             self.eventsub.on_event('channel.follow', self._on_follow)
             self.eventsub.on_event('channel.subscribe', self._on_subscribe)
             self.eventsub.on_event('channel.cheer', self._on_cheer)
+            self.eventsub.on_event('channel.subscription.gift', self._on_gift_sub)
             logger.info("Event announcer handlers registered")
 
             # Category/title awareness, stream lifecycle, recap, first-timer policy
@@ -2192,15 +2193,26 @@ class TalkBot:
             await self.event_announcer.handle_follow(event)
 
     async def _on_subscribe(self, event: dict):
-        """Handle subscribe event."""
+        """Handle subscribe event.
+
+        A gift of N subs arrives as N of these (one per recipient) PLUS one
+        channel.subscription.gift naming the gifter and the count. Announcing
+        the per-recipient copies meant ten messages that credited recipients
+        as gifters and claimed one sub each, so they are only remembered here;
+        _on_gift_sub does the announcing.
+        """
         if hasattr(self, 'event_announcer'):
-            # Check if it's a resub
-            if event.get('cumulative_months', 1) > 1:
+            if event.get('is_gift'):
+                self.event_announcer.note_gift_recipient(event)
+            elif event.get('cumulative_months', 1) > 1:
                 await self.event_announcer.handle_resub(event)
-            elif event.get('is_gift'):
-                await self.event_announcer.handle_gift_sub(event)
             else:
                 await self.event_announcer.handle_subscribe(event)
+
+    async def _on_gift_sub(self, event: dict):
+        """Handle a gift-sub bomb (channel.subscription.gift)."""
+        if hasattr(self, 'event_announcer'):
+            await self.event_announcer.handle_gift_sub(event)
 
     async def _on_cheer(self, event: dict):
         """Handle cheer event."""
