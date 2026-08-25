@@ -1,5 +1,4 @@
 """AutoClipper policy and the bot's burst-to-clip wiring."""
-import asyncio
 import json
 from types import SimpleNamespace
 
