@@ -1382,6 +1382,36 @@ class TalkBot:
                 "person speaking to you is the streamer. Keep replies to one "
                 "or two short sentences.")
 
+    @staticmethod
+    def _normalize_voice_text(text: str) -> str:
+        """Lowercase, punctuation-free, single-spaced form for comparison.
+
+        Whisper punctuates inconsistently across takes of the same sentence,
+        so comparing raw transcripts misses real repeats."""
+        return " ".join(re.sub(r"[^\w\s']", " ", (text or "").lower()).split())
+
+    def _is_duplicate_voice(self, normalized: str, ratio: float = 0.8) -> bool:
+        """Has this utterance effectively just been handled?
+
+        Previously this tested containment in BOTH directions, so a single
+        short filler poisoned everything after it: once "okay" was recorded,
+        any later sentence containing "okay" -- including a direct address to
+        the bot -- was dropped in silence. Containment now only counts when
+        the two are nearly the same length, which is what a Whisper re-emit
+        of the same utterance looks like ("hey bot" / "hey bot.").
+        """
+        if not normalized:
+            return False
+        for recent in self.recent_voice_texts[-5:]:
+            if not recent:
+                continue
+            if normalized == recent:
+                return True
+            shorter, longer = sorted((normalized, recent), key=len)
+            if shorter in longer and len(shorter) >= ratio * len(longer):
+                return True
+        return False
+
     async def _handle_voice_input(self, text: str) -> None:
         """
         Handle voice input from recognition system
@@ -1441,11 +1471,10 @@ class TalkBot:
             logger.info(f"[VOICE] Processing input: '{text}'")
             
             # Check for duplicate/similar recent inputs
-            text_lower = text.lower()
-            for recent in self.recent_voice_texts[-5:]:  # Check last 5
-                if text_lower == recent or text_lower in recent or recent in text_lower:
-                    logger.debug(f"Duplicate voice input filtered: '{text}'")
-                    return
+            text_lower = self._normalize_voice_text(text)
+            if self._is_duplicate_voice(text_lower):
+                logger.debug(f"Duplicate voice input filtered: '{text}'")
+                return
             
             # Check if it's a voice command first
             if self.voice_commands:
@@ -1513,7 +1542,7 @@ class TalkBot:
                 logger.debug("Bot is muted, ignoring voice input")
                 return
             
-            # Track this input
+            # Track this input (already normalized above)
             self.recent_voice_texts.append(text_lower)
             if len(self.recent_voice_texts) > 10:
                 self.recent_voice_texts = self.recent_voice_texts[-10:]
