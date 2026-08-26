@@ -70,6 +70,11 @@ class VoiceRecognition:
         # fails to load (see _load_whisper_model)
         self.asr_engine = asr_engine
         self.whisper_model_name = whisper_model
+        # Confidence gates for Whisper output. Defaults follow the values
+        # openai/whisper itself uses to mark a decode as failed.
+        self.max_no_speech_prob = 0.6
+        self.min_avg_logprob = -1.0
+        self.low_confidence_drops = 0
         self._whisper_model = None
         
         # Audio processing queue
@@ -209,7 +214,26 @@ class VoiceRecognition:
                 hotwords='elimist cassova Overwatch',
                 vad_filter=True,
             )
-            text = ' '.join(seg.text for seg in segments)
+            # Speaking away from the mic still passes VAD: the audio is quiet
+            # but real, so Whisper decodes it into confident-looking garbage.
+            # Drop those segments instead, or they become a "streamer turn"
+            # the co-host reacts to -- and once one reaches the session
+            # summary it is injected into every later prompt.
+            kept = []
+            for seg in segments:
+                no_speech = getattr(seg, 'no_speech_prob', 0.0) or 0.0
+                logprob = getattr(seg, 'avg_logprob', 0.0)
+                if logprob is None:
+                    logprob = 0.0
+                if no_speech > self.max_no_speech_prob or logprob < self.min_avg_logprob:
+                    self.low_confidence_drops += 1
+                    logger.debug(
+                        "Dropped low-confidence transcript %r "
+                        "(no_speech=%.2f avg_logprob=%.2f)",
+                        seg.text.strip()[:60], no_speech, logprob)
+                    continue
+                kept.append(seg.text)
+            text = ' '.join(kept)
             # Downstream matching (trigger_match, voice-command substring
             # checks) was built against Google's punctuation-free
             # transcripts -- "hey, bud." must still contain "hey bud".
