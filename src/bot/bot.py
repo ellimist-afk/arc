@@ -838,7 +838,7 @@ class TalkBot:
             if not explicitly_addressed and not greet and self.last_bot_message_at is not None:
                 gap = (datetime.now() - self.last_bot_message_at).total_seconds()
                 if gap < self.unsolicited_gap_s:
-                    logger.debug(f"Holding {'follow-up' if via_followup else 'unsolicited'} "
+                    logger.info(f"Holding {'follow-up' if via_followup else 'unsolicited'} "
                                  f"reply: bot spoke {gap:.0f}s ago")
                     self._schedule_summary()
                     return
@@ -1706,7 +1706,7 @@ class TalkBot:
         if now - when > self.followup_window_s:
             return False
         if streak >= self.max_followups:
-            logger.debug(f"Follow-up streak spent for {name}; needs the name again")
+            logger.info(f"Follow-up streak spent for {name}; needs the name again")
             return False
         return True
 
