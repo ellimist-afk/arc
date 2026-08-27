@@ -9,6 +9,7 @@ shutdown. And nothing cancelled a previous break's scheduler, so it could
 fire during the next break and end it early.
 """
 import asyncio
+from pathlib import Path
 
 import pytest
 
@@ -153,3 +154,58 @@ async def test_cooldown_blocks_a_second_break():
     ad.ad_active = False
     await ad._handle_ad_start({'length': 60})
     assert len(ad.announced) == count, "too-soon break must be skipped"
+
+# --------------------------------------------------- ad lines stay in voice
+
+def test_no_marketing_brief_remains():
+    """The old bespoke prompt told the model to "tease what's next" and be
+    "engaging and compelling", which produced thumbnail hype in nobody's
+    voice -- and invented a top-10 segment that did not exist."""
+    src = Path("src/features/ad_announcer.py").read_text(encoding="utf-8")
+    for banned in ("engaging and compelling", "tease what's next",
+                   "Keep viewers engaged so they don't leave",
+                   "You are a Twitch streamer bot"):
+        assert banned not in src, f"{banned!r} is still in the ad prompts"
+
+
+def test_both_ad_lines_go_through_the_personality_engine():
+    src = Path("src/features/ad_announcer.py").read_text(encoding="utf-8")
+    for method in ("_generate_hook_message", "_generate_return_message"):
+        body = src.split(f"async def {method}")[1].split("async def ")[0]
+        assert "_say_in_character" in body, f"{method} bypasses the engine"
+
+
+def test_ad_scenarios_forbid_inventing_content():
+    src = Path("src/features/ad_announcer.py").read_text(encoding="utf-8")
+    assert "not actually" in src and "Never invent" in src
+
+
+async def test_say_in_character_falls_back_when_the_engine_is_missing():
+    ad = AdAnnouncer.__new__(AdAnnouncer)
+    ad.personality_engine = None
+    assert await ad._say_in_character("an ad started") is None
+
+
+async def test_say_in_character_survives_a_broken_engine():
+    ad = AdAnnouncer.__new__(AdAnnouncer)
+    ad.chat_buffer = None
+    ad.channel_name = "ch"
+
+    class Boom:
+        async def generate_response(self, **kw):
+            raise RuntimeError("api down")
+    ad.personality_engine = Boom()
+    assert await ad._say_in_character("an ad started") is None, "template pool takes over"
+
+
+async def test_say_in_character_returns_the_line():
+    ad = AdAnnouncer.__new__(AdAnnouncer)
+    ad.chat_buffer = None
+    ad.channel_name = "ch"
+
+    class Engine:
+        async def generate_response(self, message, context, user, is_mention=False):
+            assert is_mention is True, "an ad line is never optional"
+            return {"text": "  ninety seconds, hold my keyboard  "}
+    ad.personality_engine = Engine()
+    assert await ad._say_in_character("an ad started") == "ninety seconds, hold my keyboard"

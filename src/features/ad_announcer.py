@@ -185,29 +185,58 @@ class AdAnnouncer:
             logger.debug(f"LLM call failed: {e}")
         return None
 
+    async def _say_in_character(self, scenario: str) -> Optional[str]:
+        """One line about `scenario`, in the co-host's actual voice.
+
+        Ad lines used to be generated from a bespoke prompt that never saw
+        the personality, its register anchors or its output contract, so they
+        landed as generic promo copy. Routing them through the engine means
+        an ad break sounds like the same character as everything else, and
+        inherits the repetition guard for free.
+        """
+        engine = self.personality_engine
+        if engine is None:
+            return None
+        context = {}
+        try:
+            if self.chat_buffer and self.channel_name:
+                context['recent_messages'] = self.chat_buffer.get_recent(
+                    self.channel_name, limit=10)
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Ad line chat context unavailable: {e}")
+        try:
+            response = await asyncio.wait_for(
+                engine.generate_response(message=scenario, context=context,
+                                         user="system", is_mention=True),
+                timeout=8.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Ad line timed out; using the template pool")
+            return None
+        except Exception as e:  # noqa: BLE001 - never lose the announcement
+            logger.warning(f"Ad line failed ({e}); using the template pool")
+            return None
+        if not response:
+            return None
+        return (response.get('text') or '').strip() or None
+
     async def _generate_hook_message(self, duration_seconds: int) -> Optional[str]:
         """Generate engaging LLM hook to keep viewers during ads"""
         if not self.openai_client or not self.personality_engine:
             return None
 
-        chat_ctx = await self._get_chat_context(20)
-        personality = await self._get_personality_info()
-
-        prompt = f"""You are a Twitch streamer bot announcing an ad break. Keep viewers engaged so they don't leave.
-
-CRITICAL RULES:
-- SHORT message (under 200 characters)
-- DO NOT just say "BRB" or "back in {duration_seconds} seconds" - boring, loses viewers
-- Give a REASON to stay: ask a question, share a hot take, tease what's next, make a fun observation, or roast someone in chat
-- Match this personality{personality}
-- Mention ad duration naturally, not as the focus
-- Be engaging and compelling
-
-{"Recent chat:" + chr(10) + chat_ctx if chat_ctx else ""}
-
-Generate ONE engaging hook for a {duration_seconds}-second ad:"""
-
-        msg = await self._call_llm(prompt, 80)
+        # Straight through the personality engine, like every other line the
+        # co-host says. The old hand-rolled brief asked for teasers and promo
+        # energy, which produced thumbnail hype in nobody's voice -- and once
+        # announced a top-ten segment that did not exist.
+        scenario = (
+            f"An ad break just started and runs about {duration_seconds} seconds. "
+            f"Say one line that makes chat want to still be here when it ends. "
+            f"Mention the wait in passing, not as the point. Never promise a "
+            f"segment, giveaway, reveal or anything else that is not actually "
+            f"happening -- react to the room you are in."
+        )
+        msg = await self._say_in_character(scenario)
         if not msg:
             return None
         if len(msg) < 10:
@@ -223,23 +252,13 @@ Generate ONE engaging hook for a {duration_seconds}-second ad:"""
         if not self.openai_client or not self.personality_engine:
             return None
 
-        chat_ctx = await self._get_chat_context(20)
-        personality = await self._get_personality_info()
-
-        prompt = f"""You are a Twitch streamer bot returning from an ad break.
-
-RULES:
-- SHORT message (under 150 characters)
-- Welcome viewers back naturally
-- If recent chat shows an interesting topic from before the ad, briefly callback to it
-- Match this personality{personality}
-- Be energetic and ready to continue
-
-{"Recent chat (including pre-ad hook):" + chr(10) + chat_ctx if chat_ctx else ""}
-
-Generate ONE welcoming return message:"""
-
-        msg = await self._call_llm(prompt, 60)
+        scenario = (
+            "The ad break just ended. Say one line picking the stream back up. "
+            "Call back to what chat was talking about before the ads if there is "
+            "something worth calling back to. Never invent anything that did not "
+            "happen."
+        )
+        msg = await self._say_in_character(scenario)
         if not msg:
             return None
         if len(msg) < 5:
