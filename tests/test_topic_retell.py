@@ -117,9 +117,62 @@ def test_avoid_hint_demands_a_different_subject():
     assert "waifu" in hint
 
 
-def test_engine_marks_only_dead_air_as_fresh_topic():
+def test_engine_marks_fillers_and_interjections_as_fresh_topic():
+    """Mentions are exempt: an addressed reply is owed whatever its topic."""
     from pathlib import Path
     src = Path("src/personality/personality_engine.py").read_text(encoding="utf-8")
-    assert 'fresh_topic = message == "[DEAD_AIR_FILLER]"' in src
+    assert 'fresh_topic = is_filler or not is_mention' in src
     assert src.count("fresh_topic=fresh_topic") == 2, \
         "both the first draft and the retry must use the same mode"
+    assert src.count("topic_exempt=topic_exempt") == 2
+
+
+# ------------------------------------- interjections re-running their own bit
+
+FINGERPRINTS_BIT = ("i still think shipping the plugin as 100% claude is "
+                    "honest branding cute little fingerprints and all as long "
+                    "as cassova_ doesnt polish it into dust")
+FINGERPRINTS_RERUN = ("claude fingerprints are cute until cassova_ turns one "
+                      "honest plugin note into a twelve-minute ethics boss fight")
+
+
+def test_an_interjection_rerunning_its_own_bit_is_caught():
+    """Seen live 2026-08-26 at 04:52/05:00: the co-host did the claude-
+    fingerprints bit, then eight minutes later did it again while the message
+    it was answering was about something else entirely."""
+    g = _guard()
+    g.record(FINGERPRINTS_BIT)
+    exempt = RepetitionGuard.topic_words("OMEGALUL is this the austrailian package")
+    v = g.check(FINGERPRINTS_RERUN, fresh_topic=True, topic_exempt=exempt)
+    assert not v.ok
+    assert 'fingerprints' in v.retold_words and 'claude' in v.retold_words
+
+
+def test_riffing_on_the_message_being_answered_is_never_a_rerun():
+    """04:56 mixed the fresh chatgpt-reset message into the running neovim
+    thread -- a good line. Words from the answered message are exempt."""
+    g = _guard()
+    g.record("neovim wins if you want plugins that feel alive instead of "
+             "little haunted vim fossils")
+    exempt = RepetitionGuard.topic_words(
+        "ChatGPT weekly just reset, we are open for business Kreygasm")
+    v = g.check("spending a fresh chatgpt reset on late-night neovim theology "
+                "means three configs and no plugin shipped",
+                fresh_topic=True, topic_exempt=exempt)
+    assert v.ok
+
+
+def test_topic_words_helper_extracts_distinctive_words():
+    assert RepetitionGuard.topic_words("ChatGPT weekly just reset") == \
+        {'chatgpt', 'weekly', 'reset'}
+    assert RepetitionGuard.topic_words("") == set()
+
+
+def test_exempt_words_cannot_mask_a_rerun_on_other_words():
+    """Exemption removes only the answered message's words; the rest of a
+    re-told premise still counts."""
+    g = _guard()
+    g.record(FINGERPRINTS_BIT)
+    exempt = RepetitionGuard.topic_words("what about the claude thing")
+    v = g.check(FINGERPRINTS_RERUN, fresh_topic=True, topic_exempt=exempt)
+    assert not v.ok, "'claude' is exempt but fingerprints+cassova+honest remain"

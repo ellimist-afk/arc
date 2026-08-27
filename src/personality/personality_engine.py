@@ -532,12 +532,21 @@ class PersonalityEngine:
         if not self.repetition_guard_enabled:
             return text
 
-        # A dead-air filler chooses its own topic, so re-telling a recent
-        # bit in fresh words is still a rerun -- the lexical checks cannot
-        # see that, the topic check can. Replies never opt in: answering a
-        # follow-up legitimately reuses the topic's words.
-        fresh_topic = message == "[DEAD_AIR_FILLER]"
-        verdict = self.repetition_guard.check(text, fresh_topic=fresh_topic)
+        # Any line where the bot picks its own subject -- a dead-air filler
+        # or an unprompted interjection -- must pick a NEW subject: re-telling
+        # a recent bit in fresh words is still a rerun, which the lexical
+        # checks cannot see. Words from the message being answered are
+        # exempt, so riffing on what chat is discussing never counts as a
+        # rerun. Direct mentions skip the check: an addressed reply is owed
+        # whatever its topic.
+        is_filler = message == "[DEAD_AIR_FILLER]"
+        fresh_topic = is_filler or not is_mention
+        topic_exempt = (
+            self.repetition_guard.topic_words(message)
+            if fresh_topic and not is_filler else None
+        )
+        verdict = self.repetition_guard.check(
+            text, fresh_topic=fresh_topic, topic_exempt=topic_exempt)
         if verdict.ok:
             return text
 
@@ -549,7 +558,8 @@ class PersonalityEngine:
             message=message, context=context, user=user, prompt=retry_prompt
         )
         if retry:
-            retry_verdict = self.repetition_guard.check(retry, fresh_topic=fresh_topic)
+            retry_verdict = self.repetition_guard.check(
+                retry, fresh_topic=fresh_topic, topic_exempt=topic_exempt)
             if retry_verdict.ok:
                 return retry
             if not is_mention:

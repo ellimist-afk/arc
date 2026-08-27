@@ -15,13 +15,21 @@ Three checks, all against the bot's OWN recent outputs (never viewer text):
                         opening of any of the last N outputs.
 3. phrase cooldown    - a trigram that has shown up in >= 2 recent outputs
                         is a "catchphrase"; reusing it while it's hot fails.
-4. topic retell       - OPT-IN via check(fresh_topic=True), for lines the
-                        bot initiates itself (dead-air fillers): sharing two
-                        or more distinctive content words with a single
-                        recent output means the same bit re-told in new
-                        words, which n-gram overlap cannot see. A reply in a
-                        conversation legitimately reuses topic words, so
-                        this check never applies to replies.
+                        Bigrams count too, at a higher bar (>= 3 uses):
+                        a two-word tic like "exactly how" recurs with a
+                        different third word every time, so trigrams never
+                        see it, while any two-word sequence lands often
+                        enough by chance that 2 uses would over-trigger.
+4. topic retell       - OPT-IN via check(fresh_topic=True), for lines where
+                        the bot picks its own subject (dead-air fillers and
+                        unprompted interjections): sharing two or more
+                        distinctive content words with a single recent
+                        output means the same bit re-told in new words,
+                        which n-gram overlap cannot see. Words from the
+                        message being answered are exempt via topic_exempt,
+                        so riffing on what chat is actually discussing never
+                        counts as a rerun. Direct mentions skip the check:
+                        an addressed reply is owed whatever its topic.
 
 Pure Python, no I/O, no clock: the caller records accepted outputs and
 asks for a verdict on candidates. Deterministic, so it's unit-testable
@@ -127,6 +135,7 @@ class RepetitionGuard:
     opening_cooldown: int = 5
     phrase_cooldown: int = 8
     catchphrase_min_uses: int = 2
+    bigram_catchphrase_min_uses: int = 3
     short_text_tokens: int = 4
     topic_window: int = 3            # self-initiated lines look back this far
     topic_min_shared: int = 2        # shared distinctive words that mean "same bit"
@@ -168,22 +177,41 @@ class RepetitionGuard:
         return {op for op in (self._opening(t) for t in recent) if op}
 
     def hot_phrases(self) -> Set[Tuple[str, ...]]:
-        """Trigrams that recur across recent outputs (counted once per output)."""
+        """N-grams that recur across recent outputs (counted once per output).
+
+        Trigrams go hot at catchphrase_min_uses. Bigrams go hot at the
+        higher bigram_catchphrase_min_uses -- they exist to catch two-word
+        tics ("exactly how <anything>") whose changing tail hides them from
+        the trigram count, and the higher bar keeps ordinary two-word
+        collisions from tripping it."""
         recent = list(self._tokens)[-self.phrase_cooldown:]
-        counts: Counter = Counter()
+        tri_counts: Counter = Counter()
+        bi_counts: Counter = Counter()
         for toks in recent:
             for tri in set(ngrams(toks, 3)):
                 if _is_content_trigram(tri):
-                    counts[tri] += 1
-        return {tri for tri, n in counts.items() if n >= self.catchphrase_min_uses}
+                    tri_counts[tri] += 1
+            for bi in set(ngrams(toks, 2)):
+                if _is_content_trigram(bi):
+                    bi_counts[bi] += 1
+        hot = {tri for tri, n in tri_counts.items() if n >= self.catchphrase_min_uses}
+        hot |= {bi for bi, n in bi_counts.items() if n >= self.bigram_catchphrase_min_uses}
+        return hot
 
-    def _retold_topic(self, toks: List[str]) -> Tuple[List[str], Optional[str]]:
+    @staticmethod
+    def topic_words(text: str) -> Set[str]:
+        """The distinctive words of a message, for check(topic_exempt=...)."""
+        return _distinctive(tokenize(text or ""))
+
+    def _retold_topic(
+        self, toks: List[str], exempt: Set[str]
+    ) -> Tuple[List[str], Optional[str]]:
         """Does this line re-tell the topic of a recent output?
 
         Compared per-output, not against the pooled window: two shared words
         scattered across different past lines are conversation, two shared
         with the SAME line are that line's premise again."""
-        cand = _distinctive(toks)
+        cand = _distinctive(toks) - exempt
         if len(cand) < self.topic_min_shared:
             return [], None
         recent = list(zip(self._history, self._tokens))[-self.topic_window:]
@@ -195,7 +223,12 @@ class RepetitionGuard:
                 best_words, best_past = sorted(shared), past
         return best_words, best_past
 
-    def check(self, candidate: str, fresh_topic: bool = False) -> RepetitionVerdict:
+    def check(
+        self,
+        candidate: str,
+        fresh_topic: bool = False,
+        topic_exempt: Optional[Set[str]] = None,
+    ) -> RepetitionVerdict:
         toks = tokenize(candidate or "")
         if not toks or not self._tokens:
             return RepetitionVerdict(ok=True, score=0.0, reused_opening=None, hot_phrases=[])
@@ -220,13 +253,13 @@ class RepetitionGuard:
         opening = self._opening(toks)
         reused_opening = opening if opening in self.hot_openings() else None
 
-        cand_tris = set(ngrams(toks, 3))
-        hot = [" ".join(tri) for tri in sorted(cand_tris & self.hot_phrases())]
+        cand_grams = set(ngrams(toks, 3)) | set(ngrams(toks, 2))
+        hot = [" ".join(g) for g in sorted(cand_grams & self.hot_phrases())]
 
         retold_words: List[str] = []
         retold_from: Optional[str] = None
         if fresh_topic:
-            retold_words, retold_from = self._retold_topic(toks)
+            retold_words, retold_from = self._retold_topic(toks, topic_exempt or set())
 
         ok = (
             best_score < self.similarity_threshold
