@@ -154,6 +154,12 @@ class TalkBot:
         # greetings and events are exempt.
         self.last_bot_message_at = None
         self.unsolicited_gap_s = 30.0
+        # Viewers the co-host has just answered -> (when, how many in a row).
+        # Their next message counts as talking to it even without its name,
+        # which is how "how did you parallel park your setup" gets an answer.
+        self._replied_to: Dict[str, Tuple[float, int]] = {}
+        self.followup_window_s = 90.0
+        self.max_followups = 3
         # Raids arrive over IRC and EventSub both; keyed by (raider, viewers)
         self._recent_raid_keys: Dict[Any, float] = {}
         self._raid_dedup_window_s = 60.0
@@ -743,6 +749,9 @@ class TalkBot:
                     'bot_name', self.config['TWITCH_BOT_USERNAME']
                 ),
             )
+            if not is_mention and self._is_followup(message.get('username', '')):
+                is_mention = True
+                logger.info(f"Follow-up from {message.get('username')} treated as a mention")
             priority = 'high' if is_mention else 'normal'
             
             # Store in memory system
@@ -893,6 +902,7 @@ class TalkBot:
                     message=response['text']
                 )
                 self.last_bot_message_at = datetime.now()
+                self._note_replied_to(message.get('username', ''))
 
             # Fold older chat into the session summary if a batch is due
             self._schedule_summary()
@@ -1634,6 +1644,40 @@ class TalkBot:
         except Exception as e:
             logger.debug(f"Could not schedule session summary: {e}")
 
+    def _note_replied_to(self, username: str) -> None:
+        """Remember that the co-host just answered this viewer."""
+        name = (username or "").lower().lstrip('@')
+        if not name:
+            return
+        _, streak = self._replied_to.get(name, (0.0, 0))
+        self._replied_to[name] = (time.monotonic(), streak + 1)
+
+    def _is_followup(self, username: str) -> bool:
+        """Is this viewer continuing a conversation the co-host is already in?
+
+        Chat rarely re-types the bot's name for a follow-up, so requiring the
+        name meant the second half of every exchange fell back to the 3%
+        interjection roll and usually went unanswered. The streak cap stops a
+        genuine back-and-forth turning into an unbreakable ping-pong: after
+        `max_followups` the viewer has to address it by name again.
+        """
+        name = (username or "").lower().lstrip('@')
+        entry = self._replied_to.get(name)
+        if not entry:
+            return False
+        when, streak = entry
+        now = time.monotonic()
+        # Sweep expired entries so the map cannot grow all stream
+        for other, (ts, _) in list(self._replied_to.items()):
+            if now - ts > self.followup_window_s:
+                del self._replied_to[other]
+        if now - when > self.followup_window_s:
+            return False
+        if streak >= self.max_followups:
+            logger.debug(f"Follow-up streak spent for {name}; needs the name again")
+            return False
+        return True
+
     async def _try_streamed_reply(
         self,
         *,
@@ -1689,6 +1733,7 @@ class TalkBot:
 
         self.last_response = text
         self.last_bot_message_at = datetime.now()
+        self._note_replied_to(user)
         self.audio_count += 1
         self.chat_buffer.append_assistant(
             channel=self.config.get('TWITCH_CHANNEL', ''),

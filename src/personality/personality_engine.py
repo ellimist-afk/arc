@@ -454,7 +454,7 @@ class PersonalityEngine:
             # Build personality prompt
             # Special handling for dead air filler requests
             if message == "[DEAD_AIR_FILLER]":
-                prompt = self._build_dead_air_prompt()
+                prompt = self._build_dead_air_prompt(context.get('time_since_activity', 0.0))
             else:
                 prompt = self._build_personality_prompt()
 
@@ -732,7 +732,7 @@ class PersonalityEngine:
 
         return "\n".join(prompt_parts)
         
-    def _build_dead_air_prompt(self) -> str:
+    def _build_dead_air_prompt(self, silence_s: float = 0.0) -> str:
         """Prompt for filling a lull.
 
         The old filler prompt threw the personality away and asked for
@@ -743,8 +743,16 @@ class PersonalityEngine:
         something SPECIFIC. The repetition guard already stops it from
         recycling the same opener across a night of lulls.
         """
+        if silence_s >= 60:
+            how_long = f"about {round(silence_s / 60)} minute(s)"
+        else:
+            how_long = f"{int(silence_s)} seconds" if silence_s else "a while"
         return self._build_personality_prompt() + (
-            "\n\nRight now chat has gone quiet. Break the silence with something "
+            f"\n\nChat has been quiet for {how_long}. Any chat lines you can see "
+            f"are from BEFORE that silence, so they are stale: do NOT reply to them, "
+            f"do NOT continue that thread, and do NOT retell a joke or topic you have "
+            f"already used tonight. Open something NEW.\n"
+            "Break the silence with something "
             "specific: react to what is happening in the game, call back to a joke "
             "or moment from earlier this stream, ask chat a real question worth "
             "answering, or give an opinion someone would argue with. NEVER remark on "
@@ -1034,7 +1042,7 @@ class PersonalityEngine:
             return None
         self._update_response_modifiers()
         if message == "[DEAD_AIR_FILLER]":
-            prompt = self._build_dead_air_prompt()
+            prompt = self._build_dead_air_prompt(context.get('time_since_activity', 0.0))
         else:
             prompt = self._build_personality_prompt()
         if message != "[DEAD_AIR_FILLER]" and not self._should_respond(message, is_mention):

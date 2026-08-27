@@ -63,7 +63,7 @@ async def test_filler_generation_uses_the_dead_air_prompt(engine, monkeypatch):
         user="system")
 
     assert response is not None
-    assert 'chat has gone quiet' in seen['prompt']
+    assert 'Chat has been quiet' in seen['prompt']
     assert seen['prompt'].startswith(engine._build_personality_prompt())
     assert seen['context']['stream_now'] == 'playing Overwatch'
 
@@ -153,3 +153,39 @@ def test_bot_provider_survives_missing_and_broken_pieces():
     bot.session_summarizer = SimpleNamespace(get_summary=boom)
     ctx = bot._dead_air_context()
     assert ctx == {'stream_now': 'playing Overwatch'}, "one broken source must not sink the rest"
+
+# ----------------------------------------------- stale chat during a lull
+
+def test_lull_prompt_states_how_long_the_room_has_been_quiet(engine):
+    assert 'quiet for about 7 minute(s)' in engine._build_dead_air_prompt(420.0)
+    assert 'quiet for 45 seconds' in engine._build_dead_air_prompt(45.0)
+
+
+def test_lull_prompt_marks_visible_chat_as_stale(engine):
+    """A filler once re-told a joke from seven minutes earlier because the
+    pre-lull chat it was handed read as current."""
+    p = engine._build_dead_air_prompt(420.0).lower()
+    assert 'from before that silence' in p
+    assert 'do not reply to them' in p
+    assert 'do not continue that thread' in p
+    assert 'already used tonight' in p
+    assert 'open something new' in p
+
+
+async def test_the_real_silence_reaches_the_prompt(engine, monkeypatch):
+    seen = {}
+
+    async def fake_generate(message, context, user, prompt):
+        seen['prompt'] = prompt
+        return "a fresh line"
+    monkeypatch.setattr(engine, '_generate_text', fake_generate)
+
+    await engine.generate_response(
+        message="[DEAD_AIR_FILLER]",
+        context={'type': 'dead_air', 'time_since_activity': 300.0},
+        user="system")
+    assert 'quiet for about 5 minute(s)' in seen['prompt']
+
+
+def test_a_missing_silence_value_does_not_break_the_prompt(engine):
+    assert 'quiet for a while' in engine._build_dead_air_prompt()

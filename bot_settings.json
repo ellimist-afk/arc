@@ -6,19 +6,7 @@
   "bot_name": "elimist_",
   "streamer_name": "cassova_",
   "personality": {
-    "preset": "uwu",
-    "custom_traits": {
-      "humor": 50,
-      "sarcasm": 90,
-      "helpfulness": 60,
-      "enthusiasm": 60,
-      "formality": 20,
-      "chattiness": 35,
-      "creativity": 60,
-      "empathy": 50,
-      "assertiveness": 60,
-      "curiosity": 60
-    }
+    "preset": "uwu"
   },
   "voice": {
     "model": "shimmer",
