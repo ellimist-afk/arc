@@ -148,6 +148,12 @@ class TalkBot:
         self.first_timer = None         # first-time chatter greeting policy (features.first_timer)
         self.chat_velocity = None       # chat pace tracker / pacing multiplier (features.chat_velocity)
         self.auto_clipper = None        # burst -> clip policy (features.auto_clipper)
+        # When the co-host last said anything in chat. Unsolicited replies
+        # (dice-roll interjections) hold off for a beat after it, so two
+        # independent triggers cannot stack lines back to back. Mentions,
+        # greetings and events are exempt.
+        self.last_bot_message_at = None
+        self.unsolicited_gap_s = 30.0
         # Raids arrive over IRC and EventSub both; keyed by (raider, viewers)
         self._recent_raid_keys: Dict[Any, float] = {}
         self._raid_dedup_window_s = 60.0
@@ -800,6 +806,16 @@ class TalkBot:
                 priority = 'high'
                 logger.info(f"First-time chatter: {message.get('username')}")
 
+            # An unsolicited line right after our own last line reads as the
+            # bot talking to itself; let the room breathe. Mentions and
+            # first-timer greetings always go through.
+            if not is_mention and not greet and self.last_bot_message_at is not None:
+                gap = (datetime.now() - self.last_bot_message_at).total_seconds()
+                if gap < self.unsolicited_gap_s:
+                    logger.debug(f"Skipping unsolicited reply: bot spoke {gap:.0f}s ago")
+                    self._schedule_summary()
+                    return
+
             # Sentence-streamed path (flag-gated): speaks as the model writes.
             # Falls through to the blocking path when off, when not speaking,
             # or when streaming produced nothing at all.
@@ -876,6 +892,7 @@ class TalkBot:
                     username=self.config.get('TWITCH_BOT_USERNAME', 'bot'),
                     message=response['text']
                 )
+                self.last_bot_message_at = datetime.now()
 
             # Fold older chat into the session summary if a batch is due
             self._schedule_summary()
@@ -1671,6 +1688,7 @@ class TalkBot:
             return False, None
 
         self.last_response = text
+        self.last_bot_message_at = datetime.now()
         self.audio_count += 1
         self.chat_buffer.append_assistant(
             channel=self.config.get('TWITCH_CHANNEL', ''),

@@ -353,6 +353,11 @@ class ResponseCoordinator:
                 time_since_activity = (datetime.now() - self.last_activity_time).total_seconds()
 
                 if time_since_activity >= self._effective_threshold():
+                    # The lull can END while the line is being generated (a
+                    # viewer message, or a reply of ours already in flight).
+                    # Remember what the room looked like now; if it changed by
+                    # send time, this filler answers a moment that is over.
+                    lull_marker = self.last_activity_time
                     # Generate dynamic filler using personality engine if available
                     if self.personality_engine:
                         try:
@@ -400,6 +405,11 @@ class ResponseCoordinator:
                             continue
                     else:
                         # No engine: nothing worth saying
+                        continue
+
+                    if self.last_activity_time != lull_marker:
+                        logger.info("Dead air ended while the line was being "
+                                    "generated; staying quiet")
                         continue
 
                     self._consecutive_fillers += 1
