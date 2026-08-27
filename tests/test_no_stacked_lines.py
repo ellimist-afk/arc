@@ -60,8 +60,8 @@ def test_bot_declares_the_gap():
 
 
 def test_gate_sits_before_generation_and_spares_mentions():
-    gate = HANDLER.index("Skipping unsolicited reply")
-    block_start = HANDLER.rindex("if not is_mention and not greet", 0, gate)
+    gate = HANDLER.index("Holding")
+    block_start = HANDLER.rindex("if not explicitly_addressed", 0, gate)
     assert "self.last_bot_message_at is not None" in HANDLER[block_start:gate]
     assert gate < HANDLER.index("Sentence-streamed path (flag-gated)"), \
         "the gate must come before any reply generation"
@@ -79,3 +79,27 @@ def test_gate_math():
     spoke_45s_ago = now - timedelta(seconds=45)
     assert (now - spoke_10s_ago).total_seconds() < gap_s, "10s ago -> hold"
     assert (now - spoke_45s_ago).total_seconds() >= gap_s, "45s ago -> free to speak"
+
+# ------------------------------- the two fixes must not cancel each other
+
+def test_only_an_explicit_mention_bypasses_the_breather():
+    """The follow-up window sets is_mention=True so the reply happens. If the
+    breather also keyed off is_mention, every inferred follow-up would skip
+    it -- which is how two lines landed back to back at 02:39."""
+    gate = HANDLER.index("Holding")
+    block = HANDLER.rindex("if not explicitly_addressed", 0, gate)
+    guard = HANDLER[block:gate]
+    assert "explicitly_addressed" in guard
+    assert "not is_mention and not greet" not in guard,         "keying the breather off is_mention lets follow-ups skip it"
+
+
+def test_explicitly_addressed_is_captured_before_the_followup_upgrade():
+    upgrade = HANDLER.index("via_followup = (not is_mention")
+    capture = HANDLER.index("explicitly_addressed = is_mention")
+    assert capture < upgrade, "the real @mention must be recorded first"
+
+
+def test_a_followup_is_still_answered_when_the_room_is_calm():
+    """The breather is a delay on stacking, not a mute: with no recent bot
+    line there is nothing to hold back from."""
+    assert "self.last_bot_message_at is not None" in HANDLER,         "no previous line means the reply goes straight through"

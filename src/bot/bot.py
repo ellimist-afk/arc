@@ -749,7 +749,14 @@ class TalkBot:
                     'bot_name', self.config['TWITCH_BOT_USERNAME']
                 ),
             )
-            if not is_mention and self._is_followup(message.get('username', '')):
+            # An explicit @mention always jumps the queue. An INFERRED
+            # follow-up earns a reply too, but not the right to talk over the
+            # co-host's own last line -- treating it as a full mention let it
+            # skip the breather below and put two lines back to back.
+            explicitly_addressed = is_mention
+            via_followup = (not is_mention
+                            and self._is_followup(message.get('username', '')))
+            if via_followup:
                 is_mention = True
                 logger.info(f"Follow-up from {message.get('username')} treated as a mention")
             priority = 'high' if is_mention else 'normal'
@@ -818,10 +825,11 @@ class TalkBot:
             # An unsolicited line right after our own last line reads as the
             # bot talking to itself; let the room breathe. Mentions and
             # first-timer greetings always go through.
-            if not is_mention and not greet and self.last_bot_message_at is not None:
+            if not explicitly_addressed and not greet and self.last_bot_message_at is not None:
                 gap = (datetime.now() - self.last_bot_message_at).total_seconds()
                 if gap < self.unsolicited_gap_s:
-                    logger.debug(f"Skipping unsolicited reply: bot spoke {gap:.0f}s ago")
+                    logger.debug(f"Holding {'follow-up' if via_followup else 'unsolicited'} "
+                                 f"reply: bot spoke {gap:.0f}s ago")
                     self._schedule_summary()
                     return
 
