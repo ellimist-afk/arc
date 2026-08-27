@@ -532,7 +532,12 @@ class PersonalityEngine:
         if not self.repetition_guard_enabled:
             return text
 
-        verdict = self.repetition_guard.check(text)
+        # A dead-air filler chooses its own topic, so re-telling a recent
+        # bit in fresh words is still a rerun -- the lexical checks cannot
+        # see that, the topic check can. Replies never opt in: answering a
+        # follow-up legitimately reuses the topic's words.
+        fresh_topic = message == "[DEAD_AIR_FILLER]"
+        verdict = self.repetition_guard.check(text, fresh_topic=fresh_topic)
         if verdict.ok:
             return text
 
@@ -544,7 +549,7 @@ class PersonalityEngine:
             message=message, context=context, user=user, prompt=retry_prompt
         )
         if retry:
-            retry_verdict = self.repetition_guard.check(retry)
+            retry_verdict = self.repetition_guard.check(retry, fresh_topic=fresh_topic)
             if retry_verdict.ok:
                 return retry
             if not is_mention:

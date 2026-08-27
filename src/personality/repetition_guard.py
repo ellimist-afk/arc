@@ -15,6 +15,13 @@ Three checks, all against the bot's OWN recent outputs (never viewer text):
                         opening of any of the last N outputs.
 3. phrase cooldown    - a trigram that has shown up in >= 2 recent outputs
                         is a "catchphrase"; reusing it while it's hot fails.
+4. topic retell       - OPT-IN via check(fresh_topic=True), for lines the
+                        bot initiates itself (dead-air fillers): sharing two
+                        or more distinctive content words with a single
+                        recent output means the same bit re-told in new
+                        words, which n-gram overlap cannot see. A reply in a
+                        conversation legitimately reuses topic words, so
+                        this check never applies to replies.
 
 Pure Python, no I/O, no clock: the caller records accepted outputs and
 asks for a verdict on candidates. Deterministic, so it's unit-testable
@@ -69,6 +76,12 @@ def _is_content_trigram(tri: Tuple[str, ...]) -> bool:
     return any(tok not in _STOPWORDS for tok in tri)
 
 
+def _distinctive(tokens: List[str]) -> Set[str]:
+    """Words that carry a topic: content words of 4+ letters ("waifu",
+    "sigaren", "datacenter"). Short/function words never identify a bit."""
+    return {t for t in tokens if len(t) >= 4 and t not in _STOPWORDS}
+
+
 @dataclass
 class RepetitionVerdict:
     ok: bool
@@ -76,6 +89,8 @@ class RepetitionVerdict:
     reused_opening: Optional[str]     # "oh chat" if the opener is on cooldown
     hot_phrases: List[str]            # catchphrases the candidate reused
     nearest: Optional[str] = None     # the recent output it most resembles
+    retold_words: List[str] = field(default_factory=list)  # topic words shared with retold_from
+    retold_from: Optional[str] = None # the recent output whose topic was re-told
 
     @property
     def reason(self) -> str:
@@ -84,6 +99,8 @@ class RepetitionVerdict:
             parts.append(f"opening '{self.reused_opening}' reused")
         if self.hot_phrases:
             parts.append("hot phrases: " + ", ".join(repr(p) for p in self.hot_phrases))
+        if self.retold_from:
+            parts.append("re-told topic: " + ", ".join(repr(w) for w in self.retold_words))
         if self.nearest is not None and self.score > 0:
             parts.append(f"similarity {self.score:.2f}")
         return "; ".join(parts) or "ok"
@@ -111,6 +128,8 @@ class RepetitionGuard:
     phrase_cooldown: int = 8
     catchphrase_min_uses: int = 2
     short_text_tokens: int = 4
+    topic_window: int = 3            # self-initiated lines look back this far
+    topic_min_shared: int = 2        # shared distinctive words that mean "same bit"
 
     _history: Deque[str] = field(default_factory=deque, init=False, repr=False)
     _tokens: Deque[List[str]] = field(default_factory=deque, init=False, repr=False)
@@ -158,7 +177,25 @@ class RepetitionGuard:
                     counts[tri] += 1
         return {tri for tri, n in counts.items() if n >= self.catchphrase_min_uses}
 
-    def check(self, candidate: str) -> RepetitionVerdict:
+    def _retold_topic(self, toks: List[str]) -> Tuple[List[str], Optional[str]]:
+        """Does this line re-tell the topic of a recent output?
+
+        Compared per-output, not against the pooled window: two shared words
+        scattered across different past lines are conversation, two shared
+        with the SAME line are that line's premise again."""
+        cand = _distinctive(toks)
+        if len(cand) < self.topic_min_shared:
+            return [], None
+        recent = list(zip(self._history, self._tokens))[-self.topic_window:]
+        best_words: List[str] = []
+        best_past: Optional[str] = None
+        for past, past_toks in recent:
+            shared = cand & _distinctive(past_toks)
+            if len(shared) >= self.topic_min_shared and len(shared) > len(best_words):
+                best_words, best_past = sorted(shared), past
+        return best_words, best_past
+
+    def check(self, candidate: str, fresh_topic: bool = False) -> RepetitionVerdict:
         toks = tokenize(candidate or "")
         if not toks or not self._tokens:
             return RepetitionVerdict(ok=True, score=0.0, reused_opening=None, hot_phrases=[])
@@ -186,14 +223,21 @@ class RepetitionGuard:
         cand_tris = set(ngrams(toks, 3))
         hot = [" ".join(tri) for tri in sorted(cand_tris & self.hot_phrases())]
 
+        retold_words: List[str] = []
+        retold_from: Optional[str] = None
+        if fresh_topic:
+            retold_words, retold_from = self._retold_topic(toks)
+
         ok = (
             best_score < self.similarity_threshold
             and reused_opening is None
             and not hot
+            and retold_from is None
         )
         return RepetitionVerdict(
             ok=ok, score=best_score, reused_opening=reused_opening,
             hot_phrases=hot, nearest=nearest,
+            retold_words=retold_words, retold_from=retold_from,
         )
 
     def avoid_hint(self, verdict: RepetitionVerdict) -> str:
@@ -206,6 +250,10 @@ class RepetitionGuard:
         if verdict.hot_phrases:
             phrases = ", ".join(f"\"{p}\"" for p in verdict.hot_phrases)
             lines.append(f"- Retire these phrases, you overuse them: {phrases}")
+        if verdict.retold_from:
+            words = ", ".join(f"\"{w}\"" for w in verdict.retold_words)
+            lines.append(f"- You already did the {words} bit: \"{verdict.retold_from}\". "
+                         f"Pick a COMPLETELY different subject.")
         recent_openers = sorted(self.hot_openings())
         if recent_openers:
             lines.append("- Openers already used recently: " + ", ".join(f"\"{o}\"" for o in recent_openers))
