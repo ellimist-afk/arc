@@ -64,7 +64,10 @@ async def test_named_presets_get_their_own_anchors_and_sassy_gets_deadpan(engine
     assert 'sack of Rome' in engine._build_personality_prompt()
     await switch(engine, 'sassy')
     p = engine._build_personality_prompt()
-    assert 'witness protection' in p and 'crime scene' not in p
+    # the deadpan fallback anchors (the witness-protection line was replaced:
+    # its "you're not X, you're Y" reversal taught the model the most
+    # AI-sounding joke frame there is)
+    assert 'respect honestly' in p and 'crime scene' not in p
 
 
 async def test_identity_line_uses_bot_name(engine):
@@ -227,3 +230,22 @@ def test_token_budget_stays_tight_enough_to_discourage_rambling(engine, chattine
     engine._update_response_modifiers()
     budget = engine.response_modifiers['max_tokens']
     assert 60 <= budget <= 140, budget
+
+def test_prompt_bans_ai_joke_shapes(engine):
+    """Live on 2026-08-25 the co-host produced "thank egg is not brunch; it's
+    a gratitude omelet with legal problems" -- the reversal frame plus an
+    invented compound plus formal-register whimsy plus a semicolon. Every
+    preset's prompt must carry the ban."""
+    p = engine._build_personality_prompt().lower()
+    assert 'banned' in p
+    assert "that's not x, it's y" in p
+    assert 'gratitude omelet' in p
+    assert 'formal register' in p
+    assert 'semicolons' in p
+    assert 'template, not a joke' in p
+
+
+async def test_ban_applies_to_named_presets_too(engine):
+    for preset in ('uwu', 'cryptid', 'chaos', 'roast'):
+        await switch(engine, preset)
+        assert 'BANNED' in engine._build_personality_prompt(), preset

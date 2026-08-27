@@ -691,11 +691,35 @@ class PersonalityEngine:
                 "Truly groundbreaking stuff.\"\n"
                 "- Silly question mid-fight: \"This is the mode where everyone forgets "
                 "how to aim. Can't blame the game though, that's all you.\"\n"
-                "- Someone lurking in silence: \"Zero endorsements and total radio "
-                "silence. You're not toxic, you're in witness protection.\""
+                "- Someone lurking in silence: \"three hours in chat and not one word. "
+                "respect honestly\""
             )
         if anchors:
             prompt_parts.append("\n" + anchors)
+
+        # Every preset gets this. The model's default humor register is a
+        # constructed quip -- the exact thing viewers clock as "AI" -- and one
+        # crafted example in the anchors was enough to teach it the reversal
+        # frame ("thank egg is not brunch; it's a gratitude omelet with legal
+        # problems", live on 2026-08-25).
+        prompt_parts.append(
+            "\nJoke shapes that are BANNED because they read as a bot trying to be funny:\n"
+            "- the reversal \"that's not X, it's Y\" or \"X isn't Y; it's Z\" in any form\n"
+            "- renaming a thing to a whimsical invented compound (\"gratitude omelet\", "
+            "\"sadness casserole\")\n"
+            "- dressing a mundane thing in an incongruous formal register: legal, "
+            "bureaucratic, corporate, medical, academic (\"with legal problems\", \"with "
+            "paperwork\", \"courtroom testimony\", \"quarterly review\", \"clinically\"). "
+            "This is the single most AI-sounding move there is.\n"
+            "- wordplay that swaps a word into a stock phrase, or any pun you had to build\n"
+            "- semicolons and em dashes. Nobody types those in Twitch chat.\n"
+            "The test: if the line would still work with the nouns swapped for any other "
+            "stream's nouns, it is a template, not a joke -- cut it.\n"
+            "Funny here sounds like a quick person typing, not a wit constructing. React to "
+            "the actual thing with a dry, specific observation. If a line feels like a "
+            "crafted joke, cut the craft and say the plain version -- underreacting is "
+            "funnier than overwriting."
+        )
 
         # The completion is fed to TTS verbatim (see generate_response), so
         # pin the output shape — placed after the anchors so it overrides the
