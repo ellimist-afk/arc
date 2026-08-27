@@ -103,3 +103,43 @@ def test_a_followup_is_still_answered_when_the_room_is_calm():
     """The breather is a delay on stacking, not a mute: with no recent bot
     line there is nothing to hold back from."""
     assert "self.last_bot_message_at is not None" in HANDLER,         "no previous line means the reply goes straight through"
+
+# --------------------------------------------------- late-reply freshness
+
+def test_freshness_gate_declares_its_limits():
+    """Seen live 2026-08-26 at 04:35: "aww thanks Sigaren go grab the
+    caffeine" answering a 04:30 message -- the reply generated five minutes
+    late (retry backoff) and was sent as if no time had passed."""
+    assert "self.stale_reply_s = 45.0" in HANDLER
+    assert "self.stale_mention_reply_s = 120.0" in HANDLER
+
+
+def test_gate_sits_between_generation_and_delivery():
+    drop = HANDLER.index("the room has moved on -- dropping")
+    assert HANDLER.index("received_at = datetime.now()") < drop
+    deliver = HANDLER.index("# Track last response for repeat command", drop)
+    assert drop < deliver, "the gate must run before anything is sent"
+    tail = HANDLER[drop:deliver]
+    assert "response = None" in tail, "a stale reply is dropped, not delayed"
+
+
+def test_mentions_and_greetings_get_the_longer_limit():
+    drop = HANDLER.index("the room has moved on -- dropping")
+    block = HANDLER[drop - 600:drop]
+    assert "explicitly_addressed or greet" in block
+    assert "stale_mention_reply_s" in block
+
+
+def test_freshness_math():
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    for age_s, addressed, expect_drop in [
+        (10, False, False),    # normal latency -> deliver
+        (60, False, True),     # a minute late, unprompted -> drop
+        (60, True, False),     # a minute late, but they asked -> deliver
+        (300, True, True),     # five minutes late -> drop even for mentions
+    ]:
+        age = (now - (now - timedelta(seconds=age_s))).total_seconds()
+        limit = 120.0 if addressed else 45.0
+        assert (age > limit) is expect_drop, (age_s, addressed)
+

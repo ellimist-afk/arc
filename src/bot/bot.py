@@ -160,6 +160,14 @@ class TalkBot:
         self._replied_to: Dict[str, Tuple[float, int]] = {}
         self.followup_window_s = 90.0
         self.max_followups = 3
+        # How old a message may be by the time its reply is READY. Generation
+        # normally takes 1-3s, but the resilience layer's retry backoff can
+        # stretch a call to minutes -- and a line answering a five-minute-old
+        # message ("aww thanks" to someone who already left for coffee) reads
+        # worse than no line. Mentions get longer: a late answer to a direct
+        # question is still wanted.
+        self.stale_reply_s = 45.0
+        self.stale_mention_reply_s = 120.0
         # Raids arrive over IRC and EventSub both; keyed by (raider, viewers)
         self._recent_raid_keys: Dict[Any, float] = {}
         self._raid_dedup_window_s = 60.0
@@ -739,6 +747,8 @@ class TalkBot:
             if self.response_coordinator:
                 self.response_coordinator.note_activity()
             
+            # When this message arrived, for the freshness gate at delivery.
+            received_at = datetime.now()
             # Check for a direct address and boost priority. The public bot
             # name can differ from its Twitch account name.
             text_lower = message.get('text', '').lower()
@@ -856,6 +866,20 @@ class TalkBot:
                     user=message.get('username'),
                     is_mention=is_mention
                 )
+
+            if response:
+                # Freshness gate: the reply is only now ready. If generation
+                # stalled (retry backoff, a slow model), the message it
+                # answers may be minutes old and the room elsewhere.
+                age = (datetime.now() - received_at).total_seconds()
+                limit = (self.stale_mention_reply_s
+                         if (explicitly_addressed or greet)
+                         else self.stale_reply_s)
+                if age > limit:
+                    logger.warning(
+                        f"Reply ready {age:.0f}s after the message "
+                        f"(limit {limit:.0f}s); the room has moved on -- dropping")
+                    response = None
 
             if response:
                 # Track last response for repeat command
