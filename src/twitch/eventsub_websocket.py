@@ -224,11 +224,22 @@ class EventSubWebSocket:
             session = payload.get('session', {})
             self.reconnect_url = session.get('reconnect_url')
             logger.info("EventSub reconnect requested by Twitch")
-            try:
-                if self.websocket:
-                    await self.websocket.close()
-            except Exception:
-                pass
+            # Do NOT await the close here. This handler runs inside the read
+            # loop, and close() waits for Twitch's close-handshake reply --
+            # which only the read loop can receive. Awaiting it deadlocks
+            # until the handshake times out, stalling the whole event loop
+            # for seconds on every planned reconnect. Scheduling it lets the
+            # read loop get back to reading, so the handshake completes.
+            if self.websocket:
+                ws = self.websocket
+
+                async def _close_off_loop():
+                    try:
+                        await ws.close()
+                    except Exception as e:  # noqa: BLE001 - reconnect follows regardless
+                        logger.debug(f"EventSub close during reconnect: {e}")
+
+                registry_create_task(_close_off_loop(), name="eventsub_reconnect_close")
             
         elif message_type == 'revocation':
             # Subscription revoked
