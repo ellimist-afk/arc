@@ -147,6 +147,16 @@ class EventSubWebSocket:
             # 4002 = Twitch dropped us for a missed pong, 4004 = reconnect grace.
             rcvd = getattr(e, 'rcvd', None)
             sent = getattr(e, 'sent', None)
+            # 4007 means Twitch refused the reconnect_url handoff -- almost
+            # always because we took too long to use it (a stalled event loop
+            # will do it). It costs a full re-subscribe and a real blind
+            # window, so say so plainly instead of burying it in a close frame.
+            if getattr(rcvd, 'code', None) == 4007 or getattr(sent, 'code', None) == 4007:
+                logger.warning(
+                    "EventSub reconnect handoff REJECTED (4007): the reconnect_url "
+                    "was used too late, so the session was rebuilt from scratch. "
+                    "Check for event-loop stalls just before this."
+                )
             logger.warning(
                 f"EventSub connection closed after {uptime:.1f}s "
                 f"(server_close={rcvd!r}, client_close={sent!r}) - reconnecting"
@@ -173,13 +183,12 @@ class EventSubWebSocket:
                 f"EventSub session established: {self.session_id} "
                 f"(keepalive_timeout={self._keepalive_timeout}s)"
             )
-            if self._disconnected_at is not None:
-                offline = time.monotonic() - self._disconnected_at
-                self._disconnected_at = None
-                logger.warning(
-                    f"EventSub session re-established after {offline:.1f}s offline - "
-                    f"any follow/sub/cheer events in that window were dropped"
-                )
+            # The blind window does NOT end at the welcome: a fresh session
+            # has no subscriptions until they are re-created, and an event
+            # arriving in that sliver is dropped just the same. Report the
+            # real gap once the resubscribe finishes.
+            gap_started = self._disconnected_at
+            self._disconnected_at = None
 
             # Subscribe to events OFF the read loop: the ~13 sequential
             # subscription POSTs took 3.11s inline, blocking the message pump
@@ -187,7 +196,7 @@ class EventSubWebSocket:
             # ordering hazard -- notifications can't arrive for subscriptions
             # that don't exist yet.
             registry_create_task(
-                self._subscribe_to_events(),
+                self._subscribe_to_events(gap_started=gap_started),
                 name=f"eventsub_subscribe_{self.session_id}",
             )
             
@@ -368,8 +377,14 @@ class EventSubWebSocket:
         except Exception as e:
             logger.error(f"Failed to get user info: {e}")
             
-    async def _subscribe_to_events(self) -> None:
-        """Subscribe to Twitch events via API"""
+    async def _subscribe_to_events(self, gap_started: Optional[float] = None) -> None:
+        """Subscribe to Twitch events via API.
+
+        `gap_started` is the monotonic time the previous session dropped, if
+        this is a reconnect. The blind window closes only when the last
+        subscription is back, so it is reported here rather than at the
+        welcome -- measuring to the welcome under-reports it.
+        """
         if not self.session_id or not self.broadcaster_id:
             logger.error("Cannot subscribe: missing session ID or broadcaster ID")
             return
@@ -456,6 +471,13 @@ class EventSubWebSocket:
         # Create subscriptions
         for sub in subscriptions:
             await self._create_subscription(sub)
+
+        if gap_started is not None:
+            blind = time.monotonic() - gap_started
+            logger.warning(
+                f"EventSub blind for {blind:.1f}s (offline + resubscribe) - "
+                f"any follow/sub/cheer in that window never reached the bot"
+            )
             
     async def _create_subscription(self, subscription: Dict[str, Any]) -> bool:
         """Create an EventSub subscription"""

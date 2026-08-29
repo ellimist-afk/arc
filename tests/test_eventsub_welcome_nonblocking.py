@@ -32,7 +32,7 @@ async def test_session_welcome_returns_before_subscriptions_finish():
 
     subscribed = asyncio.Event()
 
-    async def slow_subscribe():
+    async def slow_subscribe(gap_started=None):
         await asyncio.sleep(1.0)  # stands in for the 3.11s of POSTs
         subscribed.set()
 
