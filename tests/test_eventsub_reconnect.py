@@ -9,7 +9,6 @@ handshake timed out, stalling every task in the process for seconds.
 import asyncio
 from pathlib import Path
 
-import pytest
 
 from twitch.eventsub_websocket import EventSubWebSocket
 
