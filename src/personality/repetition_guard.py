@@ -84,10 +84,44 @@ def _is_content_trigram(tri: Tuple[str, ...]) -> bool:
     return any(tok not in _STOPWORDS for tok in tri)
 
 
+# Frequent words that pass the content filter but identify no topic. Two
+# lines sharing only these are not the same bit -- live 2026-08-27 the guard
+# rejected drafts for "re-told topic: 'because', 'character'" and
+# "'chatting', 'somehow'", silencing the co-host six times over vocabulary.
+_COMMON = frozenset(
+    """
+    also actually again always another anyone anything around because been
+    before better bit both call called came chat chatting come coming could
+    days does doing done down each even ever every everyone everything feel
+    feels felt find first from full game gave getting give given goes going
+    gone good got great half happen happened hard here hold home hour hours
+    idea keep kept kind know known last late later least left less let life
+    like little long look looking looks lot made make makes making many
+    maybe mean means might mind minute minutes more most move much name need
+    needs never next nice night nothing now number often once only open
+    other over own part people perfect person place play played playing
+    point pretty probably put question read real really reason right room
+    said same saw say says second see seem seems seen sense set show side
+    since some somehow someone something sometimes soon sort sound sounds
+    start started still stop stream stuff sure take taken talk talking tell
+    than thing things think thought three time times today together told
+    took total true try trying turn turned two under until used using very
+    wait want wanted watch watching way ways week well went were what when
+    while whole will with without word words work working world would year
+    years yet your character characters
+    """.split()
+)
+
+
 def _distinctive(tokens: List[str]) -> Set[str]:
     """Words that carry a topic: content words of 4+ letters ("waifu",
     "sigaren", "datacenter"). Short/function words never identify a bit."""
     return {t for t in tokens if len(t) >= 4 and t not in _STOPWORDS}
+
+
+def _identifying(words: Set[str]) -> Set[str]:
+    """Of some shared words, the ones specific enough to name a bit."""
+    return {w for w in words if w not in _COMMON}
 
 
 @dataclass
@@ -219,7 +253,12 @@ class RepetitionGuard:
         best_past: Optional[str] = None
         for past, past_toks in recent:
             shared = cand & _distinctive(past_toks)
-            if len(shared) >= self.topic_min_shared and len(shared) > len(best_words):
+            # At least one shared word must actually name the bit. Two lines
+            # sharing only frequent vocabulary ("because", "character") are
+            # different lines about different things.
+            if (len(shared) >= self.topic_min_shared
+                    and _identifying(shared)
+                    and len(shared) > len(best_words)):
                 best_words, best_past = sorted(shared), past
         return best_words, best_past
 

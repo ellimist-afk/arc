@@ -176,3 +176,43 @@ def test_exempt_words_cannot_mask_a_rerun_on_other_words():
     exempt = RepetitionGuard.topic_words("what about the claude thing")
     v = g.check(FINGERPRINTS_RERUN, fresh_topic=True, topic_exempt=exempt)
     assert not v.ok, "'claude' is exempt but fingerprints+cassova+honest remain"
+
+
+# ------------------------- generic vocabulary is not a shared topic
+
+def test_common_words_alone_never_signal_a_rerun():
+    """Live 2026-08-27: the guard rejected drafts for "re-told topic:
+    'because', 'character'" and "'chatting', 'somehow'" -- generic words, not
+    topics -- and the retry rejections silenced the co-host six times."""
+    for first, second in [
+        ("the whole character thing is funny because chat said so",
+         "because a character bit lands when chat is awake"),
+        ("somehow chatting at this hour still works",
+         "chatting somehow beats sleeping i guess"),
+    ]:
+        g = _guard()
+        g.record(first)
+        assert g.check(second, fresh_topic=True).ok, (first, second)
+
+
+def test_one_identifying_word_is_enough_to_catch_a_rerun():
+    """'5090s' names the bit even when 'next' and 'year' ride along."""
+    g = _guard()
+    g.record("if 5090s land next year the current prices look like a prank")
+    v = g.check("if 5090s ship next year every card today ages badly",
+                fresh_topic=True)
+    assert not v.ok
+    assert '5090s' in v.retold_words
+
+
+def test_two_identifying_words_still_trip_it():
+    g = _guard()
+    g.record("gpu clearance racks are basically a graveyard for gpus")
+    assert not g.check("clearance gpus are just haunted silicon",
+                       fresh_topic=True).ok
+
+
+def test_identifying_filter_keeps_the_stream_vocabulary_out():
+    from personality.repetition_guard import _identifying
+    assert _identifying({'because', 'character', 'chatting', 'somehow'}) == set()
+    assert _identifying({'waifu', 'chat', 'stream'}) == {'waifu'}
