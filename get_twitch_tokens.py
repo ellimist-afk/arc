@@ -45,6 +45,7 @@ SCOPES = [
     "channel:read:redemptions",
     "channel:read:ads",
     "channel:manage:raids",
+    "clips:edit",
     "bits:read",
     "moderator:read:followers",
     "user:read:chat",
