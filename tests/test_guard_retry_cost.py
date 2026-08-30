@@ -8,7 +8,6 @@ retry; an unsolicited interjection is dropped on the first rejection.
 """
 from pathlib import Path
 
-import pytest
 
 from personality.personality_engine import PersonalityEngine
 
