@@ -108,10 +108,22 @@ class LoopLagMonitor:
 
                 if drift_ms > self.warn_threshold_ms:
                     self.stalls += 1
+                    # Blaming "synchronous work" for a multi-minute gap sent
+                    # the diagnosis the wrong way: a 73-minute stall turned
+                    # out to be the console's QuickEdit selection freezing
+                    # the whole PROCESS (one click in the window pauses it
+                    # until Esc/Enter). Name the likely cause by scale.
+                    if drift_ms > 30_000:
+                        cause = ("the whole process was suspended -- a click in "
+                                 "the console window (QuickEdit selection, press "
+                                 "Esc / disable QuickEdit) or system sleep, not "
+                                 "code")
+                    else:
+                        cause = "synchronous work is blocking the loop"
                     logger.warning(
                         f"[LOOP LAG] Event loop stalled ~{drift_ms:.0f}ms "
                         f"(threshold {self.warn_threshold_ms:.0f}ms) -- "
-                        f"synchronous work is blocking the loop"
+                        f"{cause}"
                     )
                     if self.on_stall is not None:
                         try:

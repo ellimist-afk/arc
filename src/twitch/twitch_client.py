@@ -163,6 +163,16 @@ class TwitchClient:
                 
             except asyncio.CancelledError:
                 break
+            except ssl.SSLError as e:
+                # Windows TLS races our own close: data can arrive after the
+                # close_notify we just sent. During a deliberate disconnect
+                # that is expected teardown noise, not an error -- it fired
+                # as ERROR on every single shutdown.
+                if self.connected:
+                    logger.error(f"SSL error handling message: {e}")
+                else:
+                    logger.debug(f"SSL close race during disconnect: {e}")
+                    break
             except Exception as e:
                 logger.error(f"Error handling message: {e}")
                 
@@ -442,6 +452,8 @@ class TwitchClient:
                 await self._send_raw(f'PART #{self.channel}')
                 self.writer.close()
                 await self.writer.wait_closed()
+            except ssl.SSLError as e:
+                logger.debug(f"SSL close race during disconnect: {e}")
             except Exception as e:
                 logger.error(f"Error during disconnect: {e}")
                 

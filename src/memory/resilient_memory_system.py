@@ -183,27 +183,34 @@ class ResilientMemorySystem:
         """
         self.write_count += 1
         
-        # Always store in memory buffer. deque(maxlen) drops the OLDEST
-        # silently when full, so say it out loud -- during a long outage that
-        # is the difference between "delayed" and "gone".
-        self._note_buffer_pressure()
-        self.memory_buffer.append({
-            'type': 'message',
-            'data': message,
-            'timestamp': datetime.now()
-        })
-        
         # Store in user memory
         username = message.get('username', 'unknown')
         if username not in self.user_memory:
             self.user_memory[username] = []
         self.user_memory[username].append(message)
         
-        # Try to store in database if available
+        # The buffer exists to protect UNSAVED items through an outage. It
+        # used to receive every message unconditionally and only drain on
+        # reconnect, so on a long healthy stream it filled with data that
+        # was already in the database, warned about "dropping unsaved
+        # items" that were saved all along, and a real recovery flush would
+        # have re-written up to a thousand duplicates. Buffer only what the
+        # database did not take.
+        stored = False
         if self.db_available and self.db:
-            success = await self._store_message_to_db(message)
-            if not success:
+            stored = await self._store_message_to_db(message)
+            if not stored:
                 self.db_failures += 1
+        if not stored:
+            # deque(maxlen) drops the OLDEST silently when full, so say it
+            # out loud -- during a long outage that is the difference
+            # between "delayed" and "gone".
+            self._note_buffer_pressure()
+            self.memory_buffer.append({
+                'type': 'message',
+                'data': message,
+                'timestamp': datetime.now()
+            })
     
     async def _store_message_to_db(self, message: Dict[str, Any]) -> bool:
         """Store message in database with error handling"""
@@ -351,25 +358,23 @@ class ResilientMemorySystem:
         """
         self.write_count += 1
         
-        # Always store in memory buffer. deque(maxlen) drops the OLDEST
-        # silently when full, so say it out loud -- during a long outage that
-        # is the difference between "delayed" and "gone".
-        self._note_buffer_pressure()
-        self.memory_buffer.append({
-            'type': 'memory',
-            'data': memory,
-            'timestamp': datetime.now()
-        })
-        
         # Store in context memory
         key = memory.get('key', 'general')
         self.context_memory[key] = memory
         
-        # Try to store in database if available
+        # Buffer only what the database did not take (see store_message).
+        stored = False
         if self.db_available and self.db:
-            success = await self._store_memory_to_db(memory)
-            if not success:
+            stored = await self._store_memory_to_db(memory)
+            if not stored:
                 self.db_failures += 1
+        if not stored:
+            self._note_buffer_pressure()
+            self.memory_buffer.append({
+                'type': 'memory',
+                'data': memory,
+                'timestamp': datetime.now()
+            })
     
     async def _store_memory_to_db(self, memory: Dict[str, Any]) -> bool:
         """Store memory in database with error handling"""

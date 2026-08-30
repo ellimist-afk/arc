@@ -150,3 +150,67 @@ def test_overflow_warnings_are_rate_limited(caplog):
     warnings = [r for r in caplog.records if 'buffer full' in r.message.lower()]
     assert len(warnings) == 2, "first, then every hundredth"
     assert m.buffer_overflows == 150
+
+
+# --------------------------- the buffer holds only what the DB did not take
+
+async def test_a_successful_write_is_not_buffered():
+    """The buffer received every message unconditionally and only drained on
+    reconnect, so a long healthy stream filled it with already-saved data,
+    warned about "dropping unsaved items" that were saved all along, and a
+    recovery flush would have re-written up to a thousand duplicates."""
+    m = _memory()
+    m.db_available = True
+    m.context_memory = {}
+    _accept_all(m)
+    await m.store_message({'username': 'v', 'message': 'saved fine', 'user_id': 'u'})
+    assert len(m.stored) == 1
+    assert len(m.memory_buffer) == 0, "saved items must not sit in the outage buffer"
+
+
+async def test_a_failed_write_is_buffered():
+    m = _memory()
+    m.db_available = True
+    m.context_memory = {}
+    _reject_after(m, 0)
+    await m.store_message({'username': 'v', 'message': 'db said no', 'user_id': 'u'})
+    assert len(m.memory_buffer) == 1
+    assert m.db_failures == 1
+
+
+async def test_an_unavailable_db_buffers():
+    m = _memory()
+    m.db_available = False
+    m.context_memory = {}
+    _accept_all(m)
+    await m.store_message({'username': 'v', 'message': 'offline', 'user_id': 'u'})
+    assert m.stored == [], "no DB call while unavailable"
+    assert len(m.memory_buffer) == 1
+
+
+async def test_recovery_flush_writes_only_the_failures():
+    """The duplication scenario end to end: healthy writes, an outage, then
+    recovery. Only the outage items reach the flush."""
+    m = _memory()
+    m.context_memory = {}
+    m.db_available = True
+    _accept_all(m)
+    await m.store_message({'username': 'v', 'message': 'before outage', 'user_id': 'u'})
+    m.db_available = False
+    await m.store_message({'username': 'v', 'message': 'during outage', 'user_id': 'u'})
+    m.db_available = True
+    await m._flush_buffer_to_database()
+    assert [d['message'] for d in m.stored] == ['before outage', 'during outage']
+    assert len(m.memory_buffer) == 0
+
+
+async def test_the_memory_path_follows_the_same_rule():
+    m = _memory()
+    m.db_available = True
+    m.context_memory = {}
+    _accept_all(m)
+    await m.store_memory({'key': 'k', 'value': 'saved'})
+    assert len(m.memory_buffer) == 0
+    m.db_available = False
+    await m.store_memory({'key': 'k2', 'value': 'unsaved'})
+    assert len(m.memory_buffer) == 1
