@@ -424,3 +424,59 @@ def test_the_bypass_does_not_make_it_a_mention():
     bot = Path("src/bot/bot.py").read_text(encoding="utf-8")
     fn = bot.split("async def _react_to_screen")[1].split("def _dead_air_context")[0]
     assert "is_mention=False" in fn and "is_mention=True" not in fn
+
+
+# ------------------------------------ settings arrive hand-edited and wrong
+
+def test_a_string_bbox_from_json_is_coerced():
+    """["0","0","10","10"] passed the length check and reached ImageGrab,
+    which raises on it -- one debug line per interval, forever, silently."""
+    w = ScreenWatcher.from_settings(
+        {'screen_awareness': {'bbox': ["0", "0", "1920", "1080"]}},
+        openai_client=object(), model='m')
+    assert w.bbox == (0, 0, 1920, 1080)
+    assert all(isinstance(v, int) for v in w.bbox)
+
+
+def test_a_bbox_with_no_area_is_rejected():
+    for bad in ([100, 100, 10, 10], [0, 0, 0, 0], [5, 5, 5, 50]):
+        w = ScreenWatcher.from_settings(
+            {'screen_awareness': {'bbox': bad}}, openai_client=object(), model='m')
+        assert w.bbox is None, bad
+
+
+def test_a_non_numeric_bbox_is_rejected():
+    w = ScreenWatcher.from_settings(
+        {'screen_awareness': {'bbox': ["left", "top", "right", "bottom"]}},
+        openai_client=object(), model='m')
+    assert w.bbox is None
+
+
+def test_a_typo_in_a_number_falls_back_instead_of_disabling_vision():
+    """float('sixty') raised, which aborted construction -- the bot caught it
+    and vision was off for the stream with one warning as the only trace."""
+    w = ScreenWatcher.from_settings(
+        {'screen_awareness': {'interval_seconds': 'sixty',
+                              'notable_cooldown_seconds': None,
+                              'max_edge': 'big'}},
+        openai_client=object(), model='m')
+    assert w.interval_s == 60.0
+    assert w.notable_cooldown_s == 240.0
+    assert w.max_edge == 768
+
+
+# ---------------------------------------------- staleness has a hard cap
+
+def test_staleness_does_not_scale_forever_with_the_interval():
+    """At a 10-minute poll, interval*3 called a half-hour-old screenshot
+    current -- exactly the confidently-wrong narration describe() prevents."""
+    assert ScreenWatcher(interval_s=600)._stale_after() == 300.0
+    assert ScreenWatcher(interval_s=60)._stale_after() == 180.0
+
+
+async def test_a_slow_poll_still_withholds_ancient_news():
+    w = _watcher(interval_s=600)
+    await w.look()
+    w._seen_at -= 301
+    assert w.describe() is None
+    assert w.describe_with_duration() is None

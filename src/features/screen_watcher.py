@@ -41,6 +41,40 @@ COMPARE_SUFFIX = (
     "reply with the sentence alone and no prefix."
 )
 NOTABLE_PREFIX = "NOTABLE:"
+# However slowly we poll, a description older than this is history.
+MAX_DESCRIPTION_AGE_S = 300.0
+
+
+def _number(value: Any, default: float) -> float:
+    """A hand-edited JSON setting is a string or a typo as often as a number.
+    A bad one must fall back, not raise -- an exception here disables vision
+    entirely and the only trace is one warning at startup."""
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        if value is not None:
+            logger.warning(f"Screen awareness: {value!r} is not a number; using {default}")
+        return default
+    return out
+
+
+def _bbox(raw: Any) -> Optional[Tuple[int, int, int, int]]:
+    """Validate a capture region. A malformed one is dropped, not passed on:
+    ImageGrab raises on it, and that failure would be a silent debug line
+    every interval forever."""
+    if not isinstance(raw, (list, tuple)) or len(raw) != 4:
+        if raw is not None:
+            logger.warning(f"Screen awareness: ignoring malformed bbox {raw!r}")
+        return None
+    try:
+        left, top, right, bottom = (int(v) for v in raw)
+    except (TypeError, ValueError):
+        logger.warning(f"Screen awareness: bbox {raw!r} is not four numbers; ignoring")
+        return None
+    if right <= left or bottom <= top:
+        logger.warning(f"Screen awareness: bbox {raw!r} has no area; ignoring")
+        return None
+    return (left, top, right, bottom)
 
 
 class ScreenWatcher:
@@ -94,16 +128,14 @@ class ScreenWatcher:
     def from_settings(cls, settings: Dict[str, Any], openai_client: Any,
                       model: str) -> "ScreenWatcher":
         cfg = (settings or {}).get('screen_awareness') or {}
-        raw = cfg.get('bbox')
-        bbox = tuple(raw) if isinstance(raw, (list, tuple)) and len(raw) == 4 else None
         return cls(
             openai_client=openai_client,
             model=cfg.get('model') or model,
-            interval_s=cfg.get('interval_seconds', 60),
+            interval_s=_number(cfg.get('interval_seconds'), 60.0),
             enabled=bool(cfg.get('enabled', False)),
-            bbox=bbox,
-            max_edge=int(cfg.get('max_edge', 768)),
-            notable_cooldown_s=float(cfg.get('notable_cooldown_seconds', 240)),
+            bbox=_bbox(cfg.get('bbox')),
+            max_edge=int(_number(cfg.get('max_edge'), 768.0)),
+            notable_cooldown_s=_number(cfg.get('notable_cooldown_seconds'), 240.0),
         )
 
     # -------------------------------------------------------------- reads
@@ -117,9 +149,17 @@ class ScreenWatcher:
         """
         if not self._description:
             return None
-        if time.monotonic() - self._seen_at > self.interval_s * 3:
+        if time.monotonic() - self._seen_at > self._stale_after():
             return None
         return self._description
+
+    def _stale_after(self) -> float:
+        """How old a description may be before it is withheld.
+
+        Capped independently of the interval: at a 10-minute poll,
+        interval * 3 would have called a half-hour-old screenshot current.
+        """
+        return min(self.interval_s * 3, MAX_DESCRIPTION_AGE_S)
 
     def age_s(self) -> Optional[float]:
         return None if not self._seen_at else time.monotonic() - self._seen_at
