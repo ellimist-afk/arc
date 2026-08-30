@@ -145,6 +145,7 @@ class TalkBot:
         self.session_summarizer = None  # rolling 'earlier this stream' memory
         self.stream_info = None         # live category/title (features.stream_info)
         self.screen_watcher = None      # what is on screen (features.screen_watcher)
+        self.persona_command = None     # !persona (features.persona_command)
         self.stream_recap = None        # post-stream recap counters (features.stream_recap)
         self.first_timer = None         # first-time chatter greeting policy (features.first_timer)
         self.chat_velocity = None       # chat pace tracker / pacing multiplier (features.chat_velocity)
@@ -706,6 +707,7 @@ class TalkBot:
             # Register ad command handler
             self.twitch_client.on_message(self._handle_ad_commands)
             self._setup_clip_command()
+            self._setup_persona_command()
 
             # Wait for Twitch connection to complete
             await twitch_connect_task
@@ -2211,6 +2213,21 @@ class TalkBot:
         except Exception as e:
             logger.error(f"Error handling raid event: {e}")
     
+    def _setup_persona_command(self) -> None:
+        """!persona: switch the co-host's voice from chat (mods only)."""
+        try:
+            from features.persona_command import PersonaCommand
+            self.persona_command = PersonaCommand(
+                personality_engine=self.personality_engine,
+                twitch_client=self.twitch_client,
+            )
+            self.twitch_client.on_message(self.persona_command.handle)
+            logger.info("!persona command active "
+                        f"({len(self.persona_command.available())} presets)")
+        except Exception as e:  # noqa: BLE001 - a chat command is never load-bearing
+            logger.warning(f"!persona unavailable: {e}")
+            self.persona_command = None
+
     async def _handle_ad_commands(self, message: Dict[str, Any]) -> None:
         """
         Handle ad-related commands from chat

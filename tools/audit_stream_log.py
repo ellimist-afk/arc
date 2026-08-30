@@ -62,6 +62,8 @@ GUARDS = [
      "Vision looks skipped because the stream was down"),
     ("muted", "Muted; not",
      "Lines withheld because the co-host was muted"),
+    ("persona_switch", "Persona switched to",
+     "Persona changes requested from chat"),
     ("voice_drop", "Dropped low-confidence transcript",
      "Garbled mic audio discarded instead of answered"),
     ("ad_fallback", "Ad line timed out",
