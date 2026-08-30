@@ -72,6 +72,24 @@ class AudioConfig:
     volume: float = 0.8
 
 
+def _load_flag_file(path: str = "feature_flags.json") -> dict:
+    """The flags the bot reads, so both halves agree.
+
+    Missing or malformed is not an error: the caller falls back to env vars
+    and then to the dataclass defaults.
+    """
+    try:
+        import json
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        flags = data.get("flags")
+        return flags if isinstance(flags, dict) else {}
+    except FileNotFoundError:
+        return {}
+    except Exception:  # noqa: BLE001 - config must never stop startup
+        return {}
+
+
 @dataclass
 class FeatureFlags:
     """Feature flags configuration"""
@@ -185,13 +203,27 @@ class Settings:
         settings.audio.cache_size = int(os.getenv('TTS_CACHE_SIZE', '1000'))
         settings.audio.volume = float(os.getenv('AUDIO_VOLUME', '0.8'))
         
-        # Feature flags
-        settings.features.raider_welcome = os.getenv('FEATURE_RAIDER_WELCOME', 'false').lower() == 'true'
-        settings.features.advanced_personality = os.getenv('FEATURE_ADVANCED_PERSONALITY', 'false').lower() == 'true'
-        settings.features.context_caching = os.getenv('FEATURE_CONTEXT_CACHING', 'true').lower() == 'true'
-        settings.features.voice_commands = os.getenv('FEATURE_VOICE_COMMANDS', 'false').lower() == 'true'
-        settings.features.web_ui = os.getenv('FEATURE_WEB_UI', 'true').lower() == 'true'
-        settings.features.monitoring = os.getenv('FEATURE_MONITORING', 'true').lower() == 'true'
+        # Feature flags. feature_flags.json is the source of truth -- it is
+        # what the bot itself reads -- and FEATURE_* env vars override it.
+        # These used to be env-only with their own defaults, so the same flag
+        # could read true to the bot and false here: feature_flags.json ships
+        # voice_commands=true while this defaulted it to false.
+        flags = _load_flag_file()
+        for attr, env_var in (
+            ('raider_welcome', 'FEATURE_RAIDER_WELCOME'),
+            ('advanced_personality', 'FEATURE_ADVANCED_PERSONALITY'),
+            ('context_caching', 'FEATURE_CONTEXT_CACHING'),
+            ('voice_commands', 'FEATURE_VOICE_COMMANDS'),
+            ('web_ui', 'FEATURE_WEB_UI'),
+            ('monitoring', 'FEATURE_MONITORING'),
+        ):
+            # Precedence: env override, then the JSON file, then the dataclass
+            # default already on the object.
+            raw = os.getenv(env_var)
+            if raw is not None:
+                setattr(settings.features, attr, raw.strip().lower() == 'true')
+            elif attr in flags:
+                setattr(settings.features, attr, bool(flags[attr]))
         
         # Logging
         settings.logging.level = os.getenv('LOG_LEVEL', 'INFO').upper()
