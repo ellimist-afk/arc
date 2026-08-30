@@ -67,9 +67,14 @@ def test_gate_sits_before_generation_and_spares_mentions():
         "the gate must come before any reply generation"
 
 
-def test_both_send_paths_stamp_the_timestamp():
+def test_every_send_path_stamps_the_timestamp():
+    """Blocking reply, streamed reply, and the vision reaction all put a line
+    in chat, so all three must feed the breather. A path that forgets lets
+    the next line stack on top of it."""
     stamps = HANDLER.count("self.last_bot_message_at = datetime.now()")
-    assert stamps == 2, f"blocking and streamed paths must both stamp ({stamps})"
+    assert stamps == 3, f"expected blocking + streamed + screen reaction ({stamps})"
+    reaction = HANDLER.split("async def _react_to_screen")[1].split("def _dead_air_context")[0]
+    assert "self.last_bot_message_at = datetime.now()" in reaction
 
 
 def test_gate_math():

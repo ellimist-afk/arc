@@ -458,8 +458,15 @@ class PersonalityEngine:
             else:
                 prompt = self._build_personality_prompt()
 
-            # Determine if should respond (always respond to dead air)
-            if message != "[DEAD_AIR_FILLER]" and not self._should_respond(message, is_mention):
+            # Determine if should respond (always respond to dead air).
+            # `always_respond` is for lines the bot has already decided are
+            # worth saying -- a vision-flagged moment on stream -- where the
+            # chattiness dice would throw away the whole point. They stay
+            # unsolicited for the repetition guard, so a repetitive one is
+            # still dropped rather than forced out.
+            if (message != "[DEAD_AIR_FILLER]"
+                    and not (context or {}).get('always_respond')
+                    and not self._should_respond(message, is_mention)):
                 return None
                 
             # Generate response text

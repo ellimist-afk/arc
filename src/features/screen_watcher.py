@@ -25,9 +25,22 @@ LOOK_PROMPT = (
     "You are looking at a live stream's screen. In ONE short factual "
     "sentence: what game or application is this, and what is happening right "
     "now? Name what you can actually see -- a menu, a death screen, a score, "
-    "a boss, a code editor. If something is clearly going wrong or notable, "
-    "say so plainly. Never speculate and never invent numbers."
+    "a boss, a code editor. Never speculate and never invent numbers."
 )
+
+# Pixel differences cannot tell a camera pan from a death screen: during
+# gameplay every frame differs. So the model, which can already see the
+# screen, is asked to judge whether anything actually HAPPENED since the
+# last look -- it costs nothing extra on a call being made anyway.
+COMPARE_SUFFIX = (
+    "\n\nLast time you looked, you saw: \"{previous}\"\n"
+    "If something genuinely happened since then -- a death, a win, a boss "
+    "appearing, a run ending, a crash, a dramatic swing -- begin your reply "
+    "with NOTABLE: followed by the one sentence. Routine movement, camera "
+    "pans, menus, ordinary play and scrolling are NOT notable; in that case "
+    "reply with the sentence alone and no prefix."
+)
+NOTABLE_PREFIX = "NOTABLE:"
 
 
 class ScreenWatcher:
@@ -44,6 +57,7 @@ class ScreenWatcher:
         timeout_s: float = 12.0,
         change_threshold: float = 6.0,
         scene_threshold: float = 18.0,
+        notable_cooldown_s: float = 240.0,
     ):
         self.openai_client = openai_client
         self.model = model
@@ -56,15 +70,23 @@ class ScreenWatcher:
         # the look is free; above scene_threshold it is a different scene.
         self.change_threshold = change_threshold
         self.scene_threshold = scene_threshold
+        # Least time between proactive reactions. Without it a chaotic game
+        # would have the co-host narrating every fight.
+        self.notable_cooldown_s = notable_cooldown_s
+        # Async callable invoked as on_notable(what_happened). Set by the bot.
+        self.on_notable = None
 
         self._description: Optional[str] = None
         self._seen_at: float = 0.0
         self._signature: Optional[bytes] = None
         self._scene_since: float = 0.0
         self._task = None
+        self._last_notable_at: float = 0.0
         self.looks = 0
         self.failures = 0
         self.unchanged_skips = 0
+        self.notables = 0
+        self.notables_suppressed = 0
 
     # ------------------------------------------------------------- config
 
@@ -81,6 +103,7 @@ class ScreenWatcher:
             enabled=bool(cfg.get('enabled', False)),
             bbox=bbox,
             max_edge=int(cfg.get('max_edge', 768)),
+            notable_cooldown_s=float(cfg.get('notable_cooldown_seconds', 240)),
         )
 
     # -------------------------------------------------------------- reads
@@ -124,6 +147,8 @@ class ScreenWatcher:
     def stats(self) -> Dict[str, Any]:
         return {'looks': self.looks, 'failures': self.failures,
                 'unchanged_skips': self.unchanged_skips,
+                'notables': self.notables,
+                'notables_suppressed': self.notables_suppressed,
                 'has_description': bool(self.describe())}
 
     # ------------------------------------------------------------ capture
@@ -180,6 +205,10 @@ class ScreenWatcher:
             logger.debug("Screen unchanged; keeping the current description")
             return self._description
 
+        look_prompt = LOOK_PROMPT
+        if self._description:
+            look_prompt += COMPARE_SUFFIX.format(previous=self._description)
+
         params: Dict[str, Any] = {"max_completion_tokens": 80}
         model = self.model or ''
         if model.startswith('gpt-5'):
@@ -190,7 +219,7 @@ class ScreenWatcher:
                 self.openai_client.chat.completions.create(
                     model=self.model,
                     messages=[{"role": "user", "content": [
-                        {"type": "text", "text": LOOK_PROMPT},
+                        {"type": "text", "text": look_prompt},
                         {"type": "image_url", "image_url": {
                             "url": f"data:image/jpeg;base64,{b64}",
                             "detail": "low"}}]}],
@@ -210,6 +239,13 @@ class ScreenWatcher:
         if not text:
             self.failures += 1
             return None
+        notable = text.startswith(NOTABLE_PREFIX)
+        if notable:
+            text = text[len(NOTABLE_PREFIX):].strip()
+        if not text:
+            self.failures += 1
+            return None
+
         now = time.monotonic()
         # A materially different screen starts a new scene; that clock is how
         # the co-host can notice the streamer has been stuck on one thing.
@@ -219,8 +255,26 @@ class ScreenWatcher:
         self._signature = signature
         self._seen_at = now
         self.looks += 1
-        logger.info(f"Screen: {text[:110]}")
+        logger.info(f"Screen{' [NOTABLE]' if notable else ''}: {text[:110]}")
+
+        if notable:
+            await self._announce(text, now)
         return text
+
+    async def _announce(self, what: str, now: float) -> None:
+        """Tell the bot something happened, at most once per cooldown."""
+        if not self.on_notable:
+            return
+        if now - self._last_notable_at < self.notable_cooldown_s:
+            self.notables_suppressed += 1
+            logger.info(f"Screen: notable moment held by cooldown ({what[:60]})")
+            return
+        self._last_notable_at = now
+        self.notables += 1
+        try:
+            await self.on_notable(what)
+        except Exception as e:  # noqa: BLE001 - a reaction must never break the loop
+            logger.warning(f"Screen reaction failed: {e}")
 
     # --------------------------------------------------------------- loop
 

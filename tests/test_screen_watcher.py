@@ -305,3 +305,122 @@ def test_the_contexts_use_the_duration_aware_view():
     assert "watcher.describe_with_duration()" in bot
     assert "self.screen_watcher.describe_with_duration()" in builder
 
+
+
+# ---------------------------------------- noticing that something happened
+
+def _notable_watcher(text, **kw):
+    w = _watcher(text=text, **kw)
+    w.said = []
+
+    async def on_notable(what):
+        w.said.append(what)
+    w.on_notable = on_notable
+    return w
+
+
+async def test_the_second_look_asks_what_changed():
+    """Pixel diffs cannot tell a camera pan from a death, so the model is
+    given its own previous answer and asked to judge."""
+    w = _watcher()
+    await w.look()
+    w.frame = _frame(200)
+    await w.look()
+    sent = w.seen['messages'][0]['content'][0]['text']
+    assert "Last time you looked" in sent
+    assert "Overwatch, on the death screen." in sent
+    assert "NOT notable" in sent
+
+
+async def test_the_first_look_has_nothing_to_compare_against():
+    w = _watcher()
+    await w.look()
+    sent = w.seen['messages'][0]['content'][0]['text']
+    assert "Last time you looked" not in sent
+
+
+async def test_a_notable_moment_is_announced():
+    w = _notable_watcher("NOTABLE: the run ended on the final boss")
+    await w.look()
+    assert w.said == ["the run ended on the final boss"]
+    assert w.notables == 1
+
+
+async def test_the_prefix_is_stripped_from_the_description():
+    w = _notable_watcher("NOTABLE: the run ended on the final boss")
+    await w.look()
+    assert w.describe() == "the run ended on the final boss", "no marker in context"
+
+
+async def test_ordinary_play_announces_nothing():
+    w = _notable_watcher("Overwatch, walking toward the objective")
+    await w.look()
+    assert w.said == [] and w.notables == 0
+
+
+async def test_reactions_are_rate_limited():
+    """A chaotic game must not have the co-host narrating every fight."""
+    w = _notable_watcher("NOTABLE: died again", notable_cooldown_s=300)
+    await w.look()
+    w.frame = _frame(90)
+    await w.look()
+    w.frame = _frame(170)
+    await w.look()
+    assert len(w.said) == 1, "the cooldown holds the rest"
+    assert w.notables_suppressed == 2
+
+
+async def test_the_cooldown_expires():
+    w = _notable_watcher("NOTABLE: died again", notable_cooldown_s=300)
+    await w.look()
+    w._last_notable_at -= 301
+    w.frame = _frame(90)
+    await w.look()
+    assert len(w.said) == 2
+
+
+async def test_a_failing_reaction_never_breaks_the_loop():
+    w = _watcher(text="NOTABLE: something happened")
+
+    async def boom(what):
+        raise RuntimeError("chat is down")
+    w.on_notable = boom
+    assert await w.look() is not None, "the description still lands"
+
+
+async def test_a_bare_notable_prefix_is_not_a_description():
+    w = _notable_watcher("NOTABLE:")
+    assert await w.look() is None
+    assert w.describe() is None
+
+
+async def test_no_callback_means_no_crash():
+    w = _watcher(text="NOTABLE: the boss died")
+    assert await w.look() is not None
+
+
+def test_the_bot_reacts_as_an_unsolicited_line():
+    """It must inherit the topic guard and be droppable -- nobody asked."""
+    bot = Path("src/bot/bot.py").read_text(encoding="utf-8")
+    fn = bot.split("async def _react_to_screen")[1].split("def _dead_air_context")[0]
+    assert "is_mention=False" in fn
+    assert "Screen reaction suppressed by the guards" in fn
+    assert "self.last_bot_message_at = datetime.now()" in fn, \
+        "it must respect the anti-stacking breather"
+    assert "self.screen_watcher.on_notable = self._react_to_screen" in bot
+
+
+def test_a_flagged_moment_bypasses_the_chattiness_roll():
+    """Without this the vision loop flags a death and the 3% interjection
+    dice throw the reaction away -- the whole point of noticing it."""
+    eng = Path("src/personality/personality_engine.py").read_text(encoding="utf-8")
+    assert "(context or {}).get('always_respond')" in eng
+    bot = Path("src/bot/bot.py").read_text(encoding="utf-8")
+    assert "'always_respond': True" in bot
+
+
+def test_the_bypass_does_not_make_it_a_mention():
+    """It must stay unsolicited so the topic guard can still drop it."""
+    bot = Path("src/bot/bot.py").read_text(encoding="utf-8")
+    fn = bot.split("async def _react_to_screen")[1].split("def _dead_air_context")[0]
+    assert "is_mention=False" in fn and "is_mention=True" not in fn

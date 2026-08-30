@@ -1816,6 +1816,7 @@ class TalkBot:
                 getattr(self.personality_engine, 'openai_client', None),
                 getattr(self.personality_engine, 'llm_model', 'gpt-5.5'),
             )
+            self.screen_watcher.on_notable = self._react_to_screen
             self.screen_watcher.start(self.task_registry.create_task)
             if self.context_builder:
                 self.context_builder.screen_watcher = self.screen_watcher
@@ -1967,6 +1968,56 @@ class TalkBot:
         if self.audio_queue:
             await self.audio_queue.queue_audio("Clipped" if clip else "Couldn't clip that",
                                                priority="high")
+
+    async def _react_to_screen(self, what_happened: str) -> None:
+        """Say something when the vision loop reports a real moment.
+
+        Deliberately routed as an UNSOLICITED line: it inherits the topic
+        guard (so it cannot re-tell a bit) and is dropped rather than
+        regenerated if it comes out repetitive. Nobody asked for this line,
+        so silence is always an acceptable outcome.
+        """
+        if not self.personality_engine or not self.response_coordinator:
+            return
+        channel = self.config.get('TWITCH_CHANNEL', '')
+        # The vision loop already judged this worth saying; the chattiness
+        # dice would discard it. It stays unsolicited for the guards.
+        context: Dict[str, Any] = {'on_screen': what_happened,
+                                   'always_respond': True}
+        try:
+            if self.chat_buffer:
+                context['recent_messages'] = self.chat_buffer.get_recent(channel, limit=6)
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Screen reaction chat context unavailable: {e}")
+
+        scenario = (
+            f"Something just happened on stream: {what_happened}. React to it "
+            f"in one line, as if you were watching. Do not narrate the screen "
+            f"back; say the thing a co-host would say about it."
+        )
+        try:
+            response = await asyncio.wait_for(
+                self.personality_engine.generate_response(
+                    message=scenario, context=context,
+                    user=self.config.get('TWITCH_CHANNEL', 'streamer'),
+                    is_mention=False),
+                timeout=12.0)
+        except asyncio.TimeoutError:
+            logger.info("Screen reaction timed out; staying quiet")
+            return
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Screen reaction generation failed: {e}")
+            return
+
+        text = ((response or {}).get('text') or '').strip()
+        if not text:
+            logger.info("Screen reaction suppressed by the guards; staying quiet")
+            return
+        logger.info(f"Screen reaction: {text[:80]}")
+        await self.response_coordinator.coordinate_response(
+            chat_msg=text, audio_task=None, priority='normal',
+            is_mention=False, is_voice=False)
+        self.last_bot_message_at = datetime.now()
 
     def _dead_air_context(self) -> Dict[str, Any]:
         """What the co-host knows when chat goes quiet: what is being
