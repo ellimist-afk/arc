@@ -50,3 +50,4 @@ ruff==0.1.9
 
 # Optional for embeddings (if using vector search)
 # pgvector==0.2.4
+Pillow>=10,<12   # screen capture for optional vision (features/screen_watcher.py)

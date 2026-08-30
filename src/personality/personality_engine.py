@@ -1192,6 +1192,10 @@ class PersonalityEngine:
         if stream_now:
             lines.append(f"- Stream right now: {stream_now}")
 
+        on_screen = context.get('on_screen')
+        if on_screen:
+            lines.append(f"- On screen right now: {on_screen}")
+
         summary = context.get('session_summary')
         if summary:
             lines.append(f"- Earlier this stream: {summary}")

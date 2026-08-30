@@ -89,6 +89,8 @@ class OptimizedContextBuilder:
         self.session_summarizer = session_summarizer
         # Live category/title (features.stream_info.StreamInfo); attached by the bot
         self.stream_info = None
+        # What is on screen right now (features.screen_watcher); also attached
+        self.screen_watcher = None
 
         # Multi-level cache system
         self.l1_cache: Dict[str, Tuple[Dict, float]] = {}  # Hot cache for active conversations
@@ -285,6 +287,7 @@ class OptimizedContextBuilder:
                 "engagement_level": self._calculate_engagement(data),
                 "session_summary": self._session_summary(channel),
                 "stream_now": self._stream_now(),
+                "on_screen": self._on_screen(),
             })
 
         except Exception as e:
@@ -320,6 +323,15 @@ class OptimizedContextBuilder:
             return self.session_summarizer.get_summary(channel) or ""
         except Exception as e:
             logger.debug(f"Session summary unavailable: {e}")
+            return ""
+
+    def _on_screen(self) -> str:
+        if not self.screen_watcher:
+            return ""
+        try:
+            return self.screen_watcher.describe() or ""
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Screen view unavailable: {e}")
             return ""
 
     def _stream_now(self) -> str:
@@ -366,6 +378,7 @@ class OptimizedContextBuilder:
             context['recent_messages'] = self.chat_buffer.get_recent(channel, limit=10)
         context['session_summary'] = self._session_summary(channel)
         context['stream_now'] = self._stream_now()
+        context['on_screen'] = self._on_screen()
         # A cache hit means we've built context for this viewer before —
         # by definition not their first message
         context['is_first_message'] = False

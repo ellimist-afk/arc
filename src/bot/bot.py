@@ -144,6 +144,7 @@ class TalkBot:
         self.context_builder: Optional[OptimizedContextBuilder] = None  # PRD required component
         self.session_summarizer = None  # rolling 'earlier this stream' memory
         self.stream_info = None         # live category/title (features.stream_info)
+        self.screen_watcher = None      # what is on screen (features.screen_watcher)
         self.stream_recap = None        # post-stream recap counters (features.stream_recap)
         self.first_timer = None         # first-time chatter greeting policy (features.first_timer)
         self.chat_velocity = None       # chat pace tracker / pacing multiplier (features.chat_velocity)
@@ -1804,6 +1805,23 @@ class TalkBot:
         )
         if self.context_builder:
             self.context_builder.stream_info = self.stream_info
+
+        # Vision: a cached one-line read of the screen, so the co-host can
+        # react to the GAME and not only to chat. Off unless enabled in
+        # settings -- it ships screenshots to the OpenAI API.
+        try:
+            from features.screen_watcher import ScreenWatcher
+            self.screen_watcher = ScreenWatcher.from_settings(
+                self._bot_settings,
+                getattr(self.personality_engine, 'openai_client', None),
+                getattr(self.personality_engine, 'llm_model', 'gpt-5.5'),
+            )
+            self.screen_watcher.start(self.task_registry.create_task)
+            if self.context_builder:
+                self.context_builder.screen_watcher = self.screen_watcher
+        except Exception as e:  # noqa: BLE001 - vision is never load-bearing
+            logger.warning(f"Screen awareness unavailable: {e}")
+            self.screen_watcher = None
         self.eventsub.on_event('channel.update', self.stream_info.handle_channel_update)
         self.eventsub.on_event('stream.online', self._on_stream_online)
         self.eventsub.on_event('stream.offline', self._on_stream_offline)
@@ -1967,6 +1985,14 @@ class TalkBot:
                 context['stream_now'] = self.stream_info.describe()
             except Exception as e:  # noqa: BLE001
                 logger.debug(f"Dead-air stream info unavailable: {e}")
+        watcher = getattr(self, 'screen_watcher', None)
+        if watcher:
+            try:
+                seen = watcher.describe()
+                if seen:
+                    context['on_screen'] = seen
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"Dead-air screen view unavailable: {e}")
         if self.session_summarizer:
             try:
                 context['session_summary'] = self.session_summarizer.get_summary(channel)
@@ -2307,6 +2333,8 @@ class TalkBot:
         # Recap needs the LLM and the task registry, so it goes before either is torn down
         await step("recap", lambda: self._write_recap("shutdown"))
         await step("api_server", self._stop_api_server)
+        if getattr(self, 'screen_watcher', None):
+            await step("screen_watcher", self.screen_watcher.stop)
         # Cancel all tasks via TaskRegistry
         await step("task_registry", lambda: self.task_registry.shutdown())
 

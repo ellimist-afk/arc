@@ -64,5 +64,11 @@
   "event_reactions": {
     "enabled": true,
     "timeout_s": 8
+  },
+  "screen_awareness": {
+    "enabled": false,
+    "interval_seconds": 60,
+    "max_edge": 768,
+    "_comment": "Sends periodic screenshots of the display to the OpenAI API. Set bbox [x1,y1,x2,y2] to watch only the game region."
   }
 }
