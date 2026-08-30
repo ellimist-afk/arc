@@ -453,15 +453,20 @@ class TalkBot:
             bot_account = self.config.get('TWITCH_BOT_USERNAME', 'elimist_').lower()
             channel = self.config.get('TWITCH_CHANNEL', 'cassova_').lower()
 
+            # The .env refresh tokens are the fallback when the token .txt
+            # file is missing -- without it, losing that file silently ends
+            # auto-refresh and the token dies a few hours into a stream.
             self.token_refresher.register_account(
                 account_name=bot_account,
                 env_var_name='TWITCH_ACCESS_TOKEN',
-                token_file_path=f'twitch_tokens_{bot_account}.txt'
+                token_file_path=f'twitch_tokens_{bot_account}.txt',
+                refresh_env_var='TWITCH_REFRESH_TOKEN',
             )
             self.token_refresher.register_account(
                 account_name=channel,
                 env_var_name='TWITCH_BROADCASTER_TOKEN',
-                token_file_path=f'twitch_tokens_{channel}.txt'
+                token_file_path=f'twitch_tokens_{channel}.txt',
+                refresh_env_var='TWITCH_BROADCASTER_REFRESH_TOKEN',
             )
 
             # Refresh immediately so we start with fresh tokens. If refresh

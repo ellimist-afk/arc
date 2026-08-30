@@ -31,40 +31,64 @@ class TwitchTokenRefresher:
         self,
         account_name: str,
         env_var_name: str,
-        token_file_path: str
+        token_file_path: str,
+        refresh_env_var: Optional[str] = None,
     ) -> bool:
         """
         Register an account for auto-refresh.
+
+        The refresh token normally comes from the .txt file the auth script
+        writes. That file is easy to lose -- it looks like a disposable dump
+        of credentials -- and losing it silently ended auto-refresh for that
+        account, so its token expired mid-stream about four hours later.
+        `refresh_env_var` names a .env variable to fall back on.
 
         Args:
             account_name: Account identifier
             env_var_name: .env variable name to update
             token_file_path: Path to token .txt file
+            refresh_env_var: .env variable holding a refresh token, used when
+                the file is missing or has none
 
         Returns:
             True if loaded successfully, False otherwise
         """
         try:
-            if not os.path.exists(token_file_path):
-                logger.error(f"Token file not found: {token_file_path}")
-                return False
-
-            with open(token_file_path, 'r') as f:
-                content = f.read()
-
             access_token = None
             refresh_token = None
+            source = None
 
-            for line in content.splitlines():
-                line = line.strip()
-                if line.startswith('ACCESS_TOKEN='):
-                    access_token = line.split('=', 1)[1].strip()
-                elif line.startswith('REFRESH_TOKEN='):
-                    refresh_token = line.split('=', 1)[1].strip()
+            if os.path.exists(token_file_path):
+                with open(token_file_path, 'r') as f:
+                    content = f.read()
+                for line in content.splitlines():
+                    line = line.strip()
+                    if line.startswith('ACCESS_TOKEN='):
+                        access_token = line.split('=', 1)[1].strip()
+                    elif line.startswith('REFRESH_TOKEN='):
+                        refresh_token = line.split('=', 1)[1].strip()
+                if refresh_token:
+                    source = token_file_path
+                else:
+                    logger.warning(f"No REFRESH_TOKEN in {token_file_path}")
+            else:
+                logger.warning(f"Token file not found: {token_file_path}")
+
+            if not refresh_token and refresh_env_var:
+                refresh_token = (os.getenv(refresh_env_var) or '').strip() or None
+                if refresh_token:
+                    source = f"${refresh_env_var}"
 
             if not refresh_token:
-                logger.error(f"No REFRESH_TOKEN found in {token_file_path}")
+                logger.error(
+                    f"No refresh token for {account_name} (looked in "
+                    f"{token_file_path}"
+                    + (f" and ${refresh_env_var}" if refresh_env_var else "")
+                    + "); this account will NOT auto-refresh and its token "
+                    "will expire mid-stream")
                 return False
+
+            logger.info(f"Refresh token for {account_name} loaded from {source}")
 
             self.accounts[account_name] = {
                 'env_var_name': env_var_name,
