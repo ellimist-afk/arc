@@ -66,6 +66,8 @@ GUARDS = [
      "Persona changes requested from chat"),
     ("redemption_held", "Redemption not announced (cooldown",
      "Channel point redemptions held by the reaction cooldown"),
+    ("summary_expired", "the moment it describes is over",
+     "Stale session summaries withheld instead of narrated"),
     ("voice_drop", "Dropped low-confidence transcript",
      "Garbled mic audio discarded instead of answered"),
     ("ad_fallback", "Ad line timed out",

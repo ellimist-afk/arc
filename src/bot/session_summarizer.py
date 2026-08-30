@@ -107,6 +107,15 @@ class StreamSessionSummarizer:
         self.max_chars = max_chars
         self.persist_dir = Path(persist_dir) if persist_dir else None
         self.max_age_s = max_age_s
+        # How old the LIVE summary may be before it stops being served or
+        # built upon. Distinct from max_age_s (the restore-from-disk gate,
+        # hours): a summary that has not been refreshed in half an hour
+        # describes a moment that is over. Seen live: after a 73-minute
+        # process freeze the co-host was still riffing on "the Overwatch
+        # video" and "the painting" from before the freeze, because the
+        # in-memory summary was never age-checked and every new update was
+        # conditioned on it, carrying the stale claims forward.
+        self.live_max_age_s = 1800.0
         # Hard cap on our own backlog so a wedged LLM can't grow it forever.
         self.max_pending_turns = max_pending_turns
         self._clock = clock
@@ -127,7 +136,15 @@ class StreamSessionSummarizer:
         return self._channels[key]
 
     def get_summary(self, channel: str) -> str:
-        return self._state(channel).summary
+        st = self._state(channel)
+        if st.summary and st.updated_at:
+            age = self._clock() - st.updated_at
+            if age > self.live_max_age_s:
+                logger.info("Session summary for %s is %.0fs old; withholding "
+                            "it (the moment it describes is over)",
+                            self._norm(channel), age)
+                return ""
+        return st.summary
 
     def reset(self, channel: str) -> None:
         """Forget this channel's summary (new stream started). Keeps the
@@ -285,7 +302,7 @@ class StreamSessionSummarizer:
 
         user_parts = [
             "PREVIOUS SUMMARY:",
-            st.summary or "(none yet - stream just started)",
+            self._fresh_or_blank(st) or "(none yet - stream just started)",
             "",
             "NEW SINCE THEN:",
         ]
@@ -298,6 +315,19 @@ class StreamSessionSummarizer:
             {"role": "system", "content": SUMMARY_SYSTEM_PROMPT.format(max_words=self.max_words)},
             {"role": "user", "content": "\n".join(user_parts)},
         ]
+
+    def _fresh_or_blank(self, st) -> str:
+        """The previous summary, unless it has expired.
+
+        Conditioning an update on a stale summary carries its claims forward
+        ("still watching the Overwatch video") no matter what the new chat
+        says, so an expired one is dropped and the update starts clean."""
+        if st.summary and st.updated_at and (
+                self._clock() - st.updated_at) > self.live_max_age_s:
+            logger.info("Previous session summary expired (%.0fs); starting fresh",
+                        self._clock() - st.updated_at)
+            st.summary = ""
+        return st.summary
 
     async def update(self, channel: str) -> bool:
         """Run one fold. Returns True if the summary changed."""

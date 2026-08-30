@@ -189,3 +189,80 @@ async def test_the_real_silence_reaches_the_prompt(engine, monkeypatch):
 
 def test_a_missing_silence_value_does_not_break_the_prompt(engine):
     assert 'quiet for a while' in engine._build_dead_air_prompt()
+
+
+# ------------------------------------ the live summary describes NOW
+
+def _summarizer(clock_holder):
+    from bot.session_summarizer import StreamSessionSummarizer
+    from types import SimpleNamespace
+    buf = SimpleNamespace(last_seq=lambda ch: 0,
+                          get_recent=lambda ch, limit=10: [])
+    return StreamSessionSummarizer(
+        chat_buffer=buf, llm_call=None, clock=lambda: clock_holder["now"])
+
+
+def test_a_fresh_summary_is_served():
+    t = {"now": 1000.0}
+    sz = _summarizer(t)
+    st = sz._state("cassova_")
+    st.summary = "chat is arguing about pineapple"
+    st.updated_at = t["now"]
+    t["now"] += 600                       # ten minutes: fine
+    assert sz.get_summary("cassova_") == "chat is arguing about pineapple"
+
+
+def test_a_stale_summary_is_withheld():
+    """Seen live: after a 73-minute process freeze the co-host was still
+    riffing on 'the Overwatch video' and 'the painting' from before the
+    freeze -- the in-memory summary was never age-checked."""
+    t = {"now": 1000.0}
+    sz = _summarizer(t)
+    st = sz._state("cassova_")
+    st.summary = "cassova_ is still watching an insane Overwatch video"
+    st.updated_at = t["now"]
+    t["now"] += 73 * 60
+    assert sz.get_summary("cassova_") == ""
+
+
+def test_an_update_does_not_build_on_a_stale_summary():
+    """Conditioning on it carries the stale claims forward forever, no
+    matter what the new chat says."""
+    t = {"now": 1000.0}
+    sz = _summarizer(t)
+    st = sz._state("cassova_")
+    st.summary = "still watching the Overwatch video"
+    st.updated_at = t["now"]
+    t["now"] += sz.live_max_age_s + 1
+    assert sz._fresh_or_blank(st) == ""
+    assert st.summary == "", "the expired text must not linger in state"
+
+
+def test_a_fresh_summary_is_built_upon():
+    t = {"now": 1000.0}
+    sz = _summarizer(t)
+    st = sz._state("cassova_")
+    st.summary = "the grocery bit continues"
+    st.updated_at = t["now"]
+    t["now"] += 120
+    assert sz._fresh_or_blank(st) == "the grocery bit continues"
+
+
+def test_a_summary_that_never_updated_is_not_expired():
+    """updated_at == 0 means 'no successful update yet', not 'ancient'."""
+    t = {"now": 1e9}
+    sz = _summarizer(t)
+    st = sz._state("cassova_")
+    st.summary = ""
+    st.updated_at = 0.0
+    assert sz.get_summary("cassova_") == ""
+    assert sz._fresh_or_blank(st) == ""
+
+
+def test_the_live_gate_is_tighter_than_the_disk_gate():
+    """The disk gate (hours) is for 'is this even the same stream'; the live
+    gate is for 'is this still the same moment'."""
+    t = {"now": 1000.0}
+    sz = _summarizer(t)
+    assert sz.live_max_age_s < sz.max_age_s
+    assert sz.live_max_age_s <= 1800
