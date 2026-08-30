@@ -121,8 +121,11 @@ class PersonaCommand:
         if requested is None:
             return await self._say(self._describe())
 
-        username = (message.get("username") or "").lower()
-        broadcaster = (message.get("channel") or "").lower()
+        username = (message.get("username") or "").lower().lstrip("#")
+        # The client stores the channel stripped, but an IRC channel is
+        # "#name" everywhere else -- comparing the two forms would silently
+        # deny the broadcaster their own command.
+        broadcaster = (message.get("channel") or "").lower().lstrip("#")
         is_broadcaster = bool(username) and username == broadcaster
         if not (message.get("is_mod", False) or is_broadcaster):
             logger.info(f"!persona from non-mod {username!r} ignored")

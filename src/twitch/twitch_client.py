@@ -260,13 +260,31 @@ class TwitchClient:
                 'bits': int(tags.get('bits', 0))
             }
             
-            # Trigger message handlers
+            # Trigger message handlers. Registry-tracked, and each one
+            # reports its own failure: these were raw fire-and-forget tasks,
+            # so a handler that raised vanished without a trace -- a chat
+            # command could do nothing at all and leave nothing to debug.
             for handler in self.message_handlers:
-                asyncio.create_task(handler(message))
+                registry_create_task(
+                    self._run_message_handler(handler, message),
+                    name=f"chat_handler_{getattr(handler, '__qualname__', 'anon')}",
+                )
                 
         except Exception as e:
             logger.error(f"Error handling PRIVMSG: {e}")
             
+    @staticmethod
+    async def _run_message_handler(handler, message: dict) -> None:
+        """Run one chat handler, reporting rather than swallowing failures."""
+        try:
+            await handler(message)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001 - one bad handler must not
+            # take down the others, but it must be visible.
+            name = getattr(handler, '__qualname__', repr(handler))
+            logger.error(f"Chat handler {name} failed: {e}", exc_info=True)
+
     @staticmethod
     def _tag_int(tags: dict, key: str, default: int) -> int:
         """An IRC tag as an int. Empty or malformed values fall back rather

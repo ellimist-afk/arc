@@ -287,3 +287,32 @@ def test_the_temp_file_is_a_sibling(cmd):
     body = _helper_body()
     assert "target.with_name(" in body, "same directory, so the rename stays atomic"
     assert "tempfile" not in body, "the system temp dir may be another volume"
+
+
+# ------------------------------------ the broadcaster is always recognised
+
+async def test_the_broadcaster_is_recognised_with_an_irc_channel_prefix(cmd):
+    """TwitchClient stores the channel stripped, but "#name" is the IRC form
+    everywhere else. Comparing the two would silently deny the broadcaster
+    their own command -- and the denial only logs, so it looks like nothing
+    happened at all."""
+    await cmd.handle(msg("!persona roast", mod=False,
+                         user="cassova_", channel="#cassova_"))
+    assert cmd.personality_engine.asked == ["roast"]
+
+
+async def test_a_prefixed_username_still_matches(cmd):
+    await cmd.handle(msg("!persona roast", mod=False,
+                         user="#cassova_", channel="cassova_"))
+    assert cmd.personality_engine.asked == ["roast"]
+
+
+def test_chat_handler_failures_are_reported():
+    """These were raw fire-and-forget tasks: a handler that raised vanished,
+    so a chat command could do nothing and leave nothing to debug."""
+    src = Path("src/twitch/twitch_client.py").read_text(encoding="utf-8")
+    assert "asyncio.create_task(handler(message))" not in src
+    assert "registry_create_task(" in src
+    body = src.split("async def _run_message_handler")[1].split("\n    @staticmethod")[0]
+    assert "logger.error" in body and "exc_info=True" in body
+    assert "except asyncio.CancelledError" in body, "cancellation must propagate"
