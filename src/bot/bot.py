@@ -528,7 +528,8 @@ class TalkBot:
             self.response_coordinator.context_provider = self._dead_air_context
             # Never fill dead air into an offline stream
             self.response_coordinator.should_fill = lambda: (
-                self.stream_info is None or self.stream_info.is_live is not False)
+                not self.muted
+                and (self.stream_info is None or self.stream_info.is_live is not False))
             await self.response_coordinator.start_dead_air_prevention()
             self.service_registry.register('ResponseCoordinator', self.response_coordinator)
             
@@ -832,6 +833,15 @@ class TalkBot:
                 is_mention = True
                 priority = 'high'
                 logger.info(f"First-time chatter: {message.get('username')}")
+
+            # "Hey bot, shut up" must actually stop it talking. The flag
+            # only gated voice INPUT, so a muted co-host kept replying in
+            # chat -- the opposite of what the command says. Events (raids,
+            # subs, ads) still announce: those are occasions, not chatter.
+            if self.muted:
+                logger.info("Muted; not replying in chat")
+                self._schedule_summary()
+                return
 
             # An unsolicited line right after our own last line reads as the
             # bot talking to itself; let the room breathe. Mentions and
@@ -1982,6 +1992,9 @@ class TalkBot:
         so silence is always an acceptable outcome.
         """
         if not self.personality_engine or not self.response_coordinator:
+            return
+        if self.muted:
+            logger.info("Muted; not reacting to the screen")
             return
         channel = self.config.get('TWITCH_CHANNEL', '')
         # The vision loop already judged this worth saying; the chattiness

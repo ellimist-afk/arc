@@ -60,6 +60,8 @@ GUARDS = [
      "Looks at the screen that produced a fresh description"),
     ("screen_offline", "Stream is offline; not looking",
      "Vision looks skipped because the stream was down"),
+    ("muted", "Muted; not",
+     "Lines withheld because the co-host was muted"),
     ("voice_drop", "Dropped low-confidence transcript",
      "Garbled mic audio discarded instead of answered"),
     ("ad_fallback", "Ad line timed out",
