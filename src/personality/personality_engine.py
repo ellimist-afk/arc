@@ -966,15 +966,26 @@ class PersonalityEngine:
         Map generic sampling params onto model-specific API requirements.
 
         GPT-5 family: 'max_tokens' is renamed to 'max_completion_tokens', and
-        temperature/penalties are only accepted with reasoning_effort='none' —
-        which is also the fastest setting (no reasoning tokens before banter).
+        temperature/penalties are only accepted with the lowest reasoning
+        effort — also the fastest setting (no reasoning tokens before banter).
+
+        The accepted values are model-specific and do NOT overlap: gpt-5.5
+        takes 'none' and rejects 'minimal', while gpt-5-mini takes 'minimal'
+        and rejects 'none'. Sending the wrong one is a hard 400, so every
+        reply would fail the moment llm_model changed.
         """
         adapted = dict(params)
-        if (self.llm_model or '').startswith('gpt-5'):
+        model = (self.llm_model or '')
+        if model.startswith('gpt-5'):
             if 'max_tokens' in adapted:
                 adapted['max_completion_tokens'] = adapted.pop('max_tokens')
-            adapted.setdefault('reasoning_effort', 'none')
+            adapted.setdefault('reasoning_effort', self._lowest_reasoning_effort(model))
         return adapted
+
+    @staticmethod
+    def _lowest_reasoning_effort(model: str) -> str:
+        """The cheapest reasoning setting this model actually accepts."""
+        return 'none' if model.startswith('gpt-5.5') else 'minimal'
 
     def would_speak(self, message: str, is_mention: bool) -> bool:
         """Public view of the TTS decision, so callers can pick the streamed
