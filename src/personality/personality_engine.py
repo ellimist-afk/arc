@@ -360,7 +360,11 @@ class PersonalityEngine:
             if self.custom_traits:
                 self.current_traits = replace(self.custom_traits)
             else:
-                logger.warning("No custom traits defined, using friendly preset")
+                # Init-order artifact, not a problem: the engine boots via
+                # CUSTOM before any traits are loaded, and the real preset is
+                # applied a moment later. As a WARNING it sent two separate
+                # debugging sessions chasing a bug that did not exist.
+                logger.debug("No custom traits yet (init); using friendly until the preset loads")
                 self.current_traits = replace(self.PRESETS[PersonalityPreset.FRIENDLY])
         else:
             self.current_traits = replace(self.PRESETS[preset])
