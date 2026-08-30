@@ -284,6 +284,7 @@ class OptimizedContextBuilder:
                 "history_summary": self._summarize_history(data.get("interaction_history", [])),
                 "is_returning": bool(data.get("interaction_history")),
                 "is_first_message": self._is_first_message(data),
+                "returning_after": self._returning_after(data),
                 "engagement_level": self._calculate_engagement(data),
                 "session_summary": self._session_summary(channel),
                 "stream_now": self._stream_now(),
@@ -344,6 +345,43 @@ class OptimizedContextBuilder:
             return ""
 
     @staticmethod
+    def _returning_after(data: Dict[str, Any], now: Optional[datetime] = None) -> str:
+        """How long a known regular has been away, or "" when unsure.
+
+        The mirror of _is_first_message and held to the same bar: only
+        positive evidence counts. A greeting aimed at the wrong person, or
+        one that says "long time no see" to someone who was here an hour
+        ago, is worse than saying nothing -- so an unreadable timestamp, the
+        in-memory fallback, or a viewer with no real history all yield "".
+        """
+        viewer = data.get("viewer_data")
+        if not isinstance(viewer, dict) or viewer.get("from_memory"):
+            return ""          # unknown, or a cache that resets on restart
+        try:
+            if int(viewer.get("message_count") or 0) < 5:
+                return ""      # not a regular; nothing to remember them by
+        except (TypeError, ValueError):
+            return ""
+        last_seen = viewer.get("last_seen")
+        if not isinstance(last_seen, datetime):
+            return ""
+        ref = now or (datetime.now(last_seen.tzinfo) if last_seen.tzinfo else datetime.now())
+        try:
+            away = (ref - last_seen).total_seconds()
+        except TypeError:
+            return ""          # naive/aware mismatch: can't tell, stay quiet
+        if away < 86400:
+            return ""          # same day: not an absence worth naming
+        days = int(away // 86400)
+        if days >= 30:
+            return "over a month"
+        if days >= 14:
+            return "a couple of weeks"
+        if days >= 7:
+            return "about a week"
+        return f"{days} days"
+
+    @staticmethod
     def _is_first_message(data: Dict[str, Any], now: Optional[datetime] = None) -> bool:
         """True only with positive evidence from persistent memory.
 
@@ -382,6 +420,7 @@ class OptimizedContextBuilder:
         # A cache hit means we've built context for this viewer before —
         # by definition not their first message
         context['is_first_message'] = False
+        context['returning_after'] = ""
         # Per-request flags must never survive in a cached context. Callers
         # copy before setting these, but a cached dict that ever acquired one
         # would keep greeting the same viewer forever, so clear defensively.

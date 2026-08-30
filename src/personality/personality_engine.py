@@ -1226,6 +1226,13 @@ class PersonalityEngine:
         if on_screen:
             lines.append(f"- On screen right now: {on_screen}")
 
+        returning = context.get('returning_after')
+        if returning:
+            lines.append(
+                f"- This viewer is a regular who has not been around for "
+                f"{returning}. You may acknowledge that in passing if it fits "
+                f"-- never as a formal welcome, and never twice.")
+
         summary = context.get('session_summary')
         if summary:
             lines.append(f"- Earlier this stream: {summary}")

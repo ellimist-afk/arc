@@ -276,6 +276,42 @@ class EventAnnouncer:
                           priority=priority, note=f"{user} cheered {bits} bits")
         logger.info(f"Cheer announced: {user} ({bits} bits)")
 
+    async def handle_redemption(self, event: dict):
+        """Handle a channel point redemption.
+
+        Points are the one currency a viewer earns by simply being present,
+        so a redemption is a deliberate ask and deserves a reaction. The
+        reward TITLE is what matters -- "Hydrate!" and "Say something nice
+        about my cat" want very different lines -- and the user's typed input
+        is included when the reward takes one.
+        """
+        if not self.enabled:
+            return
+
+        user = event.get('user_name') or event.get('user_login') or 'Someone'
+        reward = (event.get('reward') or {})
+        title = (reward.get('title') or '').strip() or 'a reward'
+        try:
+            cost = max(0, int(reward.get('cost') or 0))
+        except (TypeError, ValueError):
+            cost = 0
+        user_input = (event.get('user_input') or '').strip()
+
+        fallback = f"{user} redeemed {title}!"
+        scenario = (f"{user} spent {cost} channel points to redeem "
+                    f"\"{title}\". React in character in one short line. "
+                    f"React to what the reward actually asks for, not to the "
+                    f"points.")
+        if user_input:
+            clipped = user_input[:160]
+            fallback += f" \"{clipped}\""
+            scenario += f" They wrote: \"{clipped}\""
+
+        await self._react(scenario=scenario, actor=user, fallback=fallback,
+                          priority="normal",
+                          note=f"{user} redeemed {title} ({cost} points)")
+        logger.info(f"Redemption announced: {user} -> {title} ({cost} points)")
+
     async def _react(self, scenario: str, actor: str, fallback: str,
                      priority: str = "normal", note: Optional[str] = None) -> None:
         """React in character to a channel event, then announce it.

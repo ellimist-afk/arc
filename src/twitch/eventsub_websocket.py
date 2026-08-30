@@ -443,6 +443,15 @@ class EventSubWebSocket:
                     'broadcaster_user_id': self.broadcaster_id
                 }
             },
+            # Channel point redemptions (needs channel:read:redemptions,
+            # which the auth script already requests)
+            {
+                'type': 'channel.channel_points_custom_reward_redemption.add',
+                'version': '1',
+                'condition': {
+                    'broadcaster_user_id': self.broadcaster_id
+                }
+            },
             # Category / title changes (no scope required)
             {
                 'type': 'channel.update',

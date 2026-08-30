@@ -601,6 +601,9 @@ class TalkBot:
             self.eventsub.on_event('channel.subscribe', self._on_subscribe)
             self.eventsub.on_event('channel.cheer', self._on_cheer)
             self.eventsub.on_event('channel.subscription.gift', self._on_gift_sub)
+            self.eventsub.on_event(
+                'channel.channel_points_custom_reward_redemption.add',
+                self._on_redemption)
             logger.info("Event announcer handlers registered")
 
             # Category/title awareness, stream lifecycle, recap, first-timer policy
@@ -2054,6 +2057,12 @@ class TalkBot:
             logger.info("Screen reaction suppressed by the guards; staying quiet")
             return
         logger.info(f"Screen reaction: {text[:80]}")
+        # Clip it too. Registry-tracked and not awaited: a Helix round trip
+        # must not delay the line that reacts to the moment.
+        if self.auto_clipper and getattr(self.auto_clipper, 'clip_notable_moments', True):
+            self.task_registry.create_task(
+                self._clip_notable_moment(what_happened),
+                name="clip_notable_moment")
         await self.response_coordinator.coordinate_response(
             chat_msg=text, audio_task=None, priority='normal',
             is_mention=False, is_voice=False)
@@ -2091,16 +2100,34 @@ class TalkBot:
                 logger.debug(f"Dead-air session summary unavailable: {e}")
         return context
 
-    async def _auto_clip(self) -> None:
-        """Burst-triggered clip. Cooldown was already started by the caller,
-        so a failure here (offline, missing clips:edit) cannot retry-spam
-        within the same burst."""
+    async def _auto_clip(self, reason: str = "chat hype") -> None:
+        """Automatic clip. The cooldown was already started by the caller, so
+        a failure here (offline, missing clips:edit) cannot retry-spam within
+        the same burst or moment."""
         if self.stream_info is not None and self.stream_info.is_live is False:
             logger.info("Auto-clip skipped: stream is offline")
             return
-        clip = await self._create_clip(requested_by="chat hype")
+        clip = await self._create_clip(requested_by=reason)
         if not clip:
             logger.warning("Auto-clip failed (see earlier Helix log line)")
+
+    async def _clip_notable_moment(self, what_happened: str) -> None:
+        """Clip a moment vision judged worth reacting to.
+
+        Chat bursts clip what the ROOM noticed; this clips what the SCREEN
+        did -- a death or a win nobody happened to type about. Shares the
+        AutoClipper cooldown so the two sources cannot double-clip one
+        moment, and stays silent about failures: the reaction still lands.
+        """
+        if not self.auto_clipper:
+            return
+        # should_clip(True) asks "is the cooldown clear"; the moment itself is
+        # the trigger, so there is no burst signal to weigh.
+        if not self.auto_clipper.should_clip(True):
+            logger.info("Notable moment not clipped: auto-clip cooling down")
+            return
+        self.auto_clipper.mark_triggered()
+        await self._auto_clip(reason=f"on screen: {what_happened[:60]}")
 
     async def _create_clip(self, requested_by: str = "") -> Optional[Dict[str, Any]]:
         """Clip the last ~30s. Tries the broadcaster token first (needs clips:edit), then the bot's."""
@@ -2521,6 +2548,11 @@ class TalkBot:
         """Handle cheer event."""
         if hasattr(self, 'event_announcer'):
             await self.event_announcer.handle_cheer(event)
+
+    async def _on_redemption(self, event: dict):
+        """Handle a channel point redemption."""
+        if hasattr(self, 'event_announcer'):
+            await self.event_announcer.handle_redemption(event)
 
     async def on_raid(self, event: dict):
         """Raid from EventSub. Same path as IRC; whichever arrives first

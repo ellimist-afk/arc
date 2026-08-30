@@ -27,6 +27,9 @@ logger = logging.getLogger(__name__)
 class AutoClipper:
     enabled: bool = True
     cooldown_s: float = 180.0
+    # Whether a vision-flagged moment (a death, a win) may also clip. Bursts
+    # clip what the room noticed; this clips what the screen did.
+    clip_notable_moments: bool = True
     clock: Callable[[], float] = field(default=time.monotonic, repr=False)
 
     _last_clip_at: float = field(default=0.0, init=False, repr=False)
@@ -44,6 +47,7 @@ class AutoClipper:
         kwargs = {
             "enabled": bool(cfg.get("enabled", True)),
             "cooldown_s": float(cfg.get("cooldown_s", 180.0)),
+            "clip_notable_moments": bool(cfg.get("clip_notable_moments", True)),
         }
         kwargs.update(overrides)
         return cls(**kwargs)
