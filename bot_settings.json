@@ -63,9 +63,10 @@
     "timeout_s": 8
   },
   "screen_awareness": {
-    "enabled": false,
-    "interval_seconds": 60,
+    "enabled": true,
+    "interval_seconds": 30,
     "max_edge": 768,
-    "_comment": "Sends periodic screenshots of the display to the OpenAI API. Set bbox [x1,y1,x2,y2] to watch only the game region."
+    "_comment": "Sends periodic screenshots of the display to the OpenAI API. Set bbox [x1,y1,x2,y2] to watch only the game region.",
+    "notable_cooldown_seconds": 120
   }
 }

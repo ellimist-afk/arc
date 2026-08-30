@@ -86,7 +86,14 @@ class MetricsCollector:
         # Alerts
         self.alerts: List[Dict[str, Any]] = []
         self.alert_thresholds = {
-            'response_time_p95': 500,  # ms
+            # Per-sample, NOT a p95 despite the old name: every response is
+            # compared against it. At 500ms it fired on literally every reply
+            # -- across 14 logged sessions the alert count equalled the reply
+            # count exactly -- which is alert fatigue, not monitoring.
+            # Measured on gpt-5.5: ~1.9s median, 1.3-3.3s normal, ~4s when the
+            # repetition guard regenerates. 6s is above all of that, so it
+            # only fires on a genuine stall (network backoff, a hung call).
+            'response_time_ms': 6000,
             'error_rate': 0.05,  # 5%
             'memory_mb': 500,  # MB
             'cpu_percent': 80,  # %
@@ -101,7 +108,7 @@ class MetricsCollector:
         )
         
         # Check for slow responses
-        if duration_ms > self.alert_thresholds['response_time_p95']:
+        if duration_ms > self.alert_thresholds['response_time_ms']:
             self._create_alert('slow_response', f"Response time {duration_ms:.0f}ms exceeds threshold")
     
     def record_message(self, message_type: str = 'chat'):

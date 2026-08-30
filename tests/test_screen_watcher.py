@@ -49,9 +49,20 @@ def test_it_is_off_unless_switched_on():
     assert ScreenWatcher().enabled is False, "screenshots leave the machine; opt in"
 
 
-def test_settings_default_to_disabled():
+def test_the_shipped_default_is_disabled():
+    """Tests the CODE default, not the live config: the user may legitimately
+    have vision switched on, and their preference is not a regression."""
+    assert ScreenWatcher.from_settings(
+        {'screen_awareness': {}}, openai_client=object(), model='m').enabled is False
+    assert ScreenWatcher.from_settings(
+        {}, openai_client=object(), model='m').enabled is False
+
+
+def test_the_live_config_still_parses():
+    """Whatever the user set, the block must remain readable."""
     cfg = json.loads(Path("bot_settings.json").read_text(encoding="utf-8"))
-    assert cfg['screen_awareness']['enabled'] is False
+    w = ScreenWatcher.from_settings(cfg, openai_client=object(), model='m')
+    assert isinstance(w.enabled, bool) and w.interval_s >= 15.0
 
 
 def test_the_interval_has_a_floor():
