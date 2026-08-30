@@ -761,6 +761,17 @@ class TalkBot:
             if self.response_coordinator:
                 self.response_coordinator.note_activity()
             
+            # A command is an instruction, not conversation. Its own handler
+            # already answered it; without this the co-host ALSO replies to
+            # "!persona roast" -- near certain when the mod had just been
+            # talking to it, since the follow-up window makes it a mention.
+            # Activity is noted above (someone is here) but the text never
+            # reaches the reply path or the context buffer, where "!ad 90"
+            # would become something to riff on.
+            if (message.get('text') or '').lstrip().startswith('!'):
+                logger.debug("Chat command; no conversational reply")
+                return
+
             # When this message arrived, for the freshness gate at delivery.
             received_at = datetime.now()
             # Check for a direct address and boost priority. The public bot
