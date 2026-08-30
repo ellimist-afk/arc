@@ -58,6 +58,8 @@ GUARDS = [
      "Twitch refused a reconnect handoff (we were too slow -- check loop stalls)"),
     ("screen_look", "Screen: ",
      "Looks at the screen that produced a fresh description"),
+    ("screen_offline", "Stream is offline; not looking",
+     "Vision looks skipped because the stream was down"),
     ("voice_drop", "Dropped low-confidence transcript",
      "Garbled mic audio discarded instead of answered"),
     ("ad_fallback", "Ad line timed out",

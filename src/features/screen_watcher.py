@@ -109,6 +109,10 @@ class ScreenWatcher:
         self.notable_cooldown_s = notable_cooldown_s
         # Async callable invoked as on_notable(what_happened). Set by the bot.
         self.on_notable = None
+        # Returns False when looking is pointless (stream offline). Set by the
+        # bot; without it every look proceeds. An offline stream would
+        # otherwise keep paying for screenshots and react into an empty room.
+        self.should_look = None
 
         self._description: Optional[str] = None
         self._seen_at: float = 0.0
@@ -119,6 +123,7 @@ class ScreenWatcher:
         self.looks = 0
         self.failures = 0
         self.unchanged_skips = 0
+        self.offline_skips = 0
         self.notables = 0
         self.notables_suppressed = 0
 
@@ -187,6 +192,7 @@ class ScreenWatcher:
     def stats(self) -> Dict[str, Any]:
         return {'looks': self.looks, 'failures': self.failures,
                 'unchanged_skips': self.unchanged_skips,
+                'offline_skips': self.offline_skips,
                 'notables': self.notables,
                 'notables_suppressed': self.notables_suppressed,
                 'has_description': bool(self.describe())}
@@ -229,6 +235,13 @@ class ScreenWatcher:
         """Take one look. Returns the new description, or None."""
         if not self.enabled or not self.openai_client:
             return None
+        try:
+            if self.should_look is not None and not self.should_look():
+                self.offline_skips += 1
+                logger.debug("Stream is offline; not looking at the screen")
+                return None
+        except Exception as e:  # noqa: BLE001 - a broken probe must not blind us
+            logger.debug(f"Liveness probe failed, looking anyway: {e}")
         # Capture is blocking GDI work: keep it off the event loop.
         grabbed = await asyncio.to_thread(self._grab)
         if not grabbed:
@@ -320,13 +333,18 @@ class ScreenWatcher:
 
     async def _loop(self) -> None:
         while True:
+            started = time.monotonic()
             try:
                 await self.look()
             except asyncio.CancelledError:
                 raise
             except Exception as e:  # noqa: BLE001
                 logger.debug(f"Screen watcher iteration failed: {e}")
-            await asyncio.sleep(self.interval_s)
+            # Sleep the REMAINDER of the interval. A full sleep after the work
+            # made the real period interval + call time + reaction time, so a
+            # 60s setting drifted toward 75s whenever the co-host reacted.
+            elapsed = time.monotonic() - started
+            await asyncio.sleep(max(1.0, self.interval_s - elapsed))
 
     def start(self, create_task) -> None:
         """Begin watching. `create_task` is the bot's TaskRegistry factory."""

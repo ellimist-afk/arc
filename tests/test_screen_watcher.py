@@ -202,9 +202,14 @@ def test_the_watcher_is_stopped_on_shutdown():
 
 
 def test_vision_failure_never_breaks_startup():
+    """Anchored on the block, not a character count, so adding a line to the
+    setup does not silently stop this from checking anything."""
     bot = Path("src/bot/bot.py").read_text(encoding="utf-8")
-    setup = bot.split("from features.screen_watcher import ScreenWatcher")[1][:800]
-    assert "except Exception" in setup and "self.screen_watcher = None" in setup
+    after_import = bot.split("from features.screen_watcher import ScreenWatcher")[1]
+    handler = after_import.index("self.screen_watcher = None")
+    setup = after_import[:handler]
+    assert "except Exception" in setup, "a vision failure must be caught"
+    assert "logger.warning" in setup, "and reported, not swallowed"
 
 
 async def test_stop_is_safe_when_never_started():
@@ -480,3 +485,63 @@ async def test_a_slow_poll_still_withholds_ancient_news():
     w._seen_at -= 301
     assert w.describe() is None
     assert w.describe_with_duration() is None
+
+
+# ------------------------------------- never watch a stream nobody is on
+
+async def test_an_offline_stream_is_not_looked_at():
+    """Vision costs money per look and the reaction talks to chat. Both are
+    pointless when the stream is down -- the same rule dead air already uses."""
+    w = _watcher()
+    w.should_look = lambda: False
+    assert await w.look() is None
+    assert w.seen == {}, "no screenshot is described while offline"
+    assert w.offline_skips == 1 and w.looks == 0
+
+
+async def test_looking_resumes_when_the_stream_returns():
+    live = {'on': False}
+    w = _watcher()
+    w.should_look = lambda: live['on']
+    await w.look()
+    live['on'] = True
+    assert await w.look() is not None
+    assert w.looks == 1 and w.offline_skips == 1
+
+
+async def test_a_broken_liveness_probe_does_not_blind_the_watcher():
+    w = _watcher()
+
+    def boom():
+        raise RuntimeError("stream_info exploded")
+    w.should_look = boom
+    assert await w.look() is not None, "an unknown state must not stop the stream"
+
+
+async def test_no_probe_means_always_look():
+    w = _watcher()
+    assert w.should_look is None
+    assert await w.look() is not None
+
+
+def test_the_bot_wires_the_same_liveness_rule_as_dead_air():
+    bot = Path("src/bot/bot.py").read_text(encoding="utf-8")
+    assert "self.screen_watcher.should_look = lambda: (" in bot
+    block = bot.split("self.screen_watcher.should_look")[1][:200]
+    assert "is_live is not False" in block, "unknown liveness must still look"
+
+
+# --------------------------------------------- the poll period stays steady
+
+def test_the_loop_sleeps_the_remainder_not_a_full_interval():
+    """A full sleep after the work made the real period interval + call time
+    + reaction time: a 60s setting drifted toward 75s whenever it reacted."""
+    body = SRC.split("async def _loop")[1].split("def start")[0]
+    assert "started = time.monotonic()" in body
+    assert "self.interval_s - elapsed" in body
+
+
+def test_the_period_never_collapses_to_a_busy_loop():
+    """If a look somehow outruns the interval, the floor still spaces them."""
+    body = SRC.split("async def _loop")[1].split("def start")[0]
+    assert "max(1.0," in body

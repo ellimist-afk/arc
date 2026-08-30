@@ -1817,6 +1817,10 @@ class TalkBot:
                 getattr(self.personality_engine, 'llm_model', 'gpt-5.5'),
             )
             self.screen_watcher.on_notable = self._react_to_screen
+            # Same liveness rule as dead air: never look at, or talk
+            # about, a screen nobody is watching.
+            self.screen_watcher.should_look = lambda: (
+                self.stream_info is None or self.stream_info.is_live is not False)
             self.screen_watcher.start(self.task_registry.create_task)
             if self.context_builder:
                 self.context_builder.screen_watcher = self.screen_watcher
