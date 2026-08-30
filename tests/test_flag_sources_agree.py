@@ -50,7 +50,6 @@ def test_a_missing_file_is_not_fatal():
 
 def _resolve(flags, env, attr):
     """The precedence the loader implements, exercised directly."""
-    import os
     features = FeatureFlags()
     raw = env.get(attr_env(attr))
     if raw is not None:
