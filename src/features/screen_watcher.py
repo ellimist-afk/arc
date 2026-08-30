@@ -42,6 +42,8 @@ class ScreenWatcher:
         bbox: Optional[Tuple[int, int, int, int]] = None,
         max_edge: int = 768,
         timeout_s: float = 12.0,
+        change_threshold: float = 6.0,
+        scene_threshold: float = 18.0,
     ):
         self.openai_client = openai_client
         self.model = model
@@ -50,12 +52,19 @@ class ScreenWatcher:
         self.bbox = bbox
         self.max_edge = max_edge
         self.timeout_s = timeout_s
+        # Below this mean pixel difference the screen counts as unchanged and
+        # the look is free; above scene_threshold it is a different scene.
+        self.change_threshold = change_threshold
+        self.scene_threshold = scene_threshold
 
         self._description: Optional[str] = None
         self._seen_at: float = 0.0
+        self._signature: Optional[bytes] = None
+        self._scene_since: float = 0.0
         self._task = None
         self.looks = 0
         self.failures = 0
+        self.unchanged_skips = 0
 
     # ------------------------------------------------------------- config
 
@@ -92,14 +101,40 @@ class ScreenWatcher:
     def age_s(self) -> Optional[float]:
         return None if not self._seen_at else time.monotonic() - self._seen_at
 
+    def scene_age_s(self) -> Optional[float]:
+        """How long the screen has looked essentially like this."""
+        if not self._scene_since or not self.describe():
+            return None
+        return time.monotonic() - self._scene_since
+
+    def describe_with_duration(self) -> Optional[str]:
+        """The description, noting how long it has been true.
+
+        "still on this after 11 minutes" is the difference between the
+        co-host reading a screenshot and noticing the streamer is stuck.
+        """
+        seen = self.describe()
+        if not seen:
+            return None
+        held = self.scene_age_s() or 0
+        if held >= 300:
+            return f"{seen} (unchanged for about {round(held / 60)} minutes)"
+        return seen
+
     def stats(self) -> Dict[str, Any]:
         return {'looks': self.looks, 'failures': self.failures,
+                'unchanged_skips': self.unchanged_skips,
                 'has_description': bool(self.describe())}
 
     # ------------------------------------------------------------ capture
 
-    def _grab_jpeg_b64(self) -> Optional[str]:
-        """Screenshot -> downscaled JPEG -> base64. Runs in a worker thread."""
+    def _grab(self) -> Optional[Tuple[str, bytes]]:
+        """Screenshot -> (base64 JPEG, signature). Runs in a worker thread.
+
+        The signature is a 32x32 greyscale thumbnail: comparing two of them
+        is enough to tell "the screen is basically the same" from "something
+        happened", which decides whether a look is worth an API call.
+        """
         try:
             from PIL import ImageGrab
         except ImportError:
@@ -109,23 +144,41 @@ class ScreenWatcher:
         try:
             img = ImageGrab.grab(bbox=self.bbox) if self.bbox else ImageGrab.grab()
             img = img.convert("RGB")
+            signature = img.convert("L").resize((32, 32)).tobytes()
             img.thumbnail((self.max_edge, self.max_edge))
             buf = io.BytesIO()
             img.save(buf, format="JPEG", quality=70)
-            return base64.b64encode(buf.getvalue()).decode()
+            return base64.b64encode(buf.getvalue()).decode(), signature
         except Exception as e:  # noqa: BLE001 - a failed look must never matter
             logger.debug(f"Screen capture failed: {e}")
             return None
+
+    @staticmethod
+    def _difference(a: Optional[bytes], b: Optional[bytes]) -> float:
+        """Mean per-pixel difference of two signatures, 0-255."""
+        if not a or not b or len(a) != len(b):
+            return 255.0
+        return sum(abs(x - y) for x, y in zip(a, b)) / len(a)
 
     async def look(self) -> Optional[str]:
         """Take one look. Returns the new description, or None."""
         if not self.enabled or not self.openai_client:
             return None
         # Capture is blocking GDI work: keep it off the event loop.
-        b64 = await asyncio.to_thread(self._grab_jpeg_b64)
-        if not b64:
+        grabbed = await asyncio.to_thread(self._grab)
+        if not grabbed:
             self.failures += 1
             return None
+        b64, signature = grabbed
+
+        # Nothing moved since the last look: the cached description is still
+        # true, so keep it fresh instead of paying for an identical answer.
+        if (self._description
+                and self._difference(signature, self._signature) < self.change_threshold):
+            self._seen_at = time.monotonic()
+            self.unchanged_skips += 1
+            logger.debug("Screen unchanged; keeping the current description")
+            return self._description
 
         params: Dict[str, Any] = {"max_completion_tokens": 80}
         model = self.model or ''
@@ -157,8 +210,14 @@ class ScreenWatcher:
         if not text:
             self.failures += 1
             return None
+        now = time.monotonic()
+        # A materially different screen starts a new scene; that clock is how
+        # the co-host can notice the streamer has been stuck on one thing.
+        if self._difference(signature, self._signature) >= self.scene_threshold:
+            self._scene_since = now
         self._description = text
-        self._seen_at = time.monotonic()
+        self._signature = signature
+        self._seen_at = now
         self.looks += 1
         logger.info(f"Screen: {text[:110]}")
         return text

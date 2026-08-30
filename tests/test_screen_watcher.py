@@ -32,9 +32,15 @@ def _watcher(text="Overwatch, on the death screen.", **kw):
                     seen.update(kwargs)
                     return _reply(text)
     w = ScreenWatcher(openai_client=Client(), enabled=True, **kw)
-    w._grab_jpeg_b64 = lambda: "ZmFrZQ=="
+    w.frame = bytes(1024)                      # a flat grey screen
+    w._grab = lambda: ("ZmFrZQ==", w.frame)
     w.seen = seen
     return w
+
+
+def _frame(value):
+    """A uniform signature, so differences are exactly predictable."""
+    return bytes([value]) * 1024
 
 
 # --------------------------------------------------------------- defaults
@@ -102,6 +108,7 @@ async def test_a_failed_look_keeps_the_previous_description():
                 async def create(**kwargs):
                     raise RuntimeError("vision api down")
     w.openai_client = Broken()
+    w.frame = bytes([200]) * 1024        # force a real call: the scene changed
     assert await w.look() is None
     assert w.describe() == "Overwatch, on the death screen.", "stale beats nothing"
     assert w.failures == 1
@@ -130,7 +137,7 @@ async def test_an_empty_reply_is_a_failure_not_a_description():
 
 async def test_a_failed_capture_never_calls_the_api():
     w = _watcher()
-    w._grab_jpeg_b64 = lambda: None
+    w._grab = lambda: None
     assert await w.look() is None
     assert w.seen == {}, "no screenshot, no API call"
 
@@ -161,7 +168,7 @@ def test_describe_is_safe_before_the_first_look():
 # ------------------------------------------------ never blocks the reply
 
 def test_capture_runs_off_the_event_loop():
-    assert "asyncio.to_thread(self._grab_jpeg_b64)" in SRC, \
+    assert "asyncio.to_thread(self._grab)" in SRC, \
         "ImageGrab is blocking GDI work; it must not run on the loop"
 
 
@@ -206,3 +213,95 @@ async def test_stop_is_safe_when_never_started():
 
 def test_privacy_is_documented():
     assert "PRIVACY" in SRC and "OpenAI API" in SRC
+
+
+# ------------------------------------- an unchanged screen is a free look
+
+async def test_an_unchanged_screen_costs_no_api_call():
+    w = _watcher()
+    await w.look()
+    calls_before = dict(w.seen)
+    w.seen.clear()
+    assert await w.look() is not None, "the cached description is still true"
+    assert w.seen == {}, "an identical screen must not be re-described"
+    assert w.unchanged_skips == 1 and w.looks == 1
+    assert calls_before, "the first look did call the API"
+
+
+async def test_an_unchanged_screen_stays_fresh():
+    """Skipping the call must not let the description rot into staleness."""
+    w = _watcher(interval_s=15)
+    await w.look()
+    w._seen_at -= 40                      # nearly stale
+    await w.look()                        # unchanged -> refreshed, no call
+    assert w.describe() is not None
+
+
+async def test_a_changed_screen_is_re_described():
+    w = _watcher()
+    await w.look()
+    w.seen.clear()
+    w.frame = _frame(200)                 # the scene changed completely
+    assert await w.look() is not None
+    assert w.seen, "a different screen must be sent to the model"
+    assert w.looks == 2
+
+
+async def test_the_threshold_separates_noise_from_change():
+    w = _watcher()
+    w.frame = _frame(100)
+    await w.look()
+    w.seen.clear()
+    w.frame = _frame(103)                 # diff 3 -> below change_threshold 6
+    await w.look()
+    assert w.seen == {}, "small movement is not a new scene"
+    w.frame = _frame(140)                 # diff 40 -> clearly different
+    await w.look()
+    assert w.seen
+
+
+def test_difference_math():
+    assert ScreenWatcher._difference(_frame(10), _frame(10)) == 0
+    assert ScreenWatcher._difference(_frame(10), _frame(30)) == 20
+    assert ScreenWatcher._difference(None, _frame(10)) == 255.0
+    assert ScreenWatcher._difference(b'ab', b'abc') == 255.0, "size mismatch is total"
+
+
+# --------------------------------------------------------- the scene clock
+
+async def test_a_held_scene_is_reported_with_its_duration():
+    w = _watcher()
+    await w.look()
+    w._scene_since -= 700                 # ~12 minutes on this screen
+    out = w.describe_with_duration()
+    assert "unchanged for about 12 minutes" in out
+
+
+async def test_a_fresh_scene_carries_no_duration_note():
+    w = _watcher()
+    await w.look()
+    assert w.describe_with_duration() == w.describe()
+
+
+async def test_a_new_scene_restarts_the_clock():
+    w = _watcher()
+    await w.look()
+    w._scene_since -= 700
+    w.frame = _frame(240)                 # a different scene entirely
+    await w.look()
+    assert (w.scene_age_s() or 0) < 5, "a new scene starts a new clock"
+    assert "unchanged for" not in (w.describe_with_duration() or "")
+
+
+async def test_no_duration_without_a_description():
+    w = ScreenWatcher()
+    assert w.describe_with_duration() is None
+    assert w.scene_age_s() is None
+
+
+def test_the_contexts_use_the_duration_aware_view():
+    bot = Path("src/bot/bot.py").read_text(encoding="utf-8")
+    builder = Path("src/bot/optimized_context_builder.py").read_text(encoding="utf-8")
+    assert "watcher.describe_with_duration()" in bot
+    assert "self.screen_watcher.describe_with_duration()" in builder
+

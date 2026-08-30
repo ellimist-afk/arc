@@ -56,6 +56,8 @@ GUARDS = [
      "Windows where follow/sub/cheer events could not reach the bot"),
     ("reconnect_rejected", "reconnect handoff REJECTED",
      "Twitch refused a reconnect handoff (we were too slow -- check loop stalls)"),
+    ("screen_look", "Screen: ",
+     "Looks at the screen that produced a fresh description"),
     ("voice_drop", "Dropped low-confidence transcript",
      "Garbled mic audio discarded instead of answered"),
     ("ad_fallback", "Ad line timed out",

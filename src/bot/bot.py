@@ -1988,7 +1988,7 @@ class TalkBot:
         watcher = getattr(self, 'screen_watcher', None)
         if watcher:
             try:
-                seen = watcher.describe()
+                seen = watcher.describe_with_duration()
                 if seen:
                     context['on_screen'] = seen
             except Exception as e:  # noqa: BLE001

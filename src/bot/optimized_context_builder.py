@@ -329,7 +329,7 @@ class OptimizedContextBuilder:
         if not self.screen_watcher:
             return ""
         try:
-            return self.screen_watcher.describe() or ""
+            return self.screen_watcher.describe_with_duration() or ""
         except Exception as e:  # noqa: BLE001
             logger.debug(f"Screen view unavailable: {e}")
             return ""
