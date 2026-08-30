@@ -33,8 +33,14 @@ except Exception:  # python-dotenv optional; plain env vars still work
 CLIENT_ID = os.getenv("TWITCH_CLIENT_ID", "").strip()
 CLIENT_SECRET = os.getenv("TWITCH_CLIENT_SECRET", "").strip()
 
-REDIRECT_URI = "http://localhost:3000"
-PORT = 3000
+# Port 3000 is a popular default (StreamyStats and friends live there too).
+# Override with --port / TWITCH_OAUTH_PORT, but the resulting redirect URI
+# must ALSO be registered in the Twitch app console -- Twitch matches it
+# exactly and rejects anything it has not seen.
+PORT = int(os.getenv("TWITCH_OAUTH_PORT", "3000"))
+if "--port" in sys.argv:
+    PORT = int(sys.argv[sys.argv.index("--port") + 1])
+REDIRECT_URI = f"http://localhost:{PORT}"
 
 # Real Twitch scopes. Verified against official docs.
 # channel.raid EventSub does NOT require a scope - raids just work.
