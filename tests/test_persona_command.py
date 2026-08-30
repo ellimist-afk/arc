@@ -227,3 +227,57 @@ def test_the_bot_registers_the_handler():
     assert "self.twitch_client.on_message(self.persona_command.handle)" in bot
     setup = bot.split("def _setup_persona_command")[1].split("async def _handle_ad_commands")[0]
     assert "except Exception" in setup, "a chat command must never break startup"
+
+
+# --------------------------------------- the settings write must be atomic
+
+def test_the_write_is_atomic(cmd):
+    """write_text() truncates first. An interruption there would leave
+    bot_settings.json empty and take every setting with it -- and this write
+    fires from chat, at arbitrary moments, on a file the health monitor is
+    concurrently reading."""
+    src = Path("src/features/persona_command.py").read_text(encoding="utf-8")
+    body = src.split("def _persist")[1].split("\n    # ---")[0]
+    assert "os.replace(" in body, "rename, don't truncate-in-place"
+    assert ".tmp" in body
+    assert "path.write_text(" not in body
+
+
+def test_the_payload_is_flushed_before_the_rename(cmd):
+    src = Path("src/features/persona_command.py").read_text(encoding="utf-8")
+    body = src.split("def _persist")[1].split("\n    # ---")[0]
+    assert "f.flush()" in body and "os.fsync(" in body
+    assert body.index("os.fsync(") < body.index("os.replace("), \
+        "an unflushed rename can still publish a short file"
+
+
+async def test_a_failed_write_leaves_the_original_intact(cmd):
+    """The temp file absorbs the failure; the real settings never move."""
+    before = cmd.settings_file.read_text(encoding="utf-8")
+    cmd.settings_path = str(cmd.settings_file.parent / "nope" / "s.json")
+    assert cmd._persist("roast") is False
+    assert cmd.settings_file.read_text(encoding="utf-8") == before
+
+
+async def test_no_temp_file_is_left_behind_on_success(cmd):
+    await cmd.handle(msg("!persona roast", mod=True))
+    leftovers = list(cmd.settings_file.parent.glob("*.tmp"))
+    assert leftovers == [], leftovers
+
+
+async def test_no_temp_file_is_left_behind_on_failure(cmd, monkeypatch):
+    import os as _os
+
+    def boom(*a, **k):
+        raise OSError("rename failed")
+    monkeypatch.setattr(_os, "replace", boom)
+    assert cmd._persist("roast") is False
+    leftovers = list(cmd.settings_file.parent.glob("*.tmp"))
+    assert leftovers == [], leftovers
+
+
+def test_the_temp_file_is_a_sibling(cmd):
+    """A temp on another filesystem would make the rename non-atomic."""
+    src = Path("src/features/persona_command.py").read_text(encoding="utf-8")
+    body = src.split("def _persist")[1].split("\n    # ---")[0]
+    assert "path.with_name(" in body, "same directory, so the rename stays atomic"

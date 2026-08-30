@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -97,10 +98,29 @@ class PersonaCommand:
             path = Path(self.settings_path)
             data = json.loads(path.read_text(encoding="utf-8"))
             data.setdefault("personality", {})["preset"] = name
-            path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+            payload = json.dumps(data, indent=2) + "\n"
+
+            # Write a sibling then rename. write_text() truncates first, so an
+            # interruption there would leave bot_settings.json empty and take
+            # every setting with it -- and this write is triggered from chat,
+            # at arbitrary moments, on a file the health monitor is watching.
+            # os.replace is atomic on Windows and POSIX alike.
+            tmp = path.with_name(path.name + ".tmp")
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(payload)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, path)
             return True
         except Exception as e:  # noqa: BLE001
             logger.warning(f"Could not persist persona {name!r}: {e}")
+            try:
+                leftover = Path(self.settings_path).with_name(
+                    Path(self.settings_path).name + ".tmp")
+                if leftover.exists():
+                    leftover.unlink()
+            except OSError:
+                pass
             return False
 
     # ------------------------------------------------------------ handling
