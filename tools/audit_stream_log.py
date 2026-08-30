@@ -64,6 +64,8 @@ GUARDS = [
      "Lines withheld because the co-host was muted"),
     ("persona_switch", "Persona switched to",
      "Persona changes requested from chat"),
+    ("redemption_held", "Redemption not announced (cooldown",
+     "Channel point redemptions held by the reaction cooldown"),
     ("voice_drop", "Dropped low-confidence transcript",
      "Garbled mic audio discarded instead of answered"),
     ("ad_fallback", "Ad line timed out",

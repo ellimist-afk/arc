@@ -177,3 +177,83 @@ def test_the_context_carries_it_on_both_paths():
 def test_the_prompt_asks_for_a_passing_mention_not_a_ceremony():
     assert "has not been around for" in ENGINE
     assert "never as a formal welcome" in ENGINE
+
+
+# ------------------- redemptions are the one event a viewer can spam
+
+def _announcer(cooldown=60):
+    from features.event_announcer import EventAnnouncer
+    a = EventAnnouncer.__new__(EventAnnouncer)
+    a.enabled = True
+    a.last_redemption_time = None
+    a.redemption_cooldown = cooldown
+    a.redemptions_suppressed = 0
+    a.reacted = []
+
+    async def fake_react(scenario, actor, fallback, priority="normal", note=None):
+        a.reacted.append((actor, scenario))
+    a._react = fake_react
+    return a
+
+
+def _redemption(user="anakayzee", title="Hydrate!", cost=50, user_input=""):
+    return {"user_name": user, "user_input": user_input,
+            "reward": {"title": title, "cost": cost}}
+
+
+async def test_a_redemption_is_reacted_to():
+    a = _announcer()
+    await a.handle_redemption(_redemption())
+    assert len(a.reacted) == 1
+    assert "Hydrate!" in a.reacted[0][1]
+
+
+async def test_rapid_redemptions_are_capped():
+    """Points accrue just by watching, so a cheap reward can be redeemed
+    several times a minute -- uncapped, the co-host narrates every one."""
+    a = _announcer()
+    for _ in range(5):
+        await a.handle_redemption(_redemption())
+    assert len(a.reacted) == 1
+    assert a.redemptions_suppressed == 4
+
+
+async def test_the_cooldown_expires():
+    from datetime import timedelta
+    a = _announcer()
+    await a.handle_redemption(_redemption())
+    a.last_redemption_time -= timedelta(seconds=61)
+    await a.handle_redemption(_redemption())
+    assert len(a.reacted) == 2
+
+
+async def test_the_cooldown_is_checked_before_any_llm_work():
+    """A suppressed redemption must cost nothing."""
+    a = _announcer()
+    await a.handle_redemption(_redemption())
+    a._react = None            # any call would now raise
+    await a.handle_redemption(_redemption())
+    assert a.redemptions_suppressed == 1
+
+
+async def test_a_disabled_announcer_ignores_redemptions():
+    a = _announcer()
+    a.enabled = False
+    await a.handle_redemption(_redemption())
+    assert a.reacted == []
+
+
+async def test_paid_events_stay_uncapped():
+    """Subs and cheers cost real money and are rare; only the free-to-fire
+    event gets a floor."""
+    ann = Path("src/features/event_announcer.py").read_text(encoding="utf-8")
+    for handler in ("handle_subscribe", "handle_cheer"):
+        if f"async def {handler}" not in ann:
+            continue
+        body = ann.split(f"async def {handler}")[1].split("\n    async def ")[0]
+        assert "redemption_cooldown" not in body
+
+
+async def test_the_suppression_count_is_reported():
+    ann = Path("src/features/event_announcer.py").read_text(encoding="utf-8")
+    assert "'redemptions_suppressed': self.redemptions_suppressed," in ann

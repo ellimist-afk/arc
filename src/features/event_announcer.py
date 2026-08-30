@@ -39,6 +39,14 @@ class EventAnnouncer:
         # Cooldowns to prevent spam
         self.last_follow_time: Optional[datetime] = None
         self.follow_cooldown = 10  # seconds between follow announcements
+        # Redemptions are the one event a viewer can fire on a whim: points
+        # accrue just by watching, so a cheap reward can be redeemed several
+        # times a minute. Subs and cheers cost real money and are rare, so
+        # they stay uncapped; this one needs a floor or the co-host narrates
+        # every hydrate reminder.
+        self.last_redemption_time: Optional[datetime] = None
+        self.redemption_cooldown = 60  # seconds between redemption reactions
+        self.redemptions_suppressed = 0
         self.follow_queue = []  # Queue follows to batch announce
         # Recipients seen via channel.subscribe(is_gift) since the last gift
         # event; drained when the gift bomb itself is announced.
@@ -290,6 +298,17 @@ class EventAnnouncer:
 
         user = event.get('user_name') or event.get('user_login') or 'Someone'
         reward = (event.get('reward') or {})
+
+        now = datetime.now()
+        if self.last_redemption_time:
+            elapsed = (now - self.last_redemption_time).total_seconds()
+            if elapsed < self.redemption_cooldown:
+                self.redemptions_suppressed += 1
+                logger.info(
+                    f"Redemption not announced (cooldown, {elapsed:.0f}s of "
+                    f"{self.redemption_cooldown}s): {user}")
+                return
+        self.last_redemption_time = now
         title = (reward.get('title') or '').strip() or 'a reward'
         try:
             cost = max(0, int(reward.get('cost') or 0))
@@ -402,6 +421,7 @@ class EventAnnouncer:
             'llm_reactions': self.llm_reactions,
             'reactions_generated': self.reactions_generated,
             'reactions_fell_back': self.reactions_fell_back,
+            'redemptions_suppressed': self.redemptions_suppressed,
         }
 
     async def _announce(self, message: str, priority: str = "normal"):
