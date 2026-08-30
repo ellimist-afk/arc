@@ -640,10 +640,15 @@ class TalkBot:
                     whisper_model=self.config.get('WHISPER_MODEL', 'small.en'),
                 )
                 
-                # Initialize voice command system
-                from components.voice.voice_commands import VoiceCommandSystem
-                self.voice_commands = VoiceCommandSystem(bot=self)
-                logger.info("Voice command system initialized")
+                # Initialize voice command system. The flag was declared and
+                # never read, so turning it off still left "hey bot, mute"
+                # able to hijack the stream.
+                if feature_flags.get('voice_commands', True):
+                    from components.voice.voice_commands import VoiceCommandSystem
+                    self.voice_commands = VoiceCommandSystem(bot=self)
+                    logger.info("Voice command system initialized")
+                else:
+                    logger.info("Voice commands disabled by feature flag")
                 
                 # Set up voice callback to handle recognized text
                 self.voice_recognition.on_text_recognized = self._handle_voice_input
