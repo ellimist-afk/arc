@@ -122,9 +122,12 @@ def test_engine_marks_fillers_and_interjections_as_fresh_topic():
     from pathlib import Path
     src = Path("src/personality/personality_engine.py").read_text(encoding="utf-8")
     assert 'fresh_topic = is_filler or not is_mention' in src
-    assert src.count("fresh_topic=fresh_topic") == 2, \
+    # Scoped to the guard function: counting file-wide also caught the
+    # streamed path's own call and broke the moment that was added.
+    guard = src.split("async def _enforce_variety")[1].split("\n    async def ")[0]
+    assert guard.count("fresh_topic=fresh_topic") == 2, \
         "both the first draft and the retry must use the same mode"
-    assert src.count("topic_exempt=topic_exempt") == 2
+    assert guard.count("topic_exempt=topic_exempt") == 2
 
 
 # ------------------------------------- interjections re-running their own bit

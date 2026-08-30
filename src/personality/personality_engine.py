@@ -1046,14 +1046,21 @@ class PersonalityEngine:
                     return
                 logger.warning(f"Streaming completion failed before first token, retrying: {e}")
 
-    def _gate_sentence(self, sentence: str, first: bool) -> Tuple[bool, str]:
+    def _gate_sentence(self, sentence: str, first: bool,
+                       fresh_topic: bool = False,
+                       topic_exempt: Optional[set] = None) -> Tuple[bool, str]:
         """Per-sentence repetition check. The first sentence gets the full
-        guard (opener cooldown, catchphrases, similarity); later ones only
-        similarity — 'opener' and 'catchphrase' are properties of a reply's
-        start, not of its third sentence."""
+        guard (opener cooldown, catchphrases, similarity, topic retell);
+        later ones only similarity — 'opener', 'catchphrase' and 'whose topic
+        is this' are properties of a reply's start, not of its third
+        sentence, and a later sentence naturally shares the topic of the
+        first."""
         if not self.repetition_guard_enabled:
             return True, "ok"
-        verdict = self.repetition_guard.check(sentence)
+        verdict = self.repetition_guard.check(
+            sentence,
+            fresh_topic=fresh_topic and first,
+            topic_exempt=topic_exempt)
         if first:
             return verdict.ok, verdict.reason
         ok = verdict.score < self.repetition_guard.similarity_threshold
@@ -1090,7 +1097,13 @@ class PersonalityEngine:
             prompt = self._build_dead_air_prompt(context.get('time_since_activity', 0.0))
         else:
             prompt = self._build_personality_prompt()
-        if message != "[DEAD_AIR_FILLER]" and not self._should_respond(message, is_mention):
+        # Same bypass as the blocking path: a line the bot already decided is
+        # worth saying (a vision-flagged moment) must not be thrown away by
+        # the chattiness dice. Divergence here meant the streamed path
+        # discarded those moments 97% of the time.
+        if (message != "[DEAD_AIR_FILLER]"
+                and not (context or {}).get('always_respond')
+                and not self._should_respond(message, is_mention)):
             return None
 
         reply = StreamedReply(personality=self.current_preset.value)
@@ -1119,6 +1132,16 @@ class PersonalityEngine:
         min_sentence_chars: int,
         speech_filter: Optional[Callable[[str], str]],
     ) -> AsyncIterator[str]:
+        # Mirror the blocking path's topic rules (see _enforce_variety):
+        # without this the streamed path never ran the topic-retell check at
+        # all, so a streamed reply could re-tell a bit the blocking path
+        # would have caught.
+        is_filler = message == "[DEAD_AIR_FILLER]"
+        fresh_topic = is_filler or not is_mention
+        topic_exempt = (
+            self.repetition_guard.topic_words(message)
+            if fresh_topic and not is_filler else None
+        )
         start_time = datetime.now()
         splitter = SentenceSplitter(min_chars=min_sentence_chars)
         spoken: List[str] = []       # what was actually yielded (chat text source)
@@ -1146,7 +1169,7 @@ class PersonalityEngine:
                     sentence = self._clean_streamed_sentence(sentence, first)
                     if not sentence:
                         continue
-                    ok, reason = self._gate_sentence(sentence, first)
+                    ok, reason = self._gate_sentence(sentence, first, fresh_topic, topic_exempt)
                     if first and not ok:
                         # No audio exists yet: abandon the stream and let the
                         # blocking path do its regenerate-with-hint dance.
@@ -1170,7 +1193,7 @@ class PersonalityEngine:
             if tail:
                 tail = self._clean_streamed_sentence(tail, first)
             if tail:
-                ok, reason = self._gate_sentence(tail, first)
+                ok, reason = self._gate_sentence(tail, first, fresh_topic, topic_exempt)
                 if ok or first:
                     # A first-and-only sentence that fails here has nothing to
                     # fall back to without speaking twice; deliver it.
