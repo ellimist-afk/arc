@@ -170,6 +170,14 @@ class TalkBot:
         # question is still wanted.
         self.stale_reply_s = 45.0
         self.stale_mention_reply_s = 120.0
+        # One spoken question often transcribes as TWO utterances that both
+        # contain the wake word ("...hey bot is that true" / "hey bot can you
+        # look up..."), because Whisper chunks continuing speech. Each chunk
+        # triggered its own answer -- the same question answered twice,
+        # seconds apart. After a voice reply, further voice TRIGGERS are held
+        # for this long; voice COMMANDS (mute, skip) are not affected.
+        self.last_voice_reply_at = None
+        self.voice_retrigger_gap_s = 12.0
         # Raids arrive over IRC and EventSub both; keyed by (raider, viewers)
         self._recent_raid_keys: Dict[Any, float] = {}
         self._raid_dedup_window_s = 60.0
@@ -1354,6 +1362,7 @@ class TalkBot:
             response_time = (time.perf_counter() - start_time) * 1000
             self.response_times.append(response_time)
             logger.info(f"Voice response time: {response_time:.2f}ms")
+            self.last_voice_reply_at = datetime.now()
                     
         except Exception as e:
             logger.error(f"Error handling voice message: {e}", exc_info=True)
@@ -1637,6 +1646,17 @@ class TalkBot:
             if self.muted:
                 logger.debug("Bot is muted, ignoring voice input")
                 return
+
+            # A trigger right after a voice reply is almost always the tail
+            # of the SAME question, re-chunked by the recognizer with the
+            # wake word repeated. One question, one answer.
+            last_reply = getattr(self, 'last_voice_reply_at', None)
+            if last_reply is not None:
+                gap = (datetime.now() - last_reply).total_seconds()
+                if gap < getattr(self, 'voice_retrigger_gap_s', 12.0):
+                    logger.info(f"Voice trigger held: answered {gap:.0f}s ago "
+                                f"(same question re-chunked)")
+                    return
             
             # Track this input (already normalized above)
             self.recent_voice_texts.append(text_lower)
