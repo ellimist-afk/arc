@@ -1964,7 +1964,11 @@ class TalkBot:
                                         f"{ev['reactions_fell_back']} from templates")
         if self.auto_clipper:
             ac = self.auto_clipper.stats()
-            extra["Auto-clips"] = f"{ac['clips_triggered']} ({ac['bursts_suppressed']} burst signals held by cooldown)"
+            extra["Auto-clips"] = (
+                f"{ac['clips_triggered']} "
+                f"({ac.get('moment_clips', 0)} from screen moments; "
+                f"{ac['bursts_suppressed']} burst signals and "
+                f"{ac.get('moments_suppressed', 0)} moments held by cooldown)")
 
         path = self.stream_recap.write(summary, extra)
         if path:
@@ -2123,10 +2127,10 @@ class TalkBot:
             return
         # should_clip(True) asks "is the cooldown clear"; the moment itself is
         # the trigger, so there is no burst signal to weigh.
-        if not self.auto_clipper.should_clip(True):
-            logger.info("Notable moment not clipped: auto-clip cooling down")
+        if not self.auto_clipper.should_clip_moment():
+            logger.info("Notable moment not clipped: auto-clip off or cooling down")
             return
-        self.auto_clipper.mark_triggered()
+        self.auto_clipper.mark_triggered(source="moment")
         await self._auto_clip(reason=f"on screen: {what_happened[:60]}")
 
     async def _create_clip(self, requested_by: str = "") -> Optional[Dict[str, Any]]:

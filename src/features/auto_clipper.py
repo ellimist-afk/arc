@@ -35,6 +35,9 @@ class AutoClipper:
     _last_clip_at: float = field(default=0.0, init=False, repr=False)
     clips_triggered: int = field(default=0, init=False)
     bursts_suppressed: int = field(default=0, init=False)
+    # Counted apart from bursts so the recap can say which source was held.
+    moment_clips: int = field(default=0, init=False)
+    moments_suppressed: int = field(default=0, init=False)
 
     @classmethod
     def from_settings(cls, path: str = "bot_settings.json", **overrides: Any) -> "AutoClipper":
@@ -53,25 +56,47 @@ class AutoClipper:
         return cls(**kwargs)
 
     def should_clip(self, is_burst: bool) -> bool:
-        """True when a burst should become a clip right now."""
+        """True when a chat burst should become a clip right now."""
         if not self.enabled or not is_burst:
             return False
-        now = self.clock()
-        if self._last_clip_at and (now - self._last_clip_at) < self.cooldown_s:
+        if self._cooling_down():
             self.bursts_suppressed += 1
             return False
         return True
 
-    def mark_triggered(self) -> None:
+    def should_clip_moment(self) -> bool:
+        """True when a vision-flagged moment should become a clip.
+
+        Shares the one cooldown with bursts -- a death during a hype burst
+        must not clip twice -- but counts its own suppressions, so the recap
+        does not report a held moment as a held "burst signal".
+        """
+        if not self.enabled or not self.clip_notable_moments:
+            return False
+        if self._cooling_down():
+            self.moments_suppressed += 1
+            return False
+        return True
+
+    def _cooling_down(self) -> bool:
+        if not self._last_clip_at:
+            return False
+        return (self.clock() - self._last_clip_at) < self.cooldown_s
+
+    def mark_triggered(self, source: str = "burst") -> None:
         """Start the cooldown. Called on the ATTEMPT, not on success — a
         failing clip (offline, missing scope) must not retry every message
         of the same burst."""
         self._last_clip_at = self.clock()
         self.clips_triggered += 1
+        if source == "moment":
+            self.moment_clips += 1
 
     def stats(self) -> Dict[str, Any]:
         return {
             "enabled": self.enabled,
             "clips_triggered": self.clips_triggered,
+            "moment_clips": self.moment_clips,
             "bursts_suppressed": self.bursts_suppressed,
+            "moments_suppressed": self.moments_suppressed,
         }

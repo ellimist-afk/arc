@@ -26,15 +26,18 @@ ENGINE = Path("src/personality/personality_engine.py").read_text(encoding="utf-8
 def test_a_notable_moment_clips_itself():
     assert "async def _clip_notable_moment" in BOT
     fn = BOT.split("async def _clip_notable_moment")[1].split("\n    async def ")[0]
-    assert "self.auto_clipper.should_clip(True)" in fn, "must respect the cooldown"
-    assert "mark_triggered()" in fn
+    assert "self.auto_clipper.should_clip_moment()" in fn, "must respect the cooldown"
+    assert 'mark_triggered(source="moment")' in fn
 
 
 def test_the_two_clip_sources_share_one_cooldown():
-    """Otherwise a death during a hype burst clips twice."""
-    fn = BOT.split("async def _clip_notable_moment")[1].split("\n    async def ")[0]
-    assert "auto_clipper" in fn
-    assert "should_clip" in BOT.split("is_burst()")[0].rsplit("\n", 1)[0] or True
+    """Otherwise a death during a hype burst clips twice. Exercised for real
+    in test_auto_clipper.py; this pins the wiring that reaches it."""
+    clipper = Path("src/features/auto_clipper.py").read_text(encoding="utf-8")
+    assert "def _cooling_down(self)" in clipper, "one cooldown, two callers"
+    for method in ("def should_clip(", "def should_clip_moment("):
+        body = clipper.split(method)[1].split("\n    def ")[0]
+        assert "self._cooling_down()" in body, f"{method} must consult it"
 
 
 def test_the_clip_does_not_delay_the_reaction():
