@@ -52,9 +52,10 @@ async def update_settings(update: SettingsUpdate) -> Dict[str, str]:
         # Update the value
         settings[update.key] = update.value
 
-        # Save back
-        with open(settings_path, 'w') as f:
-            json.dump(settings, f, indent=2)
+        # Save back atomically: a truncating write here would empty
+        # bot_settings.json, and the health monitor reads it constantly.
+        from utils.atomic_write import write_json_atomic
+        write_json_atomic(settings_path, settings)
 
         return {"status": "updated", "key": update.key}
 

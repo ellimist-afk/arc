@@ -231,21 +231,26 @@ def test_the_bot_registers_the_handler():
 
 # --------------------------------------- the settings write must be atomic
 
-def test_the_write_is_atomic(cmd):
+def test_the_write_goes_through_the_atomic_helper(cmd):
     """write_text() truncates first. An interruption there would leave
     bot_settings.json empty and take every setting with it -- and this write
     fires from chat, at arbitrary moments, on a file the health monitor is
-    concurrently reading."""
+    concurrently reading. The mechanics live in utils.atomic_write; this
+    pins that _persist uses them rather than rolling its own."""
     src = Path("src/features/persona_command.py").read_text(encoding="utf-8")
     body = src.split("def _persist")[1].split("\n    # ---")[0]
-    assert "os.replace(" in body, "rename, don't truncate-in-place"
-    assert ".tmp" in body
-    assert "path.write_text(" not in body
+    assert "write_json_atomic(" in body
+    assert "path.write_text(" not in body, "no truncate-in-place"
+    assert "open(" not in body, "no hand-rolled second copy of the dance"
+
+
+def _helper_body():
+    src = Path("src/utils/atomic_write.py").read_text(encoding="utf-8")
+    return src.split("def write_text_atomic")[1].split("\ndef ")[0]
 
 
 def test_the_payload_is_flushed_before_the_rename(cmd):
-    src = Path("src/features/persona_command.py").read_text(encoding="utf-8")
-    body = src.split("def _persist")[1].split("\n    # ---")[0]
+    body = _helper_body()
     assert "f.flush()" in body and "os.fsync(" in body
     assert body.index("os.fsync(") < body.index("os.replace("), \
         "an unflushed rename can still publish a short file"
@@ -277,7 +282,8 @@ async def test_no_temp_file_is_left_behind_on_failure(cmd, monkeypatch):
 
 
 def test_the_temp_file_is_a_sibling(cmd):
-    """A temp on another filesystem would make the rename non-atomic."""
-    src = Path("src/features/persona_command.py").read_text(encoding="utf-8")
-    body = src.split("def _persist")[1].split("\n    # ---")[0]
-    assert "path.with_name(" in body, "same directory, so the rename stays atomic"
+    """A temp on another filesystem makes os.replace non-atomic -- it
+    degrades to a copy -- so the temp must sit next to the target."""
+    body = _helper_body()
+    assert "target.with_name(" in body, "same directory, so the rename stays atomic"
+    assert "tempfile" not in body, "the system temp dir may be another volume"

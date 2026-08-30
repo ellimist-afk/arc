@@ -382,11 +382,12 @@ class StreamSessionSummarizer:
             return
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps({
+            from utils.atomic_write import write_json_atomic
+            write_json_atomic(path, {
                 "summary": st.summary,
                 "updated_at": st.updated_at,
                 "updates": st.updates,
-            }), encoding="utf-8")
+            })
         except OSError as e:
             logger.debug("Could not persist session summary: %s", e)
 

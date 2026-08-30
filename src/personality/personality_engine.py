@@ -321,8 +321,8 @@ class PersonalityEngine:
         }
         
         try:
-            with open(config_file, 'w') as f:
-                json.dump(config, f, indent=2)
+            from utils.atomic_write import write_json_atomic
+            write_json_atomic(config_file, config)
             logger.info(f"Saved personality to {config_file}")
         except Exception as e:
             logger.error(f"Failed to save personality config: {e}")
