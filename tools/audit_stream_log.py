@@ -44,6 +44,8 @@ GUARDS = [
      "Catchphrase/tic drafts rejected"),
     ("repetition_skip", "retry also repetitive",
      "Lines skipped entirely after the retry repeated too"),
+    ("unsolicited_dropped", "dropping instead of regenerating",
+     "Optional lines dropped on first rejection (saved a second LLM call)"),
     ("repetition_forced", "both drafts repetitive, delivering least-bad",
      "Required replies delivered despite repetition (mentions)"),
     ("followup_upgrade", "treated as a mention",

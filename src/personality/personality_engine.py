@@ -551,6 +551,18 @@ class PersonalityEngine:
             return text
 
         self.repetition_rejections += 1
+
+        # An unsolicited interjection is optional by definition: nobody is
+        # waiting on it, and a skipped one is invisible. Regenerating costs a
+        # second full API call to usually reject again -- last stream that was
+        # ~11s of generation that produced nothing. Drop it now instead.
+        # Mentions (someone asked) and lull fillers (silence otherwise) still
+        # get their retry.
+        if not is_mention and not is_filler:
+            logger.info(f"Repetition guard rejected an unsolicited line "
+                        f"({verdict.reason}); dropping instead of regenerating")
+            return None
+
         logger.info(f"Repetition guard rejected draft ({verdict.reason}); regenerating")
 
         retry_prompt = prompt + "\n\n" + self.repetition_guard.avoid_hint(verdict)
