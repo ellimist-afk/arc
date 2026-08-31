@@ -972,6 +972,13 @@ class PersonalityEngine:
                 if role == 'assistant':
                     # Bot's own past response — tell the LLM "I said this"
                     messages.insert(1, {"role": "assistant", "content": text})
+                elif username == 'stream_audio':
+                    # Not a person: the video/game audio on stream, heard on
+                    # the mixed VoiceMeeter bus. Frame it so the model treats
+                    # it as background it may riff on, never as a speaker to
+                    # answer or quote back as someone's words.
+                    messages.insert(1, {"role": "user", "content":
+                                        f"[heard on stream audio, not a person]: {text}"})
                 else:
                     # Someone in chat said this
                     messages.insert(1, {"role": "user", "content": f"{username}: {text}"})

@@ -1625,11 +1625,18 @@ class TalkBot:
             
             if not needs_response:
                 logger.info(f"[VOICE] NO TRIGGER in: '{text}'")
-                logger.info(f"[VOICE] Available triggers: hey bud, hey boss, hey bot, etc.")
-                # Store for context
+                # The mic bus carries EVERYTHING routed through VoiceMeeter:
+                # the streamer, but also whatever video or game is playing.
+                # Untriggered audio used to be stored as the STREAMER'S words,
+                # so a YouTuber's outro ("see you guys in the next video")
+                # went into memory and context as something cassova_ said.
+                # There is no way to tell the voices apart on a mixed bus, so
+                # be honest about the uncertainty: ambient audio is stored as
+                # its own speaker. Triggered lines are still the streamer --
+                # nobody else says "hey bot" at the mic.
                 voice_message = {
-                    'username': self.config.get('TWITCH_CHANNEL', 'streamer'),
-                    'user_id': self.config.get('TWITCH_CHANNEL', 'streamer').lower(),
+                    'username': 'stream_audio',
+                    'user_id': 'stream_audio',
                     'message': text,  # Database expects 'message' not 'text'
                     'text': text,  # Keep for compatibility
                     'timestamp': datetime.now(),
