@@ -10,6 +10,7 @@ import time
 import json
 import re
 import inspect
+from collections import deque
 import itertools
 from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime
@@ -178,6 +179,12 @@ class TalkBot:
         # for this long; voice COMMANDS (mute, skip) are not affected.
         self.last_voice_reply_at = None
         self.voice_retrigger_gap_s = 12.0
+        # The last few things heard on stream audio (game/NPC dialogue, the
+        # video). Kept OUT of the chat buffer on purpose: a cutscene-heavy
+        # game would flood real chat out of the context window. Three lines
+        # is enough to riff on; older than a few minutes is a moment gone.
+        self._ambient_audio = deque(maxlen=3)
+        self.ambient_max_age_s = 180.0
         # Raids arrive over IRC and EventSub both; keyed by (raider, viewers)
         self._recent_raid_keys: Dict[Any, float] = {}
         self._raid_dedup_window_s = 60.0
@@ -1488,6 +1495,27 @@ class TalkBot:
                 "or two short sentences.")
 
     @staticmethod
+    def _worth_keeping_ambient(text: str) -> bool:
+        """Is this untriggered audio worth keeping as context?
+
+        Game noise and music make Whisper hallucinate, and its fingerprints
+        are consistent: one or two filler words ("you", "Thank you."), or a
+        single token repeated ("hehehehehehe", "no no no no"). Real video
+        dialogue -- the thing worth hearing -- is longer and varied. The
+        streamer's own lines are unaffected: this runs only on the ambient
+        path, and short TRIGGERED lines ("hey bot mute") never reach it.
+        """
+        words = (text or "").lower().split()
+        if len(words) < 3:
+            return False
+        if len(set(words)) == 1:
+            return False                 # "no no no no no"
+        letters = [c for c in text if c.isalpha()]
+        if letters and len(set(letters)) <= 3:
+            return False                 # "hehehehehehe", "aaaaaah"
+        return True
+
+    @staticmethod
     def _normalize_voice_text(text: str) -> str:
         """Lowercase, punctuation-free, single-spaced form for comparison.
 
@@ -1634,6 +1662,10 @@ class TalkBot:
                 # be honest about the uncertainty: ambient audio is stored as
                 # its own speaker. Triggered lines are still the streamer --
                 # nobody else says "hey bot" at the mic.
+                if not self._worth_keeping_ambient(text):
+                    logger.debug(f"Ambient audio discarded as noise: '{text[:40]}'")
+                    return
+                self._ambient_audio.append((datetime.now(), text))
                 voice_message = {
                     'username': 'stream_audio',
                     'user_id': 'stream_audio',
@@ -1890,6 +1922,10 @@ class TalkBot:
         except Exception as e:  # noqa: BLE001 - vision is never load-bearing
             logger.warning(f"Screen awareness unavailable: {e}")
             self.screen_watcher = None
+
+        # What the mic bus heard from the video/game, for reply context.
+        if self.context_builder:
+            self.context_builder.ambient_provider = self._ambient_context
         self.eventsub.on_event('channel.update', self.stream_info.handle_channel_update)
         self.eventsub.on_event('stream.online', self._on_stream_online)
         self.eventsub.on_event('stream.offline', self._on_stream_offline)
@@ -2099,6 +2135,12 @@ class TalkBot:
             is_mention=False, is_voice=False)
         self.last_bot_message_at = datetime.now()
 
+    def _ambient_context(self) -> List[str]:
+        """Fresh lines heard on stream audio, oldest first."""
+        now = datetime.now()
+        return [text for ts, text in getattr(self, '_ambient_audio', [])
+                if (now - ts).total_seconds() <= getattr(self, 'ambient_max_age_s', 180.0)]
+
     def _dead_air_context(self) -> Dict[str, Any]:
         """What the co-host knows when chat goes quiet: what is being
         played, what has happened this stream, and the last things said
@@ -2116,6 +2158,9 @@ class TalkBot:
                 context['stream_now'] = self.stream_info.describe()
             except Exception as e:  # noqa: BLE001
                 logger.debug(f"Dead-air stream info unavailable: {e}")
+        heard = self._ambient_context()
+        if heard:
+            context['ambient_audio'] = heard
         watcher = getattr(self, 'screen_watcher', None)
         if watcher:
             try:

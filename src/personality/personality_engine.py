@@ -1237,6 +1237,13 @@ class PersonalityEngine:
         if on_screen:
             lines.append(f"- On screen right now: {on_screen}")
 
+        heard = context.get('ambient_audio')
+        if heard:
+            quoted = " / ".join(f'"{line}"' for line in heard[-3:])
+            lines.append(
+                f"- Heard on stream audio just now (the video or game "
+                f"talking, NOT the streamer or a viewer): {quoted}")
+
         returning = context.get('returning_after')
         if returning:
             lines.append(

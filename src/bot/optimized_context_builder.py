@@ -91,6 +91,9 @@ class OptimizedContextBuilder:
         self.stream_info = None
         # What is on screen right now (features.screen_watcher); also attached
         self.screen_watcher = None
+        # Callable returning recent lines heard on stream audio; attached by
+        # the bot. Game/NPC dialogue and the video, never the streamer.
+        self.ambient_provider = None
 
         # Multi-level cache system
         self.l1_cache: Dict[str, Tuple[Dict, float]] = {}  # Hot cache for active conversations
@@ -289,6 +292,7 @@ class OptimizedContextBuilder:
                 "session_summary": self._session_summary(channel),
                 "stream_now": self._stream_now(),
                 "on_screen": self._on_screen(),
+                "ambient_audio": self._ambient(),
             })
 
         except Exception as e:
@@ -325,6 +329,15 @@ class OptimizedContextBuilder:
         except Exception as e:
             logger.debug(f"Session summary unavailable: {e}")
             return ""
+
+    def _ambient(self) -> list:
+        if not self.ambient_provider:
+            return []
+        try:
+            return list(self.ambient_provider() or [])
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Ambient audio unavailable: {e}")
+            return []
 
     def _on_screen(self) -> str:
         if not self.screen_watcher:
@@ -417,6 +430,7 @@ class OptimizedContextBuilder:
         context['session_summary'] = self._session_summary(channel)
         context['stream_now'] = self._stream_now()
         context['on_screen'] = self._on_screen()
+        context['ambient_audio'] = self._ambient()
         # A cache hit means we've built context for this viewer before —
         # by definition not their first message
         context['is_first_message'] = False
