@@ -4,7 +4,7 @@
   "bot_name": "elimist_",
   "streamer_name": "cassova_",
   "personality": {
-    "preset": "uwu"
+    "preset": "roast"
   },
   "voice": {
     "model": "shimmer",
@@ -56,7 +56,8 @@
   },
   "auto_clip": {
     "enabled": true,
-    "cooldown_s": 180
+    "cooldown_s": 180,
+    "clip_notable_moments": false
   },
   "event_reactions": {
     "enabled": true,

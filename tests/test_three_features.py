@@ -55,9 +55,14 @@ def test_auto_clip_still_takes_a_burst_reason():
     assert 'async def _auto_clip(self, reason: str = "chat hype")' in BOT
 
 
-def test_the_behaviour_can_be_turned_off():
-    assert "clip_notable_moments: bool = True" in CLIPPER
-    assert 'cfg.get("clip_notable_moments", True)' in CLIPPER
+def test_clipping_a_screen_moment_is_opt_in():
+    """It shipped on, and live on 2026-09-02 it clipped three times in eight
+    minutes -- every one from this source, every one the instant the cooldown
+    expired. The vision NOTABLE bar is "worth a line about", which in a game
+    is every kill cam and every victory screen; that is not the same question
+    as "worth a clip". Off unless the streamer asks for it."""
+    assert "clip_notable_moments: bool = False" in CLIPPER
+    assert 'cfg.get("clip_notable_moments", False)' in CLIPPER
     assert "clip_notable_moments" in BOT
 
 

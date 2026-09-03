@@ -101,7 +101,8 @@ def _clock():
 def test_a_moment_and_a_burst_cannot_double_clip():
     """A death during a hype burst is one moment, not two clips."""
     t, clock = _clock()
-    c = AutoClipper(enabled=True, cooldown_s=180.0, clock=clock)
+    c = AutoClipper(enabled=True, cooldown_s=180.0, clock=clock,
+                    clip_notable_moments=True)
     assert c.should_clip_moment() is True
     c.mark_triggered(source="moment")
     assert c.should_clip(True) is False, "the burst must see the moment's cooldown"
@@ -109,7 +110,8 @@ def test_a_moment_and_a_burst_cannot_double_clip():
 
 def test_a_burst_blocks_a_following_moment_too():
     t, clock = _clock()
-    c = AutoClipper(enabled=True, cooldown_s=180.0, clock=clock)
+    c = AutoClipper(enabled=True, cooldown_s=180.0, clock=clock,
+                    clip_notable_moments=True)
     assert c.should_clip(True) is True
     c.mark_triggered()
     assert c.should_clip_moment() is False
@@ -117,7 +119,8 @@ def test_a_burst_blocks_a_following_moment_too():
 
 def test_the_cooldown_expires_for_moments():
     t, clock = _clock()
-    c = AutoClipper(enabled=True, cooldown_s=180.0, clock=clock)
+    c = AutoClipper(enabled=True, cooldown_s=180.0, clock=clock,
+                    clip_notable_moments=True)
     c.mark_triggered(source="moment")
     t["now"] += 181
     assert c.should_clip_moment() is True
@@ -127,7 +130,8 @@ def test_a_held_moment_is_not_counted_as_a_held_burst():
     """The recap said "N burst signals held by cooldown"; a suppressed
     vision moment inflating that number would make the report lie."""
     t, clock = _clock()
-    c = AutoClipper(enabled=True, cooldown_s=180.0, clock=clock)
+    c = AutoClipper(enabled=True, cooldown_s=180.0, clock=clock,
+                    clip_notable_moments=True)
     c.mark_triggered()
     c.should_clip_moment()
     s = c.stats()
@@ -173,3 +177,64 @@ def test_the_bot_uses_the_moment_path():
     fn = bot.split("async def _clip_notable_moment")[1].split("\n    async def ")[0]
     assert "should_clip_moment()" in fn
     assert 'mark_triggered(source="moment")' in fn
+
+
+# ------------------------------------------ clipping the screen is opt-in
+
+def test_screen_moments_do_not_clip_by_default():
+    """Live 2026-09-02: three clips in eight minutes, all from this source,
+    each one the instant the cooldown expired. Every kill cam and victory
+    screen clears the vision NOTABLE bar, so leaving this on turns the
+    cooldown into a metronome."""
+    c = AutoClipper(enabled=True)
+    assert c.should_clip_moment() is False
+    assert c.should_clip(True) is True, "chat bursts still clip"
+
+
+def test_a_held_default_moment_is_not_counted_as_suppressed():
+    """Off is not the same as held: an opted-out source never competed for
+    the cooldown, and the recap should not imply it did."""
+    c = AutoClipper(enabled=True)
+    c.should_clip_moment()
+    assert c.stats()["moments_suppressed"] == 0
+
+
+def test_settings_can_opt_back_in(tmp_path):
+    import json
+    p = tmp_path / "s.json"
+    p.write_text(json.dumps({"auto_clip": {"clip_notable_moments": True}}),
+                 encoding="utf-8")
+    assert AutoClipper.from_settings(str(p)).clip_notable_moments is True
+
+
+def test_settings_default_to_off(tmp_path):
+    import json
+    p = tmp_path / "s.json"
+    p.write_text(json.dumps({"auto_clip": {"enabled": True}}), encoding="utf-8")
+    assert AutoClipper.from_settings(str(p)).clip_notable_moments is False
+
+
+# ------------------------------- the clip policy is tunable without a restart
+
+def test_clip_settings_reload_without_a_restart():
+    """A bot clipping too often is a problem you have RIGHT NOW. Before this,
+    auto_clip was read once at setup, so calming it down cost a restart --
+    and the restart costs the moment you were trying to keep."""
+    from pathlib import Path
+    bot = Path("src/bot/bot.py").read_text(encoding="utf-8")
+    fn = bot.split("async def _reload_settings")[1].split("\n    async def ")[0]
+    assert "'auto_clip' in bot_settings" in fn
+    for field in ("clip_notable_moments", "cooldown_s", "enabled"):
+        assert field in fn, f"{field} must be live-tunable"
+
+
+def test_the_reload_does_not_reset_the_cooldown_or_the_counters():
+    """Rebuilding the clipper on every settings save would clear the night's
+    tallies -- which the recap prints -- and hand a fresh cooldown to the
+    next burst."""
+    from pathlib import Path
+    bot = Path("src/bot/bot.py").read_text(encoding="utf-8")
+    fn = bot.split("async def _reload_settings")[1].split("\n    async def ")[0]
+    block = fn.split("'auto_clip' in bot_settings")[1]
+    assert "AutoClipper(" not in block, "mutate in place, do not rebuild"
+    assert "from_settings(" not in block

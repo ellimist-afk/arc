@@ -352,6 +352,19 @@ class TalkBot:
 
                 if self.ad_announcer and 'ad_announcer' in bot_settings:
                     self.ad_announcer.update_settings(bot_settings['ad_announcer'])
+
+                # Clip policy, tunable mid-stream: a bot that is clipping too
+                # often is a problem you have RIGHT NOW, and restarting to
+                # calm it down costs the moment you were trying to keep.
+                # Mutated in place -- rebuilding would reset the cooldown
+                # clock and the night's counters, and the recap reads both.
+                if self.auto_clipper and 'auto_clip' in bot_settings:
+                    ac = bot_settings['auto_clip'] or {}
+                    clipper = self.auto_clipper
+                    clipper.enabled = bool(ac.get('enabled', clipper.enabled))
+                    clipper.cooldown_s = float(ac.get('cooldown_s', clipper.cooldown_s))
+                    clipper.clip_notable_moments = bool(
+                        ac.get('clip_notable_moments', clipper.clip_notable_moments))
                 
                 # Update personality if present and personality engine is initialized
                 if self.personality_engine and 'personality' in bot_settings and 'preset' in bot_settings['personality']:

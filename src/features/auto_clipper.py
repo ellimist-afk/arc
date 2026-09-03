@@ -29,7 +29,14 @@ class AutoClipper:
     cooldown_s: float = 180.0
     # Whether a vision-flagged moment (a death, a win) may also clip. Bursts
     # clip what the room noticed; this clips what the screen did.
-    clip_notable_moments: bool = True
+    #
+    # Off by default. "Notable enough to say a line about" is a far lower bar
+    # than "notable enough to clip": in an action game every kill cam, death
+    # screen and victory screen clears it, so this source saturates the
+    # cooldown and clips on a metronome. Seen live 2026-09-02 -- three clips
+    # in eight minutes, all from this source, each landing the instant the
+    # cooldown expired. Opt in only with a clip cooldown to match.
+    clip_notable_moments: bool = False
     clock: Callable[[], float] = field(default=time.monotonic, repr=False)
 
     _last_clip_at: float = field(default=0.0, init=False, repr=False)
@@ -50,7 +57,7 @@ class AutoClipper:
         kwargs = {
             "enabled": bool(cfg.get("enabled", True)),
             "cooldown_s": float(cfg.get("cooldown_s", 180.0)),
-            "clip_notable_moments": bool(cfg.get("clip_notable_moments", True)),
+            "clip_notable_moments": bool(cfg.get("clip_notable_moments", False)),
         }
         kwargs.update(overrides)
         return cls(**kwargs)
