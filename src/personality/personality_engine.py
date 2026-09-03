@@ -1235,7 +1235,21 @@ class PersonalityEngine:
 
         on_screen = context.get('on_screen')
         if on_screen:
-            lines.append(f"- On screen right now: {on_screen}")
+            if context.get('screen_is_the_topic'):
+                # The vision loop flagged this moment and asked for a line
+                # about it. Here the screen IS the subject.
+                lines.append(f"- On screen right now: {on_screen}")
+            else:
+                # Everywhere else it is peripheral. Stated as a bare fact it
+                # reads as a topic, and with a fresh description landing every
+                # 30 seconds the model reached for it in nearly every reply --
+                # a viewer asking about dinner got answered in terms of the
+                # killcam. Seen live 2026-09-02.
+                lines.append(
+                    f"- On screen right now (peripheral awareness, NOT a "
+                    f"topic: you can see the stream, but do not narrate it, "
+                    f"mention that you can see it, or steer the conversation "
+                    f"to it unless someone else brought it up): {on_screen}")
 
         heard = context.get('ambient_audio')
         if heard:

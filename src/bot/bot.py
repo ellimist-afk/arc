@@ -2105,7 +2105,10 @@ class TalkBot:
         channel = self.config.get('TWITCH_CHANNEL', '')
         # The vision loop already judged this worth saying; the chattiness
         # dice would discard it. It stays unsolicited for the guards.
+        # screen_is_the_topic: everywhere else the screen is peripheral and
+        # the prompt says not to steer to it. This is the one path that asked.
         context: Dict[str, Any] = {'on_screen': what_happened,
+                                   'screen_is_the_topic': True,
                                    'always_respond': True}
         try:
             if self.chat_buffer:
@@ -2180,6 +2183,11 @@ class TalkBot:
                 seen = watcher.describe_with_duration()
                 if seen:
                     context['on_screen'] = seen
+                    # Nobody is talking, so there is no conversation to steer
+                    # away from -- the screen is the honest thing to reach for
+                    # here. In a REPLY it stays peripheral; see
+                    # _format_context_knowledge.
+                    context['screen_is_the_topic'] = True
             except Exception as e:  # noqa: BLE001
                 logger.debug(f"Dead-air screen view unavailable: {e}")
         if self.session_summarizer:

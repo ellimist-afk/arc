@@ -207,6 +207,54 @@ def test_the_prompt_renders_it():
     assert "On screen right now:" in eng
 
 
+# ------------------------------- seeing the stream is not a conversation topic
+
+def _render(context, user="viewer"):
+    from personality.personality_engine import PersonalityEngine
+    return PersonalityEngine._format_context_knowledge(
+        PersonalityEngine.__new__(PersonalityEngine), context, user)
+
+
+def test_a_reply_is_told_the_screen_is_peripheral():
+    """Live 2026-09-02: a fresh description landed every 30s and the model
+    reached for it in nearly every reply -- a viewer asking about dinner got
+    answered in terms of the kill cam. The description is useful context;
+    stating it as a bare fact made it read as the subject."""
+    out = _render({"on_screen": "Overwatch 2, Cassidy on the payload"})
+    assert "Overwatch 2" in out, "the co-host can still see"
+    assert "peripheral" in out.lower()
+    assert "do not narrate" in out.lower()
+
+
+def test_a_screen_reaction_is_allowed_to_be_about_the_screen():
+    """The one path that asked for a line about the screen."""
+    out = _render({"on_screen": "Cassidy wins the 1v3",
+                   "screen_is_the_topic": True})
+    assert "- On screen right now: Cassidy wins the 1v3" in out
+    assert "peripheral" not in out.lower()
+
+
+def test_the_reaction_path_sets_the_flag():
+    bot = Path("src/bot/bot.py").read_text(encoding="utf-8")
+    fn = bot.split("async def _react_to_screen")[1].split("\n    async def ")[0]
+    assert "'screen_is_the_topic': True" in fn
+
+
+def test_dead_air_may_talk_about_the_screen():
+    """Nothing is being said, so there is no conversation to steer away
+    from -- the screen is the honest thing to reach for."""
+    bot = Path("src/bot/bot.py").read_text(encoding="utf-8")
+    block = bot.split("context['on_screen'] = seen")[1][:400]
+    assert "context['screen_is_the_topic'] = True" in block
+
+
+def test_an_ordinary_reply_never_sets_the_flag():
+    """The context builder feeds every reply; if it ever set the flag the
+    guard above would be dead."""
+    builder = Path("src/bot/optimized_context_builder.py").read_text(encoding="utf-8")
+    assert "screen_is_the_topic" not in builder
+
+
 def test_the_watcher_is_stopped_on_shutdown():
     bot = Path("src/bot/bot.py").read_text(encoding="utf-8")
     assert 'step("screen_watcher", self.screen_watcher.stop)' in bot
