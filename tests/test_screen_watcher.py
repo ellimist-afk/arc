@@ -376,11 +376,29 @@ def test_the_contexts_use_the_duration_aware_view():
 def _notable_watcher(text, **kw):
     w = _watcher(text=text, **kw)
     w.said = []
+    w.announced = []
 
-    async def on_notable(what):
+    async def on_notable(what, kind='other', streak=1):
         w.said.append(what)
+        w.announced.append((what, kind, streak))
     w.on_notable = on_notable
     return w
+
+
+def _streak_watcher(**kw):
+    """A watcher driven through _announce with a fake clock, so the run
+    rules can be tested without pretending to take screenshots."""
+    kw.setdefault('notable_cooldown_s', 0.0)
+    return _notable_watcher("unused", **kw)
+
+
+async def _announce_all(w, kinds, start=1000.0, step=200.0):
+    for i, kind in enumerate(kinds):
+        await w._announce(f"{kind} {i}", start + i * step, kind)
+
+
+def _run_of(w):
+    return [(kind, streak) for _what, kind, streak in w.announced]
 
 
 async def test_the_second_look_asks_what_changed():
@@ -604,3 +622,120 @@ def test_the_period_never_collapses_to_a_busy_loop():
     """If a look somehow outruns the interval, the floor still spaces them."""
     body = SRC.split("async def _loop")[1].split("def start")[0]
     assert "max(1.0," in body
+
+
+# ------------------------------------------- the same beat, over and over
+#
+# Live 2026-09-05, Overwatch 2: four bot lines in ten minutes, three of them
+# vision reactions, every one a death with the same shape (hero + did thing +
+# one absurd simile). The lexical repetition guard passed all four and always
+# will -- they share no words. The repeat is in the BEAT, so the watcher has
+# to group moments by what kind of moment they are.
+
+
+async def test_a_bare_notable_is_still_a_moment():
+    """The model drops the bracket often enough that rejecting the bare
+    prefix would cost real moments."""
+    w = _notable_watcher("NOTABLE: the run ended")
+    await w.look()
+    assert w.announced == [("the run ended", "other", 1)]
+
+
+async def test_the_kind_comes_out_of_the_bracket():
+    w = _notable_watcher("NOTABLE[Death]: cassidy hit the floor")
+    await w.look()
+    assert w.announced == [("cassidy hit the floor", "death", 1)]
+    assert w.describe() == "cassidy hit the floor", "no marker in context"
+
+
+async def test_an_unknown_kind_is_kept_not_dropped():
+    """A model that ignored the vocabulary still gave a truthful grouping;
+    collapsing it to 'other' would merge two different runs into one."""
+    w = _notable_watcher("NOTABLE[kill streak]: five in a row")
+    await w.look()
+    assert w.announced[0][1] == "kill streak"
+
+
+async def test_an_empty_bracket_is_other():
+    w = _notable_watcher("NOTABLE[]: something happened")
+    await w.look()
+    assert w.announced[0][1] == "other"
+
+
+async def test_the_same_kind_again_is_held_and_counted():
+    w = _streak_watcher()
+    await _announce_all(w, ["death", "death"])
+    assert _run_of(w) == [("death", 1)], "the second death gets no line"
+    assert w.notables_held_same_kind == 1
+    assert w.stats()['notables_held_same_kind'] == 1
+
+
+async def test_the_threshold_repeat_is_said_as_a_pattern():
+    """The co-host does a line about the first death, notices the pattern on
+    the fourth, and says nothing about the two in between."""
+    w = _streak_watcher(streak_threshold=3)
+    await _announce_all(w, ["death"] * 4)
+    assert _run_of(w) == [("death", 1), ("death", 4)]
+
+
+async def test_a_long_gap_starts_a_new_run():
+    w = _streak_watcher(same_kind_window_s=100.0)
+    await _announce_all(w, ["death", "death"], step=300.0)
+    assert _run_of(w) == [("death", 1), ("death", 1)], "the window elapsed"
+
+
+async def test_a_different_kind_gets_its_own_line():
+    w = _streak_watcher()
+    await _announce_all(w, ["death", "win", "death"])
+    assert _run_of(w) == [("death", 1), ("win", 1), ("death", 1)]
+
+
+async def test_a_moment_the_cooldown_swallowed_still_counts_toward_the_run():
+    """Otherwise a busy stretch where the cooldown eats the middle of a run
+    announces the next repeat as if it were the first one."""
+    w = _streak_watcher(notable_cooldown_s=300.0, streak_threshold=3)
+    await _announce_all(w, ["death"] * 4, step=100.0)
+    assert _run_of(w) == [("death", 1), ("death", 4)]
+    assert w.notables_suppressed == 2, "held by the cooldown, not by the kind"
+
+
+async def test_the_run_clock_runs_from_the_first_of_the_run():
+    """The bot needs "the fourth death in about six minutes"; that number
+    comes from the FIRST moment of the run, not the last."""
+    import time as _time
+    w = _streak_watcher()
+    assert w.streak_started_s_ago() is None, "no run yet"
+    now = _time.monotonic()
+    await w._announce("died", now, "death")
+    await w._announce("died again", now + 120, "death")
+    age = w.streak_started_s_ago()
+    assert age is not None and age < 5
+
+
+def test_the_run_settings_survive_a_hand_edit():
+    """A typo must fall back, not raise: an exception here disables vision
+    entirely and the only trace is one warning at startup."""
+    w = ScreenWatcher.from_settings(
+        {'screen_awareness': {'enabled': True,
+                              'same_kind_window_seconds': "900",
+                              'streak_threshold': "two"}},
+        openai_client=object(), model='m')
+    assert w.same_kind_window_s == 900.0
+    assert w.streak_threshold == 3
+    assert w.enabled is True
+
+
+def test_the_vision_prompt_asks_for_a_kind():
+    assert "NOTABLE[kind]" in SRC
+    for kind in ("death", "win", "loss", "highlight", "boss", "crash", "lobby"):
+        assert kind in SRC
+
+
+async def test_unnamed_moments_are_never_a_run():
+    """"other" is not a kind, it is the model declining to name one. Two of
+    them are no more related than any two moments, so holding the second
+    would silence something unrelated."""
+    w = _streak_watcher()
+    await _announce_all(w, ["other", "other", "other"])
+    assert _run_of(w) == [("other", 1), ("other", 1), ("other", 1)]
+    assert w.notables_held_same_kind == 0

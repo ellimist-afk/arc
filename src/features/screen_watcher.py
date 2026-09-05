@@ -16,6 +16,7 @@ import asyncio
 import base64
 import io
 import logging
+import re
 import time
 from typing import Any, Dict, Optional, Tuple
 
@@ -36,11 +37,18 @@ COMPARE_SUFFIX = (
     "\n\nLast time you looked, you saw: \"{previous}\"\n"
     "If something genuinely happened since then -- a death, a win, a boss "
     "appearing, a run ending, a crash, a dramatic swing -- begin your reply "
-    "with NOTABLE: followed by the one sentence. Routine movement, camera "
+    "with NOTABLE[kind]: where kind is ONE word from death, win, loss, "
+    "highlight, boss, crash, lobby, other -- followed by the one sentence. "
+    "Routine movement, camera "
     "pans, menus, ordinary play and scrolling are NOT notable; in that case "
     "reply with the sentence alone and no prefix."
 )
 NOTABLE_PREFIX = "NOTABLE:"
+# The kind is what makes a rerun visible: five deaths in a row are five
+# moments to a pixel differ and one story to a co-host. A bare NOTABLE:
+# still parses (kind "other") -- the model drops the bracket often enough
+# that rejecting it would cost real moments.
+NOTABLE_RE = re.compile(r"^NOTABLE(?:\[([^\]]{0,24})\])?:\s*", re.I)
 # However slowly we poll, a description older than this is history.
 MAX_DESCRIPTION_AGE_S = 300.0
 
@@ -92,6 +100,8 @@ class ScreenWatcher:
         change_threshold: float = 6.0,
         scene_threshold: float = 18.0,
         notable_cooldown_s: float = 240.0,
+        same_kind_window_s: float = 600.0,
+        streak_threshold: int = 3,
     ):
         self.openai_client = openai_client
         self.model = model
@@ -107,7 +117,13 @@ class ScreenWatcher:
         # Least time between proactive reactions. Without it a chaotic game
         # would have the co-host narrating every fight.
         self.notable_cooldown_s = notable_cooldown_s
-        # Async callable invoked as on_notable(what_happened). Set by the bot.
+        # How long two moments of the same kind count as one run, and how
+        # many unsaid repeats of that kind buy the next line. Without them
+        # the co-host writes a fresh joke about every death forever.
+        self.same_kind_window_s = same_kind_window_s
+        self.streak_threshold = max(1, int(streak_threshold))
+        # Async callable invoked as on_notable(what_happened, kind, streak).
+        # Set by the bot.
         self.on_notable = None
         # Returns False when looking is pointless (stream offline). Set by the
         # bot; without it every look proceeds. An offline stream would
@@ -120,12 +136,18 @@ class ScreenWatcher:
         self._scene_since: float = 0.0
         self._task = None
         self._last_notable_at: float = 0.0
+        self._last_kind = None
+        self._last_kind_at: float = 0.0
+        self._kind_streak: int = 0
+        self._kind_said_at_streak: int = 0
+        self._streak_started_at: float = 0.0
         self.looks = 0
         self.failures = 0
         self.unchanged_skips = 0
         self.offline_skips = 0
         self.notables = 0
         self.notables_suppressed = 0
+        self.notables_held_same_kind = 0
 
     # ------------------------------------------------------------- config
 
@@ -141,6 +163,8 @@ class ScreenWatcher:
             bbox=_bbox(cfg.get('bbox')),
             max_edge=int(_number(cfg.get('max_edge'), 768.0)),
             notable_cooldown_s=_number(cfg.get('notable_cooldown_seconds'), 240.0),
+            same_kind_window_s=_number(cfg.get('same_kind_window_seconds'), 600.0),
+            streak_threshold=int(_number(cfg.get('streak_threshold'), 3.0)),
         )
 
     # -------------------------------------------------------------- reads
@@ -195,6 +219,7 @@ class ScreenWatcher:
                 'offline_skips': self.offline_skips,
                 'notables': self.notables,
                 'notables_suppressed': self.notables_suppressed,
+                'notables_held_same_kind': self.notables_held_same_kind,
                 'has_description': bool(self.describe())}
 
     # ------------------------------------------------------------ capture
@@ -292,9 +317,15 @@ class ScreenWatcher:
         if not text:
             self.failures += 1
             return None
-        notable = text.startswith(NOTABLE_PREFIX)
-        if notable:
-            text = text[len(NOTABLE_PREFIX):].strip()
+        match = NOTABLE_RE.match(text)
+        notable = match is not None
+        kind = 'other'
+        if match:
+            # An unknown word is kept, not rejected: "kill streak" from a
+            # model that ignored the list is still a truthful grouping, and
+            # dropping it would silently collapse the run into "other".
+            kind = (match.group(1) or '').strip().lower() or 'other'
+            text = text[match.end():].strip()
         if not text:
             self.failures += 1
             return None
@@ -308,24 +339,70 @@ class ScreenWatcher:
         self._signature = signature
         self._seen_at = now
         self.looks += 1
-        logger.info(f"Screen{' [NOTABLE]' if notable else ''}: {text[:110]}")
+        logger.info(f"Screen{f' [NOTABLE {kind}]' if notable else ''}: {text[:110]}")
 
         if notable:
-            await self._announce(text, now)
+            await self._announce(text, now, kind)
         return text
 
-    async def _announce(self, what: str, now: float) -> None:
-        """Tell the bot something happened, at most once per cooldown."""
+    def streak_started_s_ago(self):
+        """How long ago the current run of same-kind moments began.
+
+        The bot needs it to say "the fourth death in about six minutes".
+        It is the watcher's clock, so the watcher keeps it.
+        """
+        if not self._streak_started_at:
+            return None
+        return time.monotonic() - self._streak_started_at
+
+    def _note_kind(self, kind: str, now: float) -> None:
+        """Advance the run of same-kind moments. A different kind, or a gap
+        longer than the window, starts a new run.
+
+        "other" never joins a run: it is not a kind, it is the model
+        declining to name one, so two of them are no more related than any
+        two moments. Grouping them would hold real, unrelated moments.
+        """
+        if (kind != 'other' and kind == self._last_kind
+                and now - self._last_kind_at <= self.same_kind_window_s):
+            self._kind_streak += 1
+        else:
+            self._kind_streak = 1
+            self._kind_said_at_streak = 0
+            self._streak_started_at = now
+        self._last_kind = kind
+        self._last_kind_at = now
+
+    async def _announce(self, what: str, now: float, kind: str = 'other') -> None:
+        """Tell the bot something happened, at most once per cooldown and
+        not once per repeat.
+
+        Live 2026-09-05: three of four bot lines in ten minutes were deaths
+        in Overwatch, each the same shape. The cooldown cannot see that --
+        it only knows how long ago the last line was. The kind can: the
+        first death of a run gets a line, the next ones are held and
+        counted, and the threshold-th unsaid repeat gets a line about the
+        pattern instead of about the moment.
+        """
         if not self.on_notable:
             return
+        self._note_kind(kind, now)
         if now - self._last_notable_at < self.notable_cooldown_s:
             self.notables_suppressed += 1
             logger.info(f"Screen: notable moment held by cooldown ({what[:60]})")
             return
+        # The run keeps counting through a cooldown hold, so a run whose
+        # middle the cooldown swallowed still earns its pattern line.
+        if (self._kind_streak > 1
+                and self._kind_streak - self._kind_said_at_streak < self.streak_threshold):
+            self.notables_held_same_kind += 1
+            logger.info(f"Screen: same kind held ({kind}, {self._kind_streak} in a row)")
+            return
         self._last_notable_at = now
+        self._kind_said_at_streak = self._kind_streak
         self.notables += 1
         try:
-            await self.on_notable(what)
+            await self.on_notable(what, kind, self._kind_streak)
         except Exception as e:  # noqa: BLE001 - a reaction must never break the loop
             logger.warning(f"Screen reaction failed: {e}")
 
