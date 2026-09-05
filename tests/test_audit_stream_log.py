@@ -136,3 +136,31 @@ def test_warnings_are_grouped_by_shape():
                 line(2, "Reply ready 90s after the message (limit 45s); the room has moved on -- dropping", "WARNING"))
     s = parse_sessions(text)[0]
     assert max(s.warnings.values()) == 2, "digits collapse so identical problems group"
+
+
+# ------------------------------------------------- the screen variety guards
+
+def test_the_screen_variety_signatures_are_what_the_source_logs():
+    """Live 2026-09-05 the co-host did four interchangeable screen lines in
+    ten minutes. Three new guards stop that, so the audit has to be able to
+    say how often each one fired."""
+    src = "".join(
+        Path(p).read_text(encoding="utf-8")
+        for p in ("src/bot/bot.py", "src/features/screen_watcher.py"))
+    for key, needle in (
+            ("screen_same_kind", "Screen: same kind held"),
+            ("screen_pass", "Screen reaction passed"),
+            ("filler_off_screen", "Dead air: steering the filler off the screen")):
+        assert needle in src, f"{key}: source no longer logs {needle!r}"
+        assert any(k == key for k, _, _ in GUARDS), f"{key} is not in GUARDS"
+
+
+def test_the_screen_variety_guards_are_reported():
+    text = _log(START,
+                line(1, "Screen: same kind held (death, 2 in a row)"),
+                line(2, "Screen reaction passed: nothing new to say"),
+                line(3, "Dead air: steering the filler off the screen (said about it 120s ago)"))
+    out = render(parse_sessions(text)[0])
+    assert "Screen moments held because that kind was just reacted to: 1" in out
+    assert "Screen moments the co-host chose to let pass: 1" in out
+    assert "Fillers steered to another well because the screen was just discussed: 1" in out
