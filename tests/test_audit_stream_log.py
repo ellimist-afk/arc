@@ -148,19 +148,36 @@ def test_the_screen_variety_signatures_are_what_the_source_logs():
         Path(p).read_text(encoding="utf-8")
         for p in ("src/bot/bot.py", "src/features/screen_watcher.py"))
     for key, needle in (
-            ("screen_same_kind", "Screen: same kind held"),
+            ("screen_cooldown_hold", "Screen moment held by cooldown"),
+            ("screen_same_kind", "Screen moment held, same kind"),
             ("screen_pass", "Screen reaction passed"),
             ("filler_off_screen", "Dead air: steering the filler off the screen")):
         assert needle in src, f"{key}: source no longer logs {needle!r}"
         assert any(k == key for k, _, _ in GUARDS), f"{key} is not in GUARDS"
 
 
+def test_screen_look_does_not_double_count_holds():
+    """The hold lines used to start with "Screen: " too, so every hold was
+    also counted as a fresh look. They were reworded to drop the colon so
+    the screen_look needle stops matching them."""
+    text = _log(START,
+                line(1, "Screen: same old menu, nothing new"),
+                line(2, "Screen moment held by cooldown (something happened)"),
+                line(3, "Screen moment held, same kind (death, 2 in a row)"))
+    s = parse_sessions(text)[0]
+    assert s.counts["screen_look"] == 1
+    assert s.counts["screen_cooldown_hold"] == 1
+    assert s.counts["screen_same_kind"] == 1
+
+
 def test_the_screen_variety_guards_are_reported():
     text = _log(START,
-                line(1, "Screen: same kind held (death, 2 in a row)"),
-                line(2, "Screen reaction passed: nothing new to say"),
-                line(3, "Dead air: steering the filler off the screen (said about it 120s ago)"))
+                line(1, "Screen moment held by cooldown (something happened)"),
+                line(2, "Screen moment held, same kind (death, 2 in a row)"),
+                line(3, "Screen reaction passed: nothing new to say"),
+                line(4, "Dead air: steering the filler off the screen (said about it 120s ago)"))
     out = render(parse_sessions(text)[0])
+    assert "Screen moments held by the flat reaction cooldown: 1" in out
     assert "Screen moments held because that kind was just reacted to: 1" in out
     assert "Screen moments the co-host chose to let pass: 1" in out
     assert "Fillers steered to another well because the screen was just discussed: 1" in out

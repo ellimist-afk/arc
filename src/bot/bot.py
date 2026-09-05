@@ -95,6 +95,20 @@ def is_spoken_bot_addressed(
         words[0] == "elements" or words[-1] == "elements"
     )
 
+
+def _read_filler_screen_gap(settings: Dict[str, Any]) -> float:
+    """Tolerant parse of screen_awareness.filler_screen_gap_seconds.
+
+    A hand-edited setting is a string or a typo as often as a number
+    ("600s", "abc"); raising here used to blow up the try/except around
+    ScreenWatcher construction and disable vision entirely for one bad
+    character. 0 is a legitimate "never steer the filler off the screen"
+    value and must survive, not get coerced up to the default.
+    """
+    from features.screen_watcher import _number
+    cfg = (settings or {}).get('screen_awareness') or {}
+    return _number(cfg.get('filler_screen_gap_seconds'), 600.0)
+
 class ShutdownError(RuntimeError):
     """One or more components failed to shut down. Every component still got
     its turn; `failures` lists (step name, exception) in teardown order."""
@@ -1936,9 +1950,7 @@ class TalkBot:
                 getattr(self.personality_engine, 'llm_model', 'gpt-5.5'),
             )
             self.screen_watcher.on_notable = self._react_to_screen
-            self.filler_screen_gap_s = float(
-                ((self._bot_settings.get('screen_awareness') or {})
-                 .get('filler_screen_gap_seconds') or 600.0) or 600.0)
+            self.filler_screen_gap_s = _read_filler_screen_gap(self._bot_settings)
             # Same liveness rule as dead air: never look at, or talk
             # about, a screen nobody is watching.
             self.screen_watcher.should_look = lambda: (
@@ -2214,13 +2226,19 @@ class TalkBot:
 
     def _on_filler_sent(self, text: str) -> None:
         """A dead-air filler just went out. It counts as a screen line when
-        the screen is what it was handed to talk about."""
+        the screen is what it was handed to talk about.
+
+        Consumed once: a stamp claimed by this filler must not also be
+        claimed by the next one, whether or not this filler used it.
+        """
         self._remember_own_line(text)
         at = self._filler_screen_topic_at
+        topic_text = self._filler_screen_topic_text
+        self._filler_screen_topic_at = None
+        self._filler_screen_topic_text = None
         if at is not None and time.monotonic() - at <= 60.0:
             self._screen_ledger.append(
-                (time.monotonic(), 'filler',
-                 self._filler_screen_topic_text or '', text))
+                (time.monotonic(), 'filler', topic_text or '', text))
 
     def _render_screen_ledger(self) -> List[str]:
         """The screen lines already said, oldest first, for the prompt."""
@@ -2246,7 +2264,8 @@ class TalkBot:
             logger.debug(f"Screen run age unavailable: {e}")
         run = f"{self._ordinal(streak)} {kind}"
         if started and started >= 60:
-            run += f" in about {int(round(started / 60))} minutes"
+            mins = int(round(started / 60))
+            run += f" in about {mins} minute{'' if mins == 1 else 's'}"
         return run
 
     @staticmethod
@@ -2302,6 +2321,11 @@ class TalkBot:
             context['ambient_audio'] = heard
         watcher = getattr(self, 'screen_watcher', None)
         if watcher:
+            # Reset the claim on every build: only THIS build's screen-topic
+            # branch (below) may re-stamp it, so a stale stamp from an
+            # abandoned attempt cannot be claimed by a later steered filler.
+            self._filler_screen_topic_at = None
+            self._filler_screen_topic_text = None
             try:
                 seen = watcher.describe_with_duration()
                 # Nobody is talking, so there is no conversation to steer away

@@ -18,8 +18,31 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
-from bot.bot import TalkBot
+from bot.bot import TalkBot, _read_filler_screen_gap
 from bot.response_coordinator import ResponseCoordinator
+
+
+# ------------------------------------- a hand-edited setting cannot disable vision
+
+def test_the_filler_gap_tolerates_a_bad_setting():
+    """A non-numeric filler_screen_gap_seconds used to raise inside the try
+    block that constructs ScreenWatcher, disabling vision entirely."""
+    assert _read_filler_screen_gap(
+        {'screen_awareness': {'filler_screen_gap_seconds': 600}}) == 600.0
+    assert _read_filler_screen_gap(
+        {'screen_awareness': {'filler_screen_gap_seconds': "900"}}) == 900.0
+    assert _read_filler_screen_gap(
+        {'screen_awareness': {'filler_screen_gap_seconds': "abc"}}) == 600.0
+    assert _read_filler_screen_gap(
+        {'screen_awareness': {'filler_screen_gap_seconds': None}}) == 600.0
+    assert _read_filler_screen_gap({}) == 600.0
+
+
+def test_a_zero_gap_is_never_steer_not_a_typo():
+    """0 means 'never steer the filler off the screen' and must survive,
+    not get coerced up to the default the way a bare `or 600.0` would."""
+    assert _read_filler_screen_gap(
+        {'screen_awareness': {'filler_screen_gap_seconds': 0}}) == 0.0
 
 
 # --------------------------------------------------------------- harness
@@ -160,6 +183,19 @@ async def test_a_short_run_omits_a_meaningless_duration():
     assert bot.seen['context']['screen_streak'] == "2nd death"
 
 
+async def test_a_run_duration_under_ninety_seconds_is_singular():
+    """f" in about {n} minutes" said "1 minutes" for 60-89s."""
+    bot = _bot(streak_age=75.0)
+    await bot._react_to_screen("died", "death", 2)
+    assert bot.seen['context']['screen_streak'] == "2nd death in about 1 minute"
+
+
+async def test_a_run_duration_of_several_minutes_is_plural():
+    bot = _bot(streak_age=360.0)
+    await bot._react_to_screen("died", "death", 4)
+    assert bot.seen['context']['screen_streak'] == "4th death in about 6 minutes"
+
+
 async def test_the_first_of_a_kind_is_still_offered_the_pass():
     bot = _bot()
     await bot._react_to_screen("the run ended on the final boss", "boss", 1)
@@ -245,6 +281,32 @@ def test_a_stale_screen_topic_does_not_claim_the_filler():
     bot._filler_screen_topic_text = "something long gone"
     bot._on_filler_sent("a line about something else entirely")
     assert len(bot._screen_ledger) == 0
+
+
+def test_an_abandoned_stamp_is_not_claimed_by_the_next_steered_filler():
+    """A fresh stamp from an earlier screen-topic build (guard rejected the
+    line twice, or the lull ended mid-generation) must not be inherited by
+    the NEXT context build when that one takes the steer branch instead."""
+    import time
+    bot = _bot(ledger=[(time.monotonic() - 120, 'death', 'died',
+                        'a highlight reel and a loading screen')])
+    # An abandoned attempt left a fresh stamp with unrelated text.
+    bot._filler_screen_topic_at = time.monotonic() - 10
+    bot._filler_screen_topic_text = "an abandoned attempt's text"
+    context = bot._dead_air_context()
+    assert 'screen_is_the_topic' not in context, "this build took the steer branch"
+    bot._on_filler_sent("a line about something else entirely")
+    assert len(bot._screen_ledger) == 1, "only the pre-existing ledger entry"
+
+
+def test_a_screen_topic_stamp_is_consumed_exactly_once():
+    bot = _bot()
+    context = bot._dead_air_context()
+    assert context['screen_is_the_topic'] is True
+    bot._on_filler_sent("a line about the screen")
+    assert len(bot._screen_ledger) == 1
+    bot._on_filler_sent("a second, unrelated filler")
+    assert len(bot._screen_ledger) == 1, "the stamp was already consumed"
 
 
 # ------------------------------------------------ the coordinator's hook

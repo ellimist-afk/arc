@@ -462,7 +462,9 @@ class PersonalityEngine:
             # Build personality prompt
             # Special handling for dead air filler requests
             if message == "[DEAD_AIR_FILLER]":
-                prompt = self._build_dead_air_prompt(context.get('time_since_activity', 0.0))
+                prompt = self._build_dead_air_prompt(
+                    context.get('time_since_activity', 0.0),
+                    avoid_screen=bool(context.get('just_said_about_screen')))
             else:
                 prompt = self._build_personality_prompt()
 
@@ -780,7 +782,8 @@ class PersonalityEngine:
 
         return "\n".join(prompt_parts)
         
-    def _build_dead_air_prompt(self, silence_s: float = 0.0) -> str:
+    def _build_dead_air_prompt(self, silence_s: float = 0.0,
+                                avoid_screen: bool = False) -> str:
         """Prompt for filling a lull.
 
         The old filler prompt threw the personality away and asked for
@@ -790,18 +793,24 @@ class PersonalityEngine:
         the knowledge block appended to it) and adds one directive: say
         something SPECIFIC. The repetition guard already stops it from
         recycling the same opener across a night of lulls.
+
+        avoid_screen: True when the knowledge block already carries a
+        just_said_about_screen line telling the model not to narrate the
+        screen again -- offering "react to what is happening in the game"
+        here in the same prompt would contradict that.
         """
         if silence_s >= 60:
             how_long = f"about {round(silence_s / 60)} minute(s)"
         else:
             how_long = f"{int(silence_s)} seconds" if silence_s else "a while"
+        game_option = "" if avoid_screen else "react to what is happening in the game, "
         return self._build_personality_prompt() + (
             f"\n\nChat has been quiet for {how_long}. Any chat lines you can see "
             f"are from BEFORE that silence, so they are stale: do NOT reply to them, "
             f"do NOT continue that thread, and do NOT retell a joke or topic you have "
             f"already used tonight. Open something NEW.\n"
-            "Break the silence with something "
-            "specific: react to what is happening in the game, call back to a joke "
+            f"Break the silence with something "
+            f"specific: {game_option}call back to a joke "
             "or moment from earlier this stream, ask chat a real question worth "
             "answering, or give an opinion someone would argue with. NEVER remark on "
             "the silence itself, never ask if anyone is there, and never announce that "
@@ -1115,7 +1124,9 @@ class PersonalityEngine:
             return None
         self._update_response_modifiers()
         if message == "[DEAD_AIR_FILLER]":
-            prompt = self._build_dead_air_prompt(context.get('time_since_activity', 0.0))
+            prompt = self._build_dead_air_prompt(
+                context.get('time_since_activity', 0.0),
+                avoid_screen=bool(context.get('just_said_about_screen')))
         else:
             prompt = self._build_personality_prompt()
         # Same bypass as the blocking path: a line the bot already decided is

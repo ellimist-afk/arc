@@ -389,14 +389,14 @@ class ScreenWatcher:
         self._note_kind(kind, now)
         if now - self._last_notable_at < self.notable_cooldown_s:
             self.notables_suppressed += 1
-            logger.info(f"Screen: notable moment held by cooldown ({what[:60]})")
+            logger.info(f"Screen moment held by cooldown ({what[:60]})")
             return
         # The run keeps counting through a cooldown hold, so a run whose
         # middle the cooldown swallowed still earns its pattern line.
         if (self._kind_streak > 1
                 and self._kind_streak - self._kind_said_at_streak < self.streak_threshold):
             self.notables_held_same_kind += 1
-            logger.info(f"Screen: same kind held ({kind}, {self._kind_streak} in a row)")
+            logger.info(f"Screen moment held, same kind ({kind}, {self._kind_streak} in a row)")
             return
         self._last_notable_at = now
         self._kind_said_at_streak = self._kind_streak

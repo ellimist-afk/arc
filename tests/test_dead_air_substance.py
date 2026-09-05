@@ -48,6 +48,40 @@ async def test_dead_air_no_longer_asks_for_a_word_count(engine):
     assert 'No capitals' not in p
 
 
+async def test_avoid_screen_omits_the_game_option(engine):
+    """just_said_about_screen already tells the model not to narrate the
+    screen again; offering it here too would contradict that in one prompt."""
+    p = engine._build_dead_air_prompt(avoid_screen=True).lower()
+    assert 'happening in the game' not in p
+    assert 'call back to a joke' in p, "the other options must still be offered"
+
+
+async def test_avoid_screen_defaults_to_false(engine):
+    p = engine._build_dead_air_prompt()
+    assert 'happening in the game' in p.lower()
+
+
+async def test_generate_response_passes_avoid_screen_from_context(engine, monkeypatch):
+    seen = {}
+
+    async def fake_generate(message, context, user, prompt):
+        seen['prompt'] = prompt
+        return "a line"
+    monkeypatch.setattr(engine, '_generate_text', fake_generate)
+    await engine.generate_response(
+        message="[DEAD_AIR_FILLER]",
+        context={'just_said_about_screen': '2 minutes ago: a highlight reel'},
+        user="system")
+    assert 'happening in the game' not in seen['prompt'].lower()
+
+
+def test_both_dead_air_call_sites_pass_avoid_screen():
+    from pathlib import Path
+    src = Path("src/personality/personality_engine.py").read_text(encoding="utf-8")
+    assert src.count("avoid_screen=") == 2, \
+        "generate_response and generate_response_streamed must both pass it"
+
+
 async def test_filler_generation_uses_the_dead_air_prompt(engine, monkeypatch):
     seen = {}
 
