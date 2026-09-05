@@ -162,6 +162,10 @@ class PersonalityEngine:
         r'^\s*[^:"“\n]{1,60}:\s*["“](?P<line>.+)["”]\s*$', re.S
     )
     _STAGE_DIRECTION_RE = re.compile(r'\*[^*\n]{0,80}\*|\[[^\]\n]{0,80}\]')
+    # A co-host with nothing new to add passes. Only a BARE pass counts:
+    # "pass, honestly" is a line about passing, and silencing it would let
+    # the model duck any moment by starting a sentence with the word.
+    _PASS_RE = re.compile(r'^[\s"\'*(\[\u201c\u2018]*pass[\s"\'*.!,)\]\u201d\u2019]*$', re.I)
     
     def __init__(
         self,
@@ -482,6 +486,12 @@ class PersonalityEngine:
             )
             
             if not response_text:
+                return None
+
+            # Checked BEFORE the variety guard: a second PASS would look like
+            # an exact restatement of the first, and a declined line must
+            # never reach the guard's history at all.
+            if self._declined(response_text, context):
                 return None
 
             # Anti-loop: reject near-repeats of our own recent output, retry
@@ -1180,6 +1190,9 @@ class PersonalityEngine:
                     sentence = self._clean_streamed_sentence(sentence, first)
                     if not sentence:
                         continue
+                    if first and self._declined(sentence, context):
+                        await deltas.aclose()
+                        return
                     ok, reason = self._gate_sentence(sentence, first, fresh_topic, topic_exempt)
                     if first and not ok:
                         # No audio exists yet: abandon the stream and let the
@@ -1203,6 +1216,8 @@ class PersonalityEngine:
             tail = splitter.flush()
             if tail:
                 tail = self._clean_streamed_sentence(tail, first)
+            if tail and first and self._declined(tail, context):
+                return
             if tail:
                 ok, reason = self._gate_sentence(tail, first, fresh_topic, topic_exempt)
                 if ok or first:
@@ -1250,6 +1265,39 @@ class PersonalityEngine:
                     f"topic: you can see the stream, but do not narrate it, "
                     f"mention that you can see it, or steer the conversation "
                     f"to it unless someone else brought it up): {on_screen}")
+
+        # Live 2026-09-05: four screen lines in ten minutes, every one a
+        # hero doing a thing plus one absurd simile. The model had never seen
+        # any of the earlier three, so it reinvented the same joke; showing
+        # them and naming the device is what breaks the beat.
+        ledger = context.get('screen_ledger')
+        if ledger:
+            streamer = getattr(self, 'streamer_name', None) or "the streamer"
+            numbered = "  ".join(f"{i}) {line}"
+                                 for i, line in enumerate(ledger, 1))
+            lines.append(
+                f"- Lines you already said about the screen this stream, "
+                f"oldest first: {numbered}\n"
+                f"  Your next line must be a different KIND of line from the "
+                f"last one: if it was a joke with a simile, no simile -- "
+                f"instead ask {streamer} a real question about what just "
+                f"happened, make a deadpan observation, call back to "
+                f"something from earlier this stream, invent a fake "
+                f"statistic, offer mock sympathy, or predict what happens "
+                f"next.")
+
+        streak = context.get('screen_streak')
+        if streak:
+            lines.append(f"- Pattern: {streak}. Say something about the "
+                         f"pattern, not the moment.")
+
+        just_said = context.get('just_said_about_screen')
+        if just_said:
+            lines.append(
+                f"- You commented on the game {just_said}. This time draw "
+                f"from a different well: ask chat a real question, call back "
+                f"to something from earlier this stream, or give an opinion "
+                f"someone would argue with. Do not narrate the screen again.")
 
         heard = context.get('ambient_audio')
         if heard:
@@ -1377,6 +1425,26 @@ class PersonalityEngine:
             # speak its inner words rather than going silent
             text = ' '.join(re.sub(r'[*\[\]"“”]', ' ', raw).split())
         return text or raw.strip()
+
+    def _declined(self, draft: str, context: Dict[str, Any]) -> bool:
+        """Did the co-host choose to stay silent?
+
+        Only where the caller offered the choice (`may_pass`), and only on
+        the parsed speech text, before styling: `_apply_personality_modifications`
+        lowercases and strips punctuation, which would turn "PASS." into
+        something a later check could not recognise.
+
+        The caller is told through the context it passed in, because a bare
+        None already means "the guards dropped it" and the bot has to log the
+        two differently.
+        """
+        if not (context or {}).get('may_pass'):
+            return False
+        if not self._PASS_RE.match(self._parse_speech_text(draft)):
+            return False
+        logger.info("Declined to speak (PASS)")
+        context['passed'] = True
+        return True
 
     def _clean_streamed_sentence(self, sentence: str, first: bool) -> str:
         """

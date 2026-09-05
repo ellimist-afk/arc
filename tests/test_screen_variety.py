@@ -321,3 +321,121 @@ async def test_no_hook_is_fine(monkeypatch):
 def test_the_bot_wires_the_hook():
     src = Path("src/bot/bot.py").read_text(encoding="utf-8")
     assert "self.response_coordinator.on_filler_sent = self._on_filler_sent" in src
+
+
+# --------------------------------------------------- what the model sees
+
+def _render(context, user="viewer"):
+    from personality.personality_engine import PersonalityEngine
+    return PersonalityEngine._format_context_knowledge(
+        PersonalityEngine.__new__(PersonalityEngine), context, user)
+
+
+def test_the_ledger_and_the_device_rule_reach_the_prompt():
+    out = _render({"on_screen": "cassidy on the payload",
+                   "screen_is_the_topic": True,
+                   "screen_ledger": ["6 min ago (death): a highlight reel",
+                                     "2 min ago (death): a custody hearing"]})
+    assert "1) 6 min ago (death): a highlight reel" in out
+    assert "2) 2 min ago (death): a custody hearing" in out
+    assert "different KIND of line" in out
+    for device in ("deadpan", "fake statistic", "mock sympathy", "predict"):
+        assert device in out, device
+
+
+def test_the_device_rule_never_hardcodes_a_name():
+    """The streamer is whoever bot_settings says; a bare engine still has to
+    render something."""
+    out = _render({"screen_ledger": ["just now (death): a line"]})
+    assert "the streamer" in out
+    assert "cassova" not in out.lower()
+
+
+def test_the_pattern_line_asks_about_the_pattern():
+    out = _render({"screen_streak": "4th death in about 6 minutes"})
+    assert "- Pattern: 4th death in about 6 minutes." in out
+    assert "not the moment" in out
+
+
+def test_the_steer_sends_the_filler_to_another_well():
+    out = _render({"on_screen": "cassidy on the payload",
+                   "just_said_about_screen": "2 minutes ago: a highlight reel"})
+    assert "You commented on the game 2 minutes ago: a highlight reel" in out
+    assert "different well" in out
+    assert "Do not narrate the screen again" in out
+
+
+def test_an_empty_context_still_renders_nothing():
+    assert _render({}) == ""
+
+
+# ------------------------------------------------- the engine may decline
+
+def _engine():
+    from personality.personality_engine import PersonalityEngine
+    return PersonalityEngine(memory_system=None)
+
+
+async def test_a_bare_pass_is_silence_and_leaves_no_trace(caplog, monkeypatch):
+    engine = _engine()
+
+    async def fake_generate(message, context, user, prompt):
+        return "PASS."
+    monkeypatch.setattr(engine, '_generate_text', fake_generate)
+    before = list(engine.repetition_guard.history)
+    context = {'always_respond': True, 'may_pass': True}
+    with caplog.at_level(logging.INFO):
+        out = await engine.generate_response("something happened", context, "system")
+    assert out is None
+    assert context['passed'] is True
+    assert "Declined to speak (PASS)" in caplog.text
+    assert list(engine.repetition_guard.history) == before, \
+        "a line never said cannot be a line to avoid saying"
+
+
+async def test_two_passes_in_a_row_are_both_silence(monkeypatch):
+    """Checked before the variety guard: otherwise the second PASS reads as
+    an exact restatement of the first."""
+    engine = _engine()
+
+    async def fake_generate(message, context, user, prompt):
+        return "pass"
+    monkeypatch.setattr(engine, '_generate_text', fake_generate)
+    for _ in range(2):
+        context = {'always_respond': True, 'may_pass': True}
+        assert await engine.generate_response("x", context, "system") is None
+        assert context['passed'] is True
+
+
+async def test_a_pass_with_more_to_say_is_a_line(monkeypatch):
+    """Only a bare pass counts; otherwise the model could duck any moment by
+    starting a sentence with the word."""
+    engine = _engine()
+
+    async def fake_generate(message, context, user, prompt):
+        return "pass, honestly, that respawn timer looked embarrassed"
+    monkeypatch.setattr(engine, '_generate_text', fake_generate)
+    context = {'always_respond': True, 'may_pass': True}
+    out = await engine.generate_response("x", context, "system")
+    assert out is not None and 'passed' not in context
+
+
+async def test_a_pass_is_only_available_where_it_was_offered(monkeypatch):
+    """A viewer who types "pass" must still get answered."""
+    engine = _engine()
+
+    async def fake_generate(message, context, user, prompt):
+        return "PASS"
+    monkeypatch.setattr(engine, '_generate_text', fake_generate)
+    context = {'always_respond': True}
+    out = await engine.generate_response("x", context, "system")
+    assert out is not None and 'passed' not in context
+
+
+def test_both_generation_paths_can_decline():
+    src = Path("src/personality/personality_engine.py").read_text(encoding="utf-8")
+    blocking = src.split("async def generate_response(")[1].split("async def _enforce_variety")[0]
+    streamed = src.split("async def _sentence_stream(")[1].split("def _format_context_knowledge")[0]
+    assert "self._declined(" in blocking
+    assert "self._declined(" in streamed
+    assert blocking.index("self._declined(") < blocking.index("_enforce_variety(")
