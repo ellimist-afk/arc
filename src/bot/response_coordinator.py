@@ -70,6 +70,10 @@ class ResponseCoordinator:
         # session summary, the chat that preceded the lull). Set by the
         # bot; without it the filler is generated blind.
         self.context_provider = None
+        # Called with the filler text right after it is sent, so the bot can
+        # put its own unprompted line into its own chat context. Without it
+        # the next generation cannot see what this one just said.
+        self.on_filler_sent = None
         # Returns False when a filler would be pointless (stream offline).
         # Set by the bot; without it the monitor assumes it is worth talking.
         self.should_fill = None
@@ -427,6 +431,13 @@ class ResponseCoordinator:
                         ) if self.audio_queue else None,
                         priority='low'
                     )
+                    # The line is already out; a hook that raises must not
+                    # take the monitor down with it.
+                    if self.on_filler_sent is not None:
+                        try:
+                            self.on_filler_sent(filler_msg)
+                        except Exception as e:  # noqa: BLE001
+                            logger.debug(f"Filler follow-up failed: {e}")
                     
             except asyncio.CancelledError:
                 break

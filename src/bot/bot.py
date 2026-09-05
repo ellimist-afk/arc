@@ -185,6 +185,14 @@ class TalkBot:
         # is enough to riff on; older than a few minutes is a moment gone.
         self._ambient_audio = deque(maxlen=3)
         self.ambient_max_age_s = 180.0
+        # What the co-host has already said about the screen this stream:
+        # (monotonic, kind, what happened, the line). It never saw its own
+        # unsolicited lines before this -- append_assistant is called only on
+        # the reply paths -- so it could not avoid repeating itself.
+        self._screen_ledger = deque(maxlen=6)
+        self._filler_screen_topic_at = None
+        self._filler_screen_topic_text = None
+        self.filler_screen_gap_s = 600.0
         # Raids arrive over IRC and EventSub both; keyed by (raider, viewers)
         self._recent_raid_keys: Dict[Any, float] = {}
         self._raid_dedup_window_s = 60.0
@@ -560,6 +568,9 @@ class TalkBot:
             self.response_coordinator.personality_engine = self.personality_engine
             # Dead-air lines get the same situational awareness as chat replies
             self.response_coordinator.context_provider = self._dead_air_context
+            # And the filler hears itself: an unprompted line that never
+            # enters the chat buffer is invisible to the next generation.
+            self.response_coordinator.on_filler_sent = self._on_filler_sent
             # Never fill dead air into an offline stream
             self.response_coordinator.should_fill = lambda: (
                 not self.muted
@@ -1925,6 +1936,9 @@ class TalkBot:
                 getattr(self.personality_engine, 'llm_model', 'gpt-5.5'),
             )
             self.screen_watcher.on_notable = self._react_to_screen
+            self.filler_screen_gap_s = float(
+                ((self._bot_settings.get('screen_awareness') or {})
+                 .get('filler_screen_gap_seconds') or 600.0) or 600.0)
             # Same liveness rule as dead air: never look at, or talk
             # about, a screen nobody is watching.
             self.screen_watcher.should_look = lambda: (
@@ -2089,13 +2103,19 @@ class TalkBot:
             await self.audio_queue.queue_audio("Clipped" if clip else "Couldn't clip that",
                                                priority="high")
 
-    async def _react_to_screen(self, what_happened: str) -> None:
+    async def _react_to_screen(self, what_happened: str, kind: str = 'other',
+                               streak: int = 1) -> None:
         """Say something when the vision loop reports a real moment.
 
         Deliberately routed as an UNSOLICITED line: it inherits the topic
         guard (so it cannot re-tell a bit) and is dropped rather than
         regenerated if it comes out repetitive. Nobody asked for this line,
         so silence is always an acceptable outcome.
+
+        The model is handed the lines it already said about the screen this
+        stream, and told it may reply PASS. Live 2026-09-05 it wrote four
+        interchangeable death jokes in ten minutes because it had never seen
+        any of the previous three.
         """
         if not self.personality_engine or not self.response_coordinator:
             return
@@ -2109,18 +2129,34 @@ class TalkBot:
         # the prompt says not to steer to it. This is the one path that asked.
         context: Dict[str, Any] = {'on_screen': what_happened,
                                    'screen_is_the_topic': True,
-                                   'always_respond': True}
+                                   'always_respond': True,
+                                   'may_pass': True}
+        ledger = self._render_screen_ledger()
+        if ledger:
+            context['screen_ledger'] = ledger
+        run = self._screen_run_text(kind, streak)
+        if run:
+            context['screen_streak'] = run
         try:
             if self.chat_buffer:
                 context['recent_messages'] = self.chat_buffer.get_recent(channel, limit=6)
         except Exception as e:  # noqa: BLE001
             logger.debug(f"Screen reaction chat context unavailable: {e}")
 
-        scenario = (
-            f"Something just happened on stream: {what_happened}. React to it "
-            f"in one line, as if you were watching. Do not narrate the screen "
-            f"back; say the thing a co-host would say about it."
-        )
+        if run:
+            scenario = (
+                f"Something just happened on stream: {what_happened}. This is "
+                f"the {run}; you already said your line about the first one. "
+                f"React to the PATTERN, not the moment, in one line -- or "
+                f"reply with exactly PASS."
+            )
+        else:
+            scenario = (
+                f"Something just happened on stream: {what_happened}. React to it "
+                f"in one line, as if you were watching. Do not narrate the screen "
+                f"back; say the thing a co-host would say about it. If there is "
+                f"nothing new worth saying, reply with exactly PASS."
+            )
         try:
             response = await asyncio.wait_for(
                 self.personality_engine.generate_response(
@@ -2135,6 +2171,12 @@ class TalkBot:
             logger.warning(f"Screen reaction generation failed: {e}")
             return
 
+        if context.get('passed'):
+            # The co-host read the moment and had nothing to add. That is a
+            # different outcome from a guard drop and must not clip, so it
+            # returns before the clip and the coordinator.
+            logger.info("Screen reaction passed: nothing new to say")
+            return
         text = ((response or {}).get('text') or '').strip()
         if not text:
             logger.info("Screen reaction suppressed by the guards; staying quiet")
@@ -2150,6 +2192,87 @@ class TalkBot:
             chat_msg=text, audio_task=None, priority='normal',
             is_mention=False, is_voice=False)
         self.last_bot_message_at = datetime.now()
+        self._remember_own_line(text)
+        self._screen_ledger.append((time.monotonic(), kind, what_happened, text))
+
+    def _remember_own_line(self, text: str) -> None:
+        """Put a line the co-host said unprompted into its own chat context.
+
+        append_assistant is called on the three reply paths only, so before
+        this the model writing screen line #4 had never seen #1-#3 -- it
+        cannot avoid what it cannot see.
+        """
+        if not text or not self.chat_buffer:
+            return
+        try:
+            self.chat_buffer.append_assistant(
+                channel=self.config.get('TWITCH_CHANNEL', ''),
+                username=self.config.get('TWITCH_BOT_USERNAME', 'bot'),
+                message=text)
+        except Exception as e:  # noqa: BLE001 - context is never load-bearing
+            logger.debug(f"Could not record our own line: {e}")
+
+    def _on_filler_sent(self, text: str) -> None:
+        """A dead-air filler just went out. It counts as a screen line when
+        the screen is what it was handed to talk about."""
+        self._remember_own_line(text)
+        at = self._filler_screen_topic_at
+        if at is not None and time.monotonic() - at <= 60.0:
+            self._screen_ledger.append(
+                (time.monotonic(), 'filler',
+                 self._filler_screen_topic_text or '', text))
+
+    def _render_screen_ledger(self) -> List[str]:
+        """The screen lines already said, oldest first, for the prompt."""
+        now = time.monotonic()
+        out = []
+        for when, kind, _what, line in self._screen_ledger:
+            mins = int(round((now - when) / 60))
+            ago = "just now" if mins < 1 else f"{mins} min ago"
+            out.append(f"{ago} ({kind}): {line}")
+        return out
+
+    def _screen_run_text(self, kind: str, streak: int) -> Optional[str]:
+        """"4th death in about 6 minutes", or None when this is the first
+        of its kind. It is the pattern that is worth a line by then, not the
+        moment."""
+        if not streak or streak < 2:
+            return None
+        started = None
+        watcher = getattr(self, 'screen_watcher', None)
+        try:
+            started = watcher.streak_started_s_ago() if watcher else None
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Screen run age unavailable: {e}")
+        run = f"{self._ordinal(streak)} {kind}"
+        if started and started >= 60:
+            run += f" in about {int(round(started / 60))} minutes"
+        return run
+
+    @staticmethod
+    def _ordinal(n: int) -> str:
+        if 10 <= n % 100 <= 20:
+            return f"{n}th"
+        return f"{n}{ {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th') }"
+
+    def _recent_screen_line(self) -> Optional[str]:
+        """The last thing the co-host said about the screen, when it is too
+        fresh for a filler to reach for the screen again.
+
+        Live 2026-09-05 the chain was screen, screen, filler-about-the-screen,
+        screen: a reaction restarts the lull clock, and the filler that
+        followed had the screen handed to it as its topic.
+        """
+        if not self._screen_ledger:
+            return None
+        when, _kind, _what, line = self._screen_ledger[-1]
+        ago = time.monotonic() - when
+        if ago > getattr(self, 'filler_screen_gap_s', 600.0):
+            return None
+        logger.info(f"Dead air: steering the filler off the screen "
+                    f"(said about it {ago:.0f}s ago)")
+        mins = max(1, int(round(ago / 60)))
+        return f"{mins} minute{'' if mins == 1 else 's'} ago: {line}"
 
     def _ambient_context(self) -> List[str]:
         """Fresh lines heard on stream audio, oldest first."""
@@ -2181,13 +2304,21 @@ class TalkBot:
         if watcher:
             try:
                 seen = watcher.describe_with_duration()
+                # Nobody is talking, so there is no conversation to steer away
+                # from -- the screen is the honest thing to reach for here. In
+                # a REPLY it stays peripheral; see _format_context_knowledge.
+                # Unless the co-host JUST said something about the screen, in
+                # which case a filler about it is the fourth screen line in a
+                # row (live 2026-09-05) and it is steered to another well.
                 if seen:
                     context['on_screen'] = seen
-                    # Nobody is talking, so there is no conversation to steer
-                    # away from -- the screen is the honest thing to reach for
-                    # here. In a REPLY it stays peripheral; see
-                    # _format_context_knowledge.
-                    context['screen_is_the_topic'] = True
+                    steer = self._recent_screen_line()
+                    if steer:
+                        context['just_said_about_screen'] = steer
+                    else:
+                        context['screen_is_the_topic'] = True
+                        self._filler_screen_topic_at = time.monotonic()
+                        self._filler_screen_topic_text = seen
             except Exception as e:  # noqa: BLE001
                 logger.debug(f"Dead-air screen view unavailable: {e}")
         if self.session_summarizer:
