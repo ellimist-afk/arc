@@ -56,6 +56,10 @@ def _bot(reply="cassidy again", passes=False, ledger=(), streak_age=360.0,
     bot.auto_clipper = None                       # the clip path is not the subject
     bot._screen_ledger = deque(ledger, maxlen=6)
     bot.filler_screen_gap_s = 600.0
+    bot.yield_to_chat_s = 45.0
+    bot.room_followup_window_s = 60.0
+    bot._room_followup_until = 0.0
+    bot._last_line_unsolicited = False
     bot._filler_screen_topic_at = None
     bot._filler_screen_topic_text = None
     bot.stream_info = None
@@ -80,7 +84,7 @@ def _bot(reply="cassidy again", passes=False, ledger=(), streak_age=360.0,
     class Buffer:
         @staticmethod
         def get_recent(channel, limit=6):
-            return []
+            return []            # nobody is talking; the screen may speak
 
         @staticmethod
         def append_assistant(channel, username, message):

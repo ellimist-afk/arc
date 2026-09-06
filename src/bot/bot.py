@@ -109,6 +109,21 @@ def _read_filler_screen_gap(settings: Dict[str, Any]) -> float:
     cfg = (settings or {}).get('screen_awareness') or {}
     return _number(cfg.get('filler_screen_gap_seconds'), 600.0)
 
+
+def _read_screen_people(settings: Dict[str, Any]) -> Tuple[float, float]:
+    """Tolerant parse of the two people-over-the-screen settings ->
+    (yield_to_chat_seconds, room_followup_seconds).
+
+    Same rule as the filler gap: a hand-edited "45s" must fall back rather
+    than raise, because this is read inside the try block that constructs
+    ScreenWatcher and one bad character would disable vision entirely. 0 is
+    a legitimate "never yield" / "never upgrade" and must survive.
+    """
+    from features.screen_watcher import _number
+    cfg = (settings or {}).get('screen_awareness') or {}
+    return (_number(cfg.get('yield_to_chat_seconds'), 45.0),
+            _number(cfg.get('room_followup_seconds'), 60.0))
+
 class ShutdownError(RuntimeError):
     """One or more components failed to shut down. Every component still got
     its turn; `failures` lists (step name, exception) in teardown order."""
@@ -207,6 +222,16 @@ class TalkBot:
         self._filler_screen_topic_at = None
         self._filler_screen_topic_text = None
         self.filler_screen_gap_s = 600.0
+        # People over the screen. A moment that lands while the room is
+        # talking is dropped: a co-host does not interrupt a conversation to
+        # narrate a death. And for a beat after an UNPROMPTED line (a screen
+        # reaction, a dead-air filler) the first viewer message is taken as
+        # an answer to it -- live 2026-09-06 five viewers in 35 minutes were
+        # held by the breather because the bot had just talked to itself.
+        self.yield_to_chat_s = 45.0
+        self.room_followup_window_s = 60.0
+        self._room_followup_until: float = 0.0     # monotonic
+        self._last_line_unsolicited: bool = False
         # Raids arrive over IRC and EventSub both; keyed by (raider, viewers)
         self._recent_raid_keys: Dict[Any, float] = {}
         self._raid_dedup_window_s = 60.0
@@ -850,6 +875,18 @@ class TalkBot:
             if via_followup:
                 is_mention = True
                 logger.info(f"Follow-up from {message.get('username')} treated as a mention")
+            elif not is_mention and time.monotonic() < self._room_followup_until:
+                # The co-host just said something nobody asked for. Whoever
+                # speaks next is almost always answering IT -- but nobody is
+                # a per-viewer follow-up after an unprompted line, because
+                # only the reply paths write _replied_to. So the room as a
+                # whole gets one claim on that window, and the first message
+                # takes it.
+                via_followup = True
+                is_mention = True
+                self._room_followup_until = 0.0
+                logger.info(f"Room follow-up from {message.get('username')} "
+                            f"treated as a mention")
             priority = 'high' if is_mention else 'normal'
             
             # Store in memory system
@@ -925,7 +962,11 @@ class TalkBot:
             # An unsolicited line right after our own last line reads as the
             # bot talking to itself; let the room breathe. Mentions and
             # first-timer greetings always go through.
-            if not explicitly_addressed and not greet and self.last_bot_message_at is not None:
+            # A person answering the co-host's own unprompted line is not the
+            # bot talking to itself; the breather must not hold them. A
+            # follow-up to a REPLY keeps today's hold.
+            answering_us = via_followup and self._last_line_unsolicited
+            if not explicitly_addressed and not greet and not answering_us and self.last_bot_message_at is not None:
                 gap = (datetime.now() - self.last_bot_message_at).total_seconds()
                 if gap < self.unsolicited_gap_s:
                     logger.info(f"Holding {'follow-up' if via_followup else 'unsolicited'} "
@@ -1817,6 +1858,9 @@ class TalkBot:
             return
         _, streak = self._replied_to.get(name, (0.0, 0))
         self._replied_to[name] = (time.monotonic(), streak + 1)
+        # The last thing the co-host said was an answer, not an unprompted
+        # line, so there is nothing for the room to be answering.
+        self._last_line_unsolicited = False
 
     def _is_followup(self, username: str) -> bool:
         """Is this viewer continuing a conversation the co-host is already in?
@@ -1951,6 +1995,8 @@ class TalkBot:
             )
             self.screen_watcher.on_notable = self._react_to_screen
             self.filler_screen_gap_s = _read_filler_screen_gap(self._bot_settings)
+            (self.yield_to_chat_s,
+             self.room_followup_window_s) = _read_screen_people(self._bot_settings)
             # Same liveness rule as dead air: never look at, or talk
             # about, a screen nobody is watching.
             self.screen_watcher.should_look = lambda: (
@@ -2134,6 +2180,16 @@ class TalkBot:
         if self.muted:
             logger.info("Muted; not reacting to the screen")
             return
+        # A co-host does not interrupt a room that is talking to narrate a
+        # death. The screen was spending the budget people should get: live
+        # 2026-09-06, five viewer messages in 35 minutes were held by the
+        # breather because the bot had JUST said a screen line. The watcher
+        # has already spent its cooldown on this moment; that is accepted --
+        # the next moment of the same kind still carries the run.
+        ago = self._seconds_since_viewer_spoke()
+        if ago is not None and ago < self.yield_to_chat_s:
+            logger.info(f"Screen moment held, chat is talking ({ago:.0f}s ago)")
+            return
         channel = self.config.get('TWITCH_CHANNEL', '')
         # The vision loop already judged this worth saying; the chattiness
         # dice would discard it. It stays unsolicited for the guards.
@@ -2205,7 +2261,43 @@ class TalkBot:
             is_mention=False, is_voice=False)
         self.last_bot_message_at = datetime.now()
         self._remember_own_line(text)
+        self._open_room_followup()
         self._screen_ledger.append((time.monotonic(), kind, what_happened, text))
+
+    def _seconds_since_viewer_spoke(self) -> Optional[float]:
+        """How long since a PERSON last said something here, or None when
+        nobody has.
+
+        The buffer holds the co-host's own unprompted lines too (that is what
+        stops it repeating itself), so the role has to be checked: a screen
+        line must never count as the room talking and yield to itself.
+        """
+        buffer = getattr(self, 'chat_buffer', None)
+        if not buffer:
+            return None
+        try:
+            turns = buffer.get_recent(
+                self.config.get('TWITCH_CHANNEL', ''), limit=10) or []
+        except Exception as e:  # noqa: BLE001 - a hold is never load-bearing
+            logger.debug(f"Chat recency unavailable: {e}")
+            return None
+        for turn in reversed(list(turns)):
+            if (turn or {}).get('role') != 'viewer':
+                continue
+            try:
+                ts = float(turn.get('timestamp') or 0)
+            except (TypeError, ValueError):
+                continue
+            if not ts:
+                continue
+            return max(0.0, datetime.now().timestamp() - ts)
+        return None
+
+    def _open_room_followup(self) -> None:
+        """The co-host just said something nobody asked for. For the next
+        beat, whoever speaks is answering it."""
+        self._room_followup_until = time.monotonic() + self.room_followup_window_s
+        self._last_line_unsolicited = True
 
     def _remember_own_line(self, text: str) -> None:
         """Put a line the co-host said unprompted into its own chat context.
@@ -2232,6 +2324,7 @@ class TalkBot:
         claimed by the next one, whether or not this filler used it.
         """
         self._remember_own_line(text)
+        self._open_room_followup()
         at = self._filler_screen_topic_at
         topic_text = self._filler_screen_topic_text
         self._filler_screen_topic_at = None
