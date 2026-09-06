@@ -57,7 +57,9 @@ async def test_prompt_demands_bare_spoken_line(engine, preset):
 
 async def test_named_presets_get_their_own_anchors_and_sassy_gets_deadpan(engine):
     await switch(engine, 'uwu')
-    assert 'cutest little crime scene' in engine._build_personality_prompt()
+    # re-pinned from 'cutest little crime scene' when plain-over-clever
+    # rewrote the uwu anchors to drop the simile they taught the model
+    assert 'doing so well for a second' in engine._build_personality_prompt()
     await switch(engine, 'cryptid')
     assert 'three hundred years' in engine._build_personality_prompt()
     await switch(engine, 'chaos')
@@ -67,7 +69,7 @@ async def test_named_presets_get_their_own_anchors_and_sassy_gets_deadpan(engine
     # the deadpan fallback anchors (the witness-protection line was replaced:
     # its "you're not X, you're Y" reversal taught the model the most
     # AI-sounding joke frame there is)
-    assert 'respect honestly' in p and 'crime scene' not in p
+    assert 'respect honestly' in p and 'doing so well for a second' not in p
 
 
 async def test_identity_line_uses_bot_name(engine):
@@ -80,6 +82,51 @@ async def test_low_sarcasm_preset_has_no_anchors(engine):
     await switch(engine, 'friendly')
     p = engine._build_personality_prompt()
     assert 'Register anchors' not in p and 'Output format' in p
+
+
+# ------------------------------------------------------------ plain over clever
+
+async def test_prompt_defaults_to_plain(engine):
+    """The style block used to ask for a joke on every line; it now says
+    most lines are plain and a joke is the exception."""
+    p = engine._build_personality_prompt()
+    assert 'Default to plain' in p
+    assert 'roughly one line in three' in p
+    assert 'No comparisons' in p
+
+
+async def test_prompt_no_longer_demands_the_joke(engine):
+    await switch(engine, 'uwu')
+    p = engine._build_personality_prompt()
+    assert 'go for the joke' not in p
+    assert 'Witty:' not in p
+    assert 'hamster' not in p
+
+
+async def test_banned_list_covers_constructed_comparisons(engine):
+    p = engine._build_personality_prompt().lower()
+    assert 'constructed comparison' in p
+    assert 'basically a' in p
+
+
+@pytest.mark.parametrize('preset', ['uwu', 'cryptid', 'chaos'])
+async def test_register_anchors_have_no_similes(engine, preset):
+    """A viewer writing 'like a' does not license a simile back, and neither
+    does the anchor examples the model is told to match the energy of."""
+    await switch(engine, preset)
+    anchors = PersonalityEngine.REGISTER_ANCHORS[preset]
+    assert 'like a ' not in anchors and 'like an ' not in anchors
+
+
+async def test_default_deadpan_anchors_have_no_similes(engine):
+    await switch(engine, 'sassy')
+    p = engine._build_personality_prompt()
+    # slice out just the anchors block -- the Style block's own "No
+    # comparisons" rule and the BANNED list both contain the literal text
+    # "like a" while banning it, so checking the whole prompt would be
+    # checking the wrong thing
+    anchor_text = p[p.index('Register anchors'):p.index('\nJoke shapes')]
+    assert 'like a ' not in anchor_text and 'like an ' not in anchor_text
 
 
 # ------------------------------------------------------------- blocking path
@@ -208,7 +255,7 @@ async def test_switch_preset_by_enum_clears_named_anchor_selection(engine):
 
 # ---------------------------------------------------------------- brevity
 
-@pytest.mark.parametrize('chattiness, cap', [(30, '20 words'), (60, '25 words'), (90, '35 words')])
+@pytest.mark.parametrize('chattiness, cap', [(30, '12 words'), (60, '15 words'), (90, '25 words')])
 def test_every_length_rule_carries_a_word_cap(engine, chattiness, cap):
     """Sentence counts alone were read as licence for two dense sentences
     that scroll off Twitch chat before anyone reads them."""
