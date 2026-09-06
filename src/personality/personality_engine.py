@@ -22,7 +22,7 @@ if str(Path(__file__).parent.parent) not in sys.path:
 
 from core.network_resilience import get_resilience
 from core.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
-from personality.repetition_guard import RepetitionGuard
+from personality.repetition_guard import RepetitionGuard, names_target
 from personality.streamed_reply import StreamedReply, SentenceStream
 from audio.sentence_splitter import SentenceSplitter, split_text
 
@@ -264,7 +264,8 @@ class PersonalityEngine:
             guard_cfg = settings.get('repetition_guard') or {}
             self.repetition_guard_enabled = bool(guard_cfg.get('enabled', True))
             for key in ('similarity_threshold', 'opening_cooldown',
-                        'phrase_cooldown', 'catchphrase_min_uses'):
+                        'phrase_cooldown', 'catchphrase_min_uses',
+                        'target_window', 'target_max'):
                 if key in guard_cfg:
                     setattr(self.repetition_guard, key, guard_cfg[key])
         except Exception as e:
@@ -534,6 +535,21 @@ class PersonalityEngine:
             logger.error(f"Failed to generate response: {e}")
             return None
             
+    def _roast_target(self, message: str,
+                      context: Optional[Dict[str, Any]]) -> Tuple[Optional[str], bool]:
+        """The name the co-host reaches for by reflex, and whether this line
+        is allowed to use it.
+
+        The streamer is fair game when the line is ABOUT him: the message
+        being answered names him, or the line is a reaction to what is on
+        his screen. Otherwise the guard counts how often he has already been
+        the punchline. Shared by the blocking and streamed paths so the two
+        cannot drift."""
+        target = self.streamer_name
+        target_exempt = (names_target(message, target)
+                         or bool((context or {}).get('screen_is_the_topic')))
+        return target, target_exempt
+
     async def _enforce_variety(
         self,
         text: str,
@@ -568,8 +584,10 @@ class PersonalityEngine:
             self.repetition_guard.topic_words(message)
             if fresh_topic and not is_filler else None
         )
+        target, target_exempt = self._roast_target(message, context)
         verdict = self.repetition_guard.check(
-            text, fresh_topic=fresh_topic, topic_exempt=topic_exempt)
+            text, fresh_topic=fresh_topic, topic_exempt=topic_exempt,
+            target=target, target_exempt=target_exempt)
         if verdict.ok:
             return text
 
@@ -594,7 +612,8 @@ class PersonalityEngine:
         )
         if retry:
             retry_verdict = self.repetition_guard.check(
-                retry, fresh_topic=fresh_topic, topic_exempt=topic_exempt)
+                retry, fresh_topic=fresh_topic, topic_exempt=topic_exempt,
+                target=target, target_exempt=target_exempt)
             if retry_verdict.ok:
                 return retry
             if not is_mention:
@@ -1078,19 +1097,23 @@ class PersonalityEngine:
 
     def _gate_sentence(self, sentence: str, first: bool,
                        fresh_topic: bool = False,
-                       topic_exempt: Optional[set] = None) -> Tuple[bool, str]:
+                       topic_exempt: Optional[set] = None,
+                       target: Optional[str] = None,
+                       target_exempt: bool = False) -> Tuple[bool, str]:
         """Per-sentence repetition check. The first sentence gets the full
-        guard (opener cooldown, catchphrases, similarity, topic retell);
-        later ones only similarity — 'opener', 'catchphrase' and 'whose topic
-        is this' are properties of a reply's start, not of its third
-        sentence, and a later sentence naturally shares the topic of the
-        first."""
+        guard (opener cooldown, catchphrases, similarity, topic retell,
+        roast target); later ones only similarity — 'opener', 'catchphrase',
+        'whose topic is this' and 'who is the punchline' are properties of a
+        reply's start, not of its third sentence, and a later sentence
+        naturally shares the topic of the first."""
         if not self.repetition_guard_enabled:
             return True, "ok"
         verdict = self.repetition_guard.check(
             sentence,
             fresh_topic=fresh_topic and first,
-            topic_exempt=topic_exempt)
+            topic_exempt=topic_exempt,
+            target=target if first else None,
+            target_exempt=target_exempt)
         if first:
             return verdict.ok, verdict.reason
         ok = verdict.score < self.repetition_guard.similarity_threshold
@@ -1174,6 +1197,7 @@ class PersonalityEngine:
             self.repetition_guard.topic_words(message)
             if fresh_topic and not is_filler else None
         )
+        target, target_exempt = self._roast_target(message, context)
         start_time = datetime.now()
         splitter = SentenceSplitter(min_chars=min_sentence_chars)
         spoken: List[str] = []       # what was actually yielded (chat text source)
@@ -1204,7 +1228,8 @@ class PersonalityEngine:
                     if first and self._declined(sentence, context):
                         await deltas.aclose()
                         return
-                    ok, reason = self._gate_sentence(sentence, first, fresh_topic, topic_exempt)
+                    ok, reason = self._gate_sentence(sentence, first, fresh_topic, topic_exempt,
+                                               target, target_exempt)
                     if first and not ok:
                         # No audio exists yet: abandon the stream and let the
                         # blocking path do its regenerate-with-hint dance.
@@ -1230,7 +1255,8 @@ class PersonalityEngine:
             if tail and first and self._declined(tail, context):
                 return
             if tail:
-                ok, reason = self._gate_sentence(tail, first, fresh_topic, topic_exempt)
+                ok, reason = self._gate_sentence(tail, first, fresh_topic, topic_exempt,
+                                               target, target_exempt)
                 if ok or first:
                     # A first-and-only sentence that fails here has nothing to
                     # fall back to without speaking twice; deliver it.

@@ -30,6 +30,16 @@ Three checks, all against the bot's OWN recent outputs (never viewer text):
                         so riffing on what chat is actually discussing never
                         counts as a rerun. Direct mentions skip the check:
                         an addressed reply is owed whatever its topic.
+5. target cooldown    - OPT-IN via check(target=...), for the one name the
+                        co-host reaches for by reflex: the streamer's. Live
+                        2026-09-06 every punchline in twenty minutes landed
+                        on him whatever the topic was, and checks 1-4 saw
+                        nothing (one token, otherwise different lines). If
+                        the target already appeared in target_max of the
+                        last target_window outputs, a draft naming him again
+                        fails. Lines that are ABOUT him -- he was named in
+                        the message being answered, or the line reacts to
+                        his screen -- pass target_exempt=True and skip it.
 
 Pure Python, no I/O, no clock: the caller records accepted outputs and
 asks for a verdict on candidates. Deterministic, so it's unit-testable
@@ -119,6 +129,30 @@ def _distinctive(tokens: List[str]) -> Set[str]:
     return {t for t in tokens if len(t) >= 4 and t not in _STOPWORDS}
 
 
+def _contains_run(tokens: List[str], run: List[str]) -> bool:
+    """Do `run`'s tokens appear as a contiguous run inside `tokens`?"""
+    if not run or len(run) > len(tokens):
+        return False
+    first = run[0]
+    for i, tok in enumerate(tokens):
+        if tok == first and tokens[i:i + len(run)] == run:
+            return True
+    return False
+
+
+def names_target(text: str, target: Optional[str]) -> bool:
+    """Does `text` name `target`? Token-level, so punctuation and case in a
+    Twitch handle stop mattering ("Cassova_" names "cassova_"). A longer
+    handle that merely starts with the target's tokens ("cassova_fan") does
+    match -- accepted deliberately: those are near-always the streamer being
+    talked about, and the cost of a miss (another reflex roast) beats the
+    cost of a false pass."""
+    if not target or not text:
+        return False
+    run = tokenize(target)
+    return bool(run) and _contains_run(tokenize(text), run)
+
+
 def _identifying(words: Set[str]) -> Set[str]:
     """Of some shared words, the ones specific enough to name a bit."""
     return {w for w in words if w not in _COMMON}
@@ -133,10 +167,16 @@ class RepetitionVerdict:
     nearest: Optional[str] = None     # the recent output it most resembles
     retold_words: List[str] = field(default_factory=list)  # topic words shared with retold_from
     retold_from: Optional[str] = None # the recent output whose topic was re-told
+    overused_target: Optional[str] = None  # the roast target, when it was named too often
+    target_uses: int = 0              # recent outputs that named the target
+    target_window_seen: int = 0       # how many recent outputs were examined
 
     @property
     def reason(self) -> str:
         parts = []
+        if self.overused_target:
+            parts.append(f"streamer punchline: {self.overused_target} in "
+                         f"{self.target_uses} of last {self.target_window_seen}")
         if self.reused_opening:
             parts.append(f"opening '{self.reused_opening}' reused")
         if self.hot_phrases:
@@ -162,6 +202,10 @@ class RepetitionGuard:
     short_text_tokens:     candidates with fewer tokens than this (e.g. dead-air
                            "anyone there") are compared by exact match only,
                            since n-gram overlap is meaningless that short
+    target_window:         how many recent outputs are searched for the roast
+                           target's name
+    target_max:            how many of those may name the target before a new
+                           draft naming him is rejected
     """
 
     history_size: int = 20
@@ -173,6 +217,8 @@ class RepetitionGuard:
     short_text_tokens: int = 4
     topic_window: int = 3            # self-initiated lines look back this far
     topic_min_shared: int = 2        # shared distinctive words that mean "same bit"
+    target_window: int = 4           # look back this many accepted outputs for the target
+    target_max: int = 1              # target may appear in at most this many of them
 
     _history: Deque[str] = field(default_factory=deque, init=False, repr=False)
     _tokens: Deque[List[str]] = field(default_factory=deque, init=False, repr=False)
@@ -262,15 +308,39 @@ class RepetitionGuard:
                 best_words, best_past = sorted(shared), past
         return best_words, best_past
 
+    def _target_overuse(
+        self, toks: List[str], target: Optional[str], target_exempt: bool
+    ) -> Tuple[Optional[str], int, int]:
+        """Has this target closed too many of the recent lines already?
+
+        Only asked of drafts that name him, and only when the line is not
+        about him (target_exempt). Short lines count too: "cassova_ again"
+        is the same reflex as a long one."""
+        if not target or target_exempt:
+            return None, 0, 0
+        run = tokenize(target)
+        if not run or not _contains_run(toks, run):
+            return None, 0, 0
+        recent = list(self._tokens)[-self.target_window:]
+        uses = sum(1 for past_toks in recent if _contains_run(past_toks, run))
+        if uses >= self.target_max:
+            return target, uses, len(recent)
+        return None, uses, len(recent)
+
     def check(
         self,
         candidate: str,
         fresh_topic: bool = False,
         topic_exempt: Optional[Set[str]] = None,
+        target: Optional[str] = None,
+        target_exempt: bool = False,
     ) -> RepetitionVerdict:
         toks = tokenize(candidate or "")
         if not toks or not self._tokens:
             return RepetitionVerdict(ok=True, score=0.0, reused_opening=None, hot_phrases=[])
+
+        overused_target, target_uses, target_seen = self._target_overuse(
+            toks, target, target_exempt)
 
         # Short text: only an exact restatement counts.
         if len(toks) < self.short_text_tokens:
@@ -279,8 +349,15 @@ class RepetitionGuard:
                     return RepetitionVerdict(
                         ok=False, score=1.0, reused_opening=None,
                         hot_phrases=[], nearest=past,
+                        overused_target=overused_target,
+                        target_uses=target_uses,
+                        target_window_seen=target_seen,
                     )
-            return RepetitionVerdict(ok=True, score=0.0, reused_opening=None, hot_phrases=[])
+            return RepetitionVerdict(
+                ok=overused_target is None, score=0.0, reused_opening=None,
+                hot_phrases=[], overused_target=overused_target,
+                target_uses=target_uses, target_window_seen=target_seen,
+            )
 
         cand_shingles = _shingles(toks)
         best_score, nearest = 0.0, None
@@ -305,11 +382,14 @@ class RepetitionGuard:
             and reused_opening is None
             and not hot
             and retold_from is None
+            and overused_target is None
         )
         return RepetitionVerdict(
             ok=ok, score=best_score, reused_opening=reused_opening,
             hot_phrases=hot, nearest=nearest,
             retold_words=retold_words, retold_from=retold_from,
+            overused_target=overused_target, target_uses=target_uses,
+            target_window_seen=target_seen,
         )
 
     def avoid_hint(self, verdict: RepetitionVerdict) -> str:
@@ -326,6 +406,12 @@ class RepetitionGuard:
             words = ", ".join(f"\"{w}\"" for w in verdict.retold_words)
             lines.append(f"- You already did the {words} bit: \"{verdict.retold_from}\". "
                          f"Pick a COMPLETELY different subject.")
+        if verdict.overused_target:
+            name = verdict.overused_target
+            lines.append(
+                f"- Leave {name} out of this one entirely: {name} was the punchline "
+                f"in {verdict.target_uses} of your last {verdict.target_window_seen} "
+                f"lines. The joke is about the topic at hand.")
         recent_openers = sorted(self.hot_openings())
         if recent_openers:
             lines.append("- Openers already used recently: " + ", ".join(f"\"{o}\"" for o in recent_openers))

@@ -19,10 +19,12 @@ def _engine(monkeypatch, always_repetitive=True):
     e.repetition_guard_enabled = True
     e.repetition_rejections = 0
     e.repetition_forced = 0
+    e.streamer_name = 'cassova_'
     e.calls = []
 
     class Guard:
-        def check(self, text, fresh_topic=False, topic_exempt=None):
+        def check(self, text, fresh_topic=False, topic_exempt=None,
+                  target=None, target_exempt=False):
             class V:
                 ok = not always_repetitive
                 reason = "similarity 0.90"

@@ -27,7 +27,9 @@
     "similarity_threshold": 0.45,
     "opening_cooldown": 5,
     "phrase_cooldown": 8,
-    "catchphrase_min_uses": 2
+    "catchphrase_min_uses": 2,
+    "target_window": 4,
+    "target_max": 1
   },
   "session_summary": {
     "enabled": true,
