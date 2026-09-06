@@ -128,3 +128,32 @@ def test_settings_carry_the_flag():
     engine_src = Path("src/personality/personality_engine.py").read_text(
         encoding="utf-8", errors="replace")
     assert "'ban_comparisons'" in engine_src
+
+
+# -------------------------------------------------------- the audit report
+
+def test_the_comparison_rejection_is_auditable_after_the_stream():
+    """The reason string is the needle. If it is reworded, the guard drops
+    off the post-stream report silently -- so it is pinned to the source
+    that produces it and to the auditor that looks for it. The auditor's
+    own source scan (test_audit_stream_log.py) never reads
+    repetition_guard.py, so the pin lives here instead, the same way
+    test_streamer_target.py pins streamer_punchline."""
+    sys.path.insert(0, str(Path(__file__).parent.parent / "tools"))
+    from audit_stream_log import GUARDS, parse_sessions, render  # noqa: E402
+
+    guard_src = Path("src/personality/repetition_guard.py").read_text(encoding="utf-8")
+    assert "crafted comparison: " in guard_src
+
+    row = [g for g in GUARDS if g[0] == "comparison_reject"]
+    assert row, "comparison_reject is not in GUARDS"
+    key, needle, label = row[0]
+    assert needle == "crafted comparison"
+
+    log = ("2026-09-06 13:20:00,000 - src.bot.bot - INFO - Starting TalkBot setup...\n"
+           "2026-09-06 13:21:00,000 - src.personality.personality_engine - INFO - "
+           "Repetition guard rejected draft (crafted comparison: 'basically a'); "
+           "regenerating\n")
+    session = parse_sessions(log)[0]
+    assert session.counts[key] == 1
+    assert label in render(session)

@@ -44,6 +44,8 @@ GUARDS = [
      "Catchphrase/tic drafts rejected"),
     ("streamer_punchline", "streamer punchline",
      "Drafts rejected for making the streamer the punchline again"),
+    ("comparison_reject", "crafted comparison",
+     "Drafts rejected for a constructed comparison (like a / energy / basically)"),
     ("repetition_skip", "retry also repetitive",
      "Lines skipped entirely after the retry repeated too"),
     ("unsolicited_dropped", "dropping instead of regenerating",
