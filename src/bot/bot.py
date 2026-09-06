@@ -870,6 +870,12 @@ class TalkBot:
             # co-host's own last line -- treating it as a full mention let it
             # skip the breather below and put two lines back to back.
             explicitly_addressed = is_mention
+            # Whether THIS message just spent the room's one claim on an
+            # unprompted co-host line -- kept separate from the persisted
+            # self._last_line_unsolicited, which is cleared the moment the
+            # window is consumed so a later, unrelated follow-up can't also
+            # ride it if this message never produces a reply.
+            room_answer = False
             via_followup = (not is_mention
                             and self._is_followup(message.get('username', '')))
             if via_followup:
@@ -884,9 +890,11 @@ class TalkBot:
                 # takes it.
                 via_followup = True
                 is_mention = True
+                room_answer = True
                 self._room_followup_until = 0.0
-                logger.info(f"Room follow-up from {message.get('username')} "
-                            f"treated as a mention")
+                self._last_line_unsolicited = False
+                logger.info(f"Room follow-up from {message.get('username')}: "
+                            f"answering the co-host's line")
             priority = 'high' if is_mention else 'normal'
             
             # Store in memory system
@@ -965,7 +973,7 @@ class TalkBot:
             # A person answering the co-host's own unprompted line is not the
             # bot talking to itself; the breather must not hold them. A
             # follow-up to a REPLY keeps today's hold.
-            answering_us = via_followup and self._last_line_unsolicited
+            answering_us = room_answer or (via_followup and self._last_line_unsolicited)
             if not explicitly_addressed and not greet and not answering_us and self.last_bot_message_at is not None:
                 gap = (datetime.now() - self.last_bot_message_at).total_seconds()
                 if gap < self.unsolicited_gap_s:

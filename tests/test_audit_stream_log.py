@@ -205,7 +205,7 @@ def test_the_people_over_screen_guards_are_reported():
     text = _log(START,
                 line(1, "Screen moment held, menus are not moments (lobby)"),
                 line(2, "Screen moment held, chat is talking (12s ago)"),
-                line(3, "Room follow-up from motherchandelure treated as a mention"))
+                line(3, "Room follow-up from motherchandelure: answering the co-host's line"))
     out = render(parse_sessions(text)[0])
     assert "Menu/lobby screens the vision model flagged and the co-host ignored: 1" in out
     assert "Screen moments held because viewers were talking: 1" in out
@@ -226,10 +226,12 @@ def test_a_menu_hold_is_not_counted_as_a_same_kind_hold():
 
 
 def test_a_room_follow_up_is_told_apart_from_a_viewer_follow_up():
-    """"Follow-up from X" and "Room follow-up from X" both end in "treated
-    as a mention", which is the followup_upgrade needle."""
+    """"Follow-up from X ... treated as a mention" is the followup_upgrade
+    needle; "Room follow-up from X" no longer ends that way, so a room
+    follow-up must not also be double-counted as a followup_upgrade."""
     text = _log(START,
                 line(1, "Follow-up from cassova_ treated as a mention"),
-                line(2, "Room follow-up from motherchandelure treated as a mention"))
+                line(2, "Room follow-up from motherchandelure: answering the co-host's line"))
     s = parse_sessions(text)[0]
     assert s.counts["room_followup"] == 1
+    assert s.counts["followup_upgrade"] == 1, "the room follow-up must not also count as a followup_upgrade"

@@ -273,7 +273,7 @@ async def test_a_viewer_answering_the_co_host_gets_a_reply(caplog):
     _clean(caplog)
     assert bot.sent == ["that was the plan"]
     assert bot.generated[0][1] is True, "answered as a mention"
-    assert ("Room follow-up from motherchandelure treated as a mention"
+    assert ("Room follow-up from motherchandelure: answering the co-host's line"
             in caplog.text)
 
 
@@ -344,6 +344,46 @@ async def test_a_follow_up_to_a_reply_still_waits_its_turn(caplog):
     assert "Holding follow-up reply" in caplog.text
 
 
+async def test_a_dropped_room_followup_does_not_leak_the_bypass(caplog):
+    """The room window is consumed (and _last_line_unsolicited cleared) the
+    moment a message claims it -- even if that message never makes it to a
+    reply, here because the co-host is muted. Before this fix the flag
+    stayed True until the next unprompted line, so an unrelated per-viewer
+    follow-up in between rode the bypass for free. The upgraded message
+    itself must still get through when it is NOT dropped."""
+    import time as _time
+    bot = _chat_bot(unsolicited_ago_s=20)
+    bot.muted = True
+    with caplog.at_level(logging.INFO):
+        await bot._handle_chat_message(_msg("lol did it get you again"))
+    _clean(caplog)
+    assert bot.sent == [], "muted: nothing should have gone out"
+    assert bot._last_line_unsolicited is False, "the room window was consumed"
+    assert bot._room_followup_until == 0.0
+
+    # A viewer with their own, unrelated follow-up slot must still be held
+    # by the breather -- the cleared flag above is not a bypass for them.
+    bot.muted = False
+    bot._replied_to = {'someone_else': (_time.monotonic(), 1)}
+    with caplog.at_level(logging.INFO):
+        await bot._handle_chat_message(_msg("what happened", username="someone_else"))
+    _clean(caplog)
+    assert bot.sent == [], "the unrelated per-viewer follow-up must still be held"
+    assert "Holding follow-up reply" in caplog.text
+
+
+async def test_the_upgraded_message_itself_is_never_held(caplog):
+    """Same room follow-up as above, but not muted: it must reach the
+    breather with the bypass still live for ITS OWN message, even though
+    the flag it depends on gets cleared as part of claiming the window."""
+    bot = _chat_bot(unsolicited_ago_s=20)
+    with caplog.at_level(logging.INFO):
+        await bot._handle_chat_message(_msg("lol did it get you again"))
+    _clean(caplog)
+    assert bot.sent == ["that was the plan"]
+    assert "Holding" not in caplog.text
+
+
 async def test_the_reply_reopens_the_viewers_own_follow_up_streak(caplog):
     """After the room follow-up is answered, _note_replied_to has run, so
     the conversation continues by the ordinary name-free rules."""
@@ -358,7 +398,8 @@ async def test_the_reply_reopens_the_viewers_own_follow_up_streak(caplog):
 def test_the_breather_bypass_is_narrow():
     handler = BOT_SRC.split("async def _handle_chat_message")[1].split(
         "\n    async def ")[0]
-    assert "answering_us = via_followup and self._last_line_unsolicited" in handler
+    assert ("answering_us = room_answer or (via_followup and self._last_line_unsolicited)"
+            in handler)
     assert "not answering_us" in handler
 
 
