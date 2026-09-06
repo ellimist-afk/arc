@@ -240,3 +240,29 @@ def test_the_comparison_closer_is_a_banned_joke_shape():
 def test_the_rule_carries_whatever_the_streamer_is_called():
     assert "someone_else is fair game ONLY" in _prompt("someone_else")
     assert "the streamer is fair game ONLY" in _prompt("")
+
+
+# -------------------------------------------------------- the audit report
+
+def test_the_rejection_is_auditable_after_the_stream():
+    """The reason string is the needle. If it is reworded, the guard drops
+    off the post-stream report silently -- so it is pinned to the source
+    that produces it and to the auditor that looks for it."""
+    sys.path.insert(0, str(Path(__file__).parent.parent / "tools"))
+    from audit_stream_log import GUARDS, parse_sessions, render
+
+    guard_src = Path("src/personality/repetition_guard.py").read_text(encoding="utf-8")
+    assert "streamer punchline: " in guard_src
+
+    row = [g for g in GUARDS if g[0] == "streamer_punchline"]
+    assert row, "streamer_punchline is not in GUARDS"
+    key, needle, label = row[0]
+    assert needle == "streamer punchline"
+
+    log = ("2026-09-06 13:20:00,000 - src.bot.bot - INFO - Starting TalkBot setup...\n"
+           "2026-09-06 13:21:00,000 - src.personality.personality_engine - INFO - "
+           "Repetition guard rejected draft (streamer punchline: cassova_ in 1 of "
+           "last 4); regenerating\n")
+    session = parse_sessions(log)[0]
+    assert session.counts[key] == 1
+    assert label in render(session)

@@ -42,6 +42,8 @@ GUARDS = [
      "Reruns of the co-host's own recent bit rejected"),
     ("tic_reject", "hot phrases:",
      "Catchphrase/tic drafts rejected"),
+    ("streamer_punchline", "streamer punchline",
+     "Drafts rejected for making the streamer the punchline again"),
     ("repetition_skip", "retry also repetitive",
      "Lines skipped entirely after the retry repeated too"),
     ("unsolicited_dropped", "dropping instead of regenerating",

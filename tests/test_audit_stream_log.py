@@ -57,6 +57,8 @@ def test_each_guard_signature_is_counted():
         "breather_hold": "Holding follow-up reply: bot spoke 12s ago",
         "rerun_reject": "Repetition guard rejected draft (re-told topic: 'sigaren', 'waifu'); regenerating",
         "tic_reject": "Repetition guard rejected draft (hot phrases: 'exactly how'); regenerating",
+        "streamer_punchline": ("Repetition guard rejected draft "
+                               "(streamer punchline: cassova_ in 1 of last 4); regenerating"),
         "voice_drop": "Dropped low-confidence transcript 'uh uh uh' (no_speech_prob=0.81)",
         "followup_upgrade": "Follow-up from GoodStuffBuds treated as a mention",
         "streak_spent": "Follow-up streak spent for goodstuffbuds; needs the name again",
