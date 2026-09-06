@@ -181,3 +181,55 @@ def test_the_screen_variety_guards_are_reported():
     assert "Screen moments held because that kind was just reacted to: 1" in out
     assert "Screen moments the co-host chose to let pass: 1" in out
     assert "Fillers steered to another well because the screen was just discussed: 1" in out
+
+
+# --------------------------------------------- the people-over-screen guards
+
+
+def test_the_people_over_screen_signatures_are_what_the_source_logs():
+    """Live 2026-09-06 two menus got lines and five viewers were held while
+    the co-host narrated the screen. The audit has to be able to say how
+    often each of the three new guards fired."""
+    src = "".join(
+        Path(p).read_text(encoding="utf-8")
+        for p in ("src/bot/bot.py", "src/features/screen_watcher.py"))
+    for key, needle in (
+            ("screen_menu_hold", "Screen moment held, menus are not moments"),
+            ("screen_yield_chat", "Screen moment held, chat is talking"),
+            ("room_followup", "Room follow-up from")):
+        assert needle in src, f"{key}: source no longer logs {needle!r}"
+        assert any(k == key for k, _, _ in GUARDS), f"{key} is not in GUARDS"
+
+
+def test_the_people_over_screen_guards_are_reported():
+    text = _log(START,
+                line(1, "Screen moment held, menus are not moments (lobby)"),
+                line(2, "Screen moment held, chat is talking (12s ago)"),
+                line(3, "Room follow-up from motherchandelure treated as a mention"))
+    out = render(parse_sessions(text)[0])
+    assert "Menu/lobby screens the vision model flagged and the co-host ignored: 1" in out
+    assert "Screen moments held because viewers were talking: 1" in out
+    assert "Viewers answering an unprompted line who got a reply: 1" in out
+
+
+def test_a_menu_hold_is_not_counted_as_a_same_kind_hold():
+    """Both start "Screen moment held, "; the needles must stay disjoint."""
+    text = _log(START,
+                line(1, "Screen moment held, menus are not moments (lobby)"),
+                line(2, "Screen moment held, same kind (death, 2 in a row)"),
+                line(3, "Screen moment held, chat is talking (12s ago)"))
+    s = parse_sessions(text)[0]
+    assert s.counts["screen_menu_hold"] == 1
+    assert s.counts["screen_same_kind"] == 1
+    assert s.counts["screen_yield_chat"] == 1
+    assert s.counts["screen_look"] == 0, "a hold is not a look"
+
+
+def test_a_room_follow_up_is_told_apart_from_a_viewer_follow_up():
+    """"Follow-up from X" and "Room follow-up from X" both end in "treated
+    as a mention", which is the followup_upgrade needle."""
+    text = _log(START,
+                line(1, "Follow-up from cassova_ treated as a mention"),
+                line(2, "Room follow-up from motherchandelure treated as a mention"))
+    s = parse_sessions(text)[0]
+    assert s.counts["room_followup"] == 1
