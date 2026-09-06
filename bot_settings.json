@@ -29,7 +29,8 @@
     "phrase_cooldown": 8,
     "catchphrase_min_uses": 2,
     "target_window": 4,
-    "target_max": 1
+    "target_max": 1,
+    "ban_comparisons": true
   },
   "session_summary": {
     "enabled": true,

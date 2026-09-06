@@ -40,6 +40,16 @@ Three checks, all against the bot's OWN recent outputs (never viewer text):
                         fails. Lines that are ABOUT him -- he was named in
                         the message being answered, or the line reacts to
                         his screen -- pass target_exempt=True and skip it.
+6. crafted comparison - ALWAYS ON (ban_comparisons). The co-host's default
+                        joke is a constructed comparison: "fell over like
+                        cassova_ trying to peel", "arrived with airport
+                        customs energy", "that's basically a snack trail".
+                        Live 2026-09-06, 12 of 41 unsolicited lines carried
+                        the shape and nearly every reply did. It is a shape,
+                        not a repeat, so checks 1-5 never see it; the regexes
+                        below reject it on the raw text, at any length, with
+                        no exemption -- a viewer writing "like a" does not
+                        license a simile back.
 
 Pure Python, no I/O, no clock: the caller records accepted outputs and
 asks for a verdict on candidates. Deterministic, so it's unit-testable
@@ -51,7 +61,7 @@ from __future__ import annotations
 import re
 from collections import Counter, deque
 from dataclasses import dataclass, field
-from typing import Deque, List, Optional, Set, Tuple
+from typing import ClassVar, Deque, List, Optional, Set, Tuple
 
 _TOKEN_RE = re.compile(r"[a-z0-9']+")
 
@@ -170,10 +180,13 @@ class RepetitionVerdict:
     overused_target: Optional[str] = None  # the roast target, when it was named too often
     target_uses: int = 0              # recent outputs that named the target
     target_window_seen: int = 0       # how many recent outputs were examined
+    comparison: Optional[str] = None  # the constructed-comparison span, when one matched
 
     @property
     def reason(self) -> str:
         parts = []
+        if self.comparison:
+            parts.append(f"crafted comparison: {self.comparison!r}")
         if self.overused_target:
             parts.append(f"streamer punchline: {self.overused_target} in "
                          f"{self.target_uses} of last {self.target_window_seen}")
@@ -206,7 +219,27 @@ class RepetitionGuard:
                            target's name
     target_max:            how many of those may name the target before a new
                            draft naming him is rejected
+    ban_comparisons:       reject any draft built as a comparison ("like a
+                           ...", "... energy", "basically a ...", "... coded")
     """
+
+    #: The shapes of a constructed comparison, matched case-insensitively on
+    #: the raw candidate. Deliberately narrow: "feels like you got robbed" and
+    #: "i like that build" are plain speech and must pass, so the "like"
+    #: patterns need a determiner, a possessive, or a name followed by a
+    #: participle ("like cassova_ trying to peel") after them.
+    COMPARISON_RES: ClassVar[Tuple[re.Pattern, ...]] = (
+        re.compile(r"\blike (a|an|the|some|someone|somebody|my|your|his|her|their"
+                   r"|watching|when|if|that time)\b", re.IGNORECASE),
+        re.compile(r"\blike [a-z0-9_']+ (trying|doing|watching|getting|being|when)\b",
+                   re.IGNORECASE),
+        re.compile(r"\b\w+ energy\b\s*[.!?]*$", re.IGNORECASE),
+        re.compile(r"\bbasically (a|an|the|just)\b", re.IGNORECASE),
+        # Contractions included: live, the shape is spoken as "it's just a
+        # graveyard", never as "it is just a graveyard".
+        re.compile(r"\b(is|it's|that's|thats) just (a|an|the)\b", re.IGNORECASE),
+        re.compile(r"\b(vibes?|core|coded)\s*[.!?]*$", re.IGNORECASE),
+    )
 
     history_size: int = 20
     similarity_threshold: float = 0.45
@@ -219,6 +252,7 @@ class RepetitionGuard:
     topic_min_shared: int = 2        # shared distinctive words that mean "same bit"
     target_window: int = 4           # look back this many accepted outputs for the target
     target_max: int = 1              # target may appear in at most this many of them
+    ban_comparisons: bool = True     # reject drafts built as a constructed comparison
 
     _history: Deque[str] = field(default_factory=deque, init=False, repr=False)
     _tokens: Deque[List[str]] = field(default_factory=deque, init=False, repr=False)
@@ -327,6 +361,21 @@ class RepetitionGuard:
             return target, uses, len(recent)
         return None, uses, len(recent)
 
+    def _crafted_comparison(self, candidate: str) -> Optional[str]:
+        """The first constructed-comparison span in the raw candidate.
+
+        Raw text, not tokens: the shapes are punctuation- and position-
+        sensitive ("... energy." only counts at the end of the line). No
+        exemption and no length floor -- "basically a snack trail" is the
+        shape whether it is the whole line or the tail of one."""
+        if not self.ban_comparisons or not candidate:
+            return None
+        for pattern in self.COMPARISON_RES:
+            match = pattern.search(candidate)
+            if match:
+                return match.group(0).strip()
+        return None
+
     def check(
         self,
         candidate: str,
@@ -336,8 +385,14 @@ class RepetitionGuard:
         target_exempt: bool = False,
     ) -> RepetitionVerdict:
         toks = tokenize(candidate or "")
+        # The comparison shape is judged before anything that needs history:
+        # the first line of a session is exactly where it shows up, and there
+        # is nothing to compare it to yet.
+        comparison = self._crafted_comparison(candidate)
         if not toks or not self._tokens:
-            return RepetitionVerdict(ok=True, score=0.0, reused_opening=None, hot_phrases=[])
+            return RepetitionVerdict(
+                ok=comparison is None, score=0.0, reused_opening=None,
+                hot_phrases=[], comparison=comparison)
 
         overused_target, target_uses, target_seen = self._target_overuse(
             toks, target, target_exempt)
@@ -352,11 +407,14 @@ class RepetitionGuard:
                         overused_target=overused_target,
                         target_uses=target_uses,
                         target_window_seen=target_seen,
+                        comparison=comparison,
                     )
             return RepetitionVerdict(
-                ok=overused_target is None, score=0.0, reused_opening=None,
+                ok=overused_target is None and comparison is None,
+                score=0.0, reused_opening=None,
                 hot_phrases=[], overused_target=overused_target,
                 target_uses=target_uses, target_window_seen=target_seen,
+                comparison=comparison,
             )
 
         cand_shingles = _shingles(toks)
@@ -383,18 +441,24 @@ class RepetitionGuard:
             and not hot
             and retold_from is None
             and overused_target is None
+            and comparison is None
         )
         return RepetitionVerdict(
             ok=ok, score=best_score, reused_opening=reused_opening,
             hot_phrases=hot, nearest=nearest,
             retold_words=retold_words, retold_from=retold_from,
             overused_target=overused_target, target_uses=target_uses,
-            target_window_seen=target_seen,
+            target_window_seen=target_seen, comparison=comparison,
         )
 
     def avoid_hint(self, verdict: RepetitionVerdict) -> str:
         """Instruction block for a regeneration attempt after a failed check."""
         lines = ["Your previous draft repeated yourself. Rewrite it from scratch:"]
+        if verdict.comparison:
+            lines.append(
+                "- No comparisons. Cut the 'like ...' / 'energy' / 'basically' "
+                "clause and say the plain version, shorter. If the plain version "
+                "is nothing, reply with the shortest honest reaction instead.")
         if verdict.nearest and verdict.score >= self.similarity_threshold:
             lines.append(f"- It was nearly identical to something you already said: \"{verdict.nearest}\"")
         if verdict.reused_opening:

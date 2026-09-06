@@ -265,7 +265,7 @@ class PersonalityEngine:
             self.repetition_guard_enabled = bool(guard_cfg.get('enabled', True))
             for key in ('similarity_threshold', 'opening_cooldown',
                         'phrase_cooldown', 'catchphrase_min_uses',
-                        'target_window', 'target_max'):
+                        'target_window', 'target_max', 'ban_comparisons'):
                 if key in guard_cfg:
                     setattr(self.repetition_guard, key, guard_cfg[key])
         except Exception as e:

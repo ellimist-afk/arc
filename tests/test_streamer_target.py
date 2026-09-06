@@ -38,7 +38,12 @@ def _fill(g, n, naming=0):
             g.record(f"chat is arguing about pineapple pizza again round {i}")
 
 
-DRAFT = f"gary's credibility fell over like {TARGET} trying to peel an orange"
+# A draft that names the target and nothing else the guard objects to. It
+# used to be the live line "...fell over like cassova_ trying to peel an
+# orange"; the comparison ban now rejects that on its shape, which would
+# have made every "this one is allowed" assertion below pass for the wrong
+# reason (or fail outright).
+DRAFT = f"gary's credibility fell over and {TARGET} laughed for a full minute"
 
 
 # ------------------------------------------------------------- token match
