@@ -333,18 +333,31 @@ class AdAnnouncer:
             await self._handle_ad_end({})
 
     async def _announce_ad(self, message: str, is_start: bool = True) -> None:
-        """Announce ad break in chat and/or voice"""
+        """Announce ad break in chat and/or voice.
+
+        ONE chat send. The coordinator posts the chat line itself, so when
+        the coordinator path is taken the direct send must not also run --
+        that is how the 13:59:45 ad line went out twice on 2026-09-06. TTS
+        being off in settings does not help: this announcer's voice flag is
+        independent of it.
+        """
         try:
-            if self.announce_in_chat and self.twitch_client:
+            via_coordinator = bool(
+                self.announce_with_voice and self.audio_queue
+                and self.response_coordinator
+            )
+            if self.announce_in_chat and self.twitch_client and not via_coordinator:
                 await self.twitch_client.send_message(message)
             if self.announce_with_voice and self.audio_queue:
-                if self.response_coordinator:
+                if via_coordinator:
                     async def queue_tts():
                         if self.audio_queue:
                             await self.audio_queue.queue_audio(text=message, priority='high')
 
                     await self.response_coordinator.coordinate_response(
-                        chat_msg=message,
+                        # Empty when chat announcing is off: the coordinator
+                        # skips a blank line and only the audio goes out.
+                        chat_msg=message if self.announce_in_chat else "",
                         audio_task=queue_tts,
                         priority='high',
                         is_mention=False,

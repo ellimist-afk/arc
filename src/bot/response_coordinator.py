@@ -173,7 +173,10 @@ class ResponseCoordinator:
             async def send_chat():
                 if chat_delay > 0:
                     await asyncio.sleep(chat_delay)
-                if self.twitch_client and self.twitch_client.is_connected():
+                # An empty chat_msg means audio-only on purpose (an ad break
+                # with chat announcing off): send nothing rather than a blank
+                # line to the channel.
+                if chat_msg and self.twitch_client and self.twitch_client.is_connected():
                     await self.twitch_client.send_message(chat_msg)
                     logger.debug(f"Chat sent after {chat_delay:.2f}s delay")
                     
@@ -214,7 +217,7 @@ class ResponseCoordinator:
             logger.error(f"Error coordinating response: {e}", exc_info=True)
             # Fallback: try to send without delays
             try:
-                if self.twitch_client and self.twitch_client.is_connected():
+                if chat_msg and self.twitch_client and self.twitch_client.is_connected():
                     await self.twitch_client.send_message(chat_msg)
                 if audio_task and self.audio_queue:
                     await audio_task()
