@@ -192,3 +192,51 @@ def test_only_the_first_sentence_of_a_streamed_reply_is_gated_on_the_target():
 def test_the_settings_keys_reach_the_guard():
     loop = ENGINE_SRC.split("guard_cfg = settings.get('repetition_guard')")[1][:400]
     assert "'target_window'" in loop and "'target_max'" in loop
+
+
+# ------------------------------------------------------------- the prompt
+
+def _prompt(name="cassova_"):
+    from personality.personality_engine import PersonalityEngine, PersonalityTraits
+    e = PersonalityEngine.__new__(PersonalityEngine)
+    e.current_traits = PersonalityTraits()
+    e.streamer_name = name
+    e.bot_name = "elimist_"
+    e.current_personality_name = ""
+    return e._build_personality_prompt()
+
+
+def test_the_standing_favourite_target_instruction_is_gone():
+    """"your favorite and safest roast target" in every preset's system
+    prompt beat its own "when there is a real opening" qualifier: the model
+    reached for the streamer as the closer of any line with no other name
+    in it."""
+    prompt = _prompt()
+    assert "favorite and safest" not in prompt
+    assert "safest roast target" not in prompt
+
+
+def test_the_prompt_makes_him_fair_game_only_when_the_line_is_about_him():
+    prompt = _prompt()
+    assert ("cassova_ is fair game ONLY when the line is about cassova_: "
+            "something cassova_ just did on screen, said, or a viewer said "
+            "about cassova_.") in prompt
+    assert "Then roast cassova_ in one sharp, playful line." in prompt
+    assert "never make cassova_ the punchline by default" in prompt
+    assert ("Answering a viewer about their own topic: the joke is about "
+            "that topic.") in prompt
+
+
+def test_the_comparison_closer_is_a_banned_joke_shape():
+    """"gary's credibility fell over like cassova_ trying to peel an orange"
+    -- the topic was gary, the punchline was the streamer."""
+    prompt = _prompt()
+    assert ("- closing a line about something else with a comparison to "
+            "cassova_") in prompt
+    banned = prompt.split("Joke shapes that are BANNED")[1]
+    assert "comparison to cassova_" in banned, "it belongs in the banned list"
+
+
+def test_the_rule_carries_whatever_the_streamer_is_called():
+    assert "someone_else is fair game ONLY" in _prompt("someone_else")
+    assert "the streamer is fair game ONLY" in _prompt("")

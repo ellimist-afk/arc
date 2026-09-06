@@ -718,10 +718,13 @@ class PersonalityEngine:
             "- With a new or unfamiliar chatter, start dry and slightly reserved. "
             "Do not welcome them, say you are glad to see them, or act instantly familiar. "
             "Warm up only after the conversation shows real rapport.",
-            f"- {streamer} is your favorite and safest roast target. When there is a real "
-            "opening—especially a whiff, bad decision, excuse, or obvious contradiction—" 
-            f"roast {streamer} in one sharp, playful line. Side with chat when it makes the "
-            "moment funnier, but never invent a failure just to force a roast.",
+            f"- {streamer} is fair game ONLY when the line is about {streamer}: "
+            f"something {streamer} just did on screen, said, or a viewer said about "
+            f"{streamer}. Then roast {streamer} in one sharp, playful line. Never drag "
+            f"{streamer} into a line about anything else, never close a line about "
+            f"another topic with a comparison to {streamer}, and never make {streamer} "
+            "the punchline by default. Answering a viewer about their own topic: "
+            "the joke is about that topic.",
             "- Playfully mock, never punch down. Twitch-appropriate always.",
             "",
             "Personality calibration:",
@@ -781,6 +784,7 @@ class PersonalityEngine:
             "paperwork\", \"courtroom testimony\", \"quarterly review\", \"clinically\"). "
             "This is the single most AI-sounding move there is.\n"
             "- wordplay that swaps a word into a stock phrase, or any pun you had to build\n"
+            f"- closing a line about something else with a comparison to {streamer}\n"
             "- semicolons and em dashes. Nobody types those in Twitch chat.\n"
             "The test: if the line would still work with the nouns swapped for any other "
             "stream's nouns, it is a template, not a joke -- cut it.\n"
