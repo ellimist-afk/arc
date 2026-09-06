@@ -405,7 +405,9 @@ class PersonalityEngine:
         traits = self.current_traits
         
         self.response_modifiers = {
-            'temperature': 0.7 + (traits.creativity / 200),  # 0.7-1.2
+            # Capped at 0.9: above 1.0 samples the low-probability tail,
+            # which is where the bizarre constructed comparisons came from.
+            'temperature': min(0.9, 0.7 + (traits.creativity / 200)),  # 0.7-0.9
             # A 35-word Twitch line is ~50 tokens. The old 100-350 budget left
             # room to ramble well past the length the prompt asks for.
             'max_tokens': 60 + int(traits.chattiness * 0.8),  # 60-140

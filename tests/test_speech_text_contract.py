@@ -278,6 +278,15 @@ def test_token_budget_stays_tight_enough_to_discourage_rambling(engine, chattine
     budget = engine.response_modifiers['max_tokens']
     assert 60 <= budget <= 140, budget
 
+
+@pytest.mark.parametrize('creativity, temperature', [(80, 0.9), (20, 0.8)])
+def test_temperature_is_capped_below_the_weird_tail(engine, creativity, temperature):
+    """Above 1.0 samples the low-probability tail, which is where the
+    bizarre constructed comparisons came from live."""
+    engine.current_traits.creativity = creativity
+    engine._update_response_modifiers()
+    assert engine.response_modifiers['temperature'] == pytest.approx(temperature)
+
 def test_prompt_bans_ai_joke_shapes(engine):
     """Live on 2026-08-25 the co-host produced "thank egg is not brunch; it's
     a gratitude omelet with legal problems" -- the reversal frame plus an
