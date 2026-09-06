@@ -8,11 +8,13 @@ delayed reply and never to a crash.
 """
 import asyncio
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 
 
-from features.screen_watcher import ScreenWatcher
+from features.screen_watcher import (COMPARE_SUFFIX, NEVER_MOMENTS,
+                                     ScreenWatcher)
 
 SRC = Path("src/features/screen_watcher.py").read_text(encoding="utf-8")
 
@@ -685,9 +687,12 @@ async def test_a_long_gap_starts_a_new_run():
 
 
 async def test_a_different_kind_gets_its_own_line():
+    """The win says its own line. The death that follows it is death 2 of
+    a run that the win did not interrupt, so it is held."""
     w = _streak_watcher()
     await _announce_all(w, ["death", "win", "death"])
-    assert _run_of(w) == [("death", 1), ("win", 1), ("death", 1)]
+    assert _run_of(w) == [("death", 1), ("win", 1)]
+    assert w.notables_held_same_kind == 1
 
 
 async def test_a_moment_the_cooldown_swallowed_still_counts_toward_the_run():
@@ -704,12 +709,13 @@ async def test_the_run_clock_runs_from_the_first_of_the_run():
     comes from the FIRST moment of the run, not the last."""
     import time as _time
     w = _streak_watcher()
-    assert w.streak_started_s_ago() is None, "no run yet"
+    assert w.streak_started_s_ago("death") is None, "no run yet"
     now = _time.monotonic()
     await w._announce("died", now, "death")
     await w._announce("died again", now + 120, "death")
-    age = w.streak_started_s_ago()
+    age = w.streak_started_s_ago("death")
     assert age is not None and age < 5
+    assert w.streak_started_s_ago("win") is None, "another kind has no run"
 
 
 def test_the_run_settings_survive_a_hand_edit():
@@ -727,8 +733,17 @@ def test_the_run_settings_survive_a_hand_edit():
 
 def test_the_vision_prompt_asks_for_a_kind():
     assert "NOTABLE[kind]" in SRC
-    for kind in ("death", "win", "loss", "highlight", "boss", "crash", "lobby"):
-        assert kind in SRC
+    for kind in ("death", "win", "loss", "highlight", "boss", "crash"):
+        assert kind in COMPARE_SUFFIX
+
+
+def test_the_vocabulary_no_longer_names_menus():
+    """Live 2026-09-06 two hero-select screens got co-host lines. Naming
+    "lobby" in the list of kinds invited the model to flag a menu as
+    NOTABLE against the same prompt's "menus are NOT notable"."""
+    assert "lobby" not in COMPARE_SUFFIX.split("ONE word from")[1].split("--")[0]
+    assert "never notable" in COMPARE_SUFFIX
+    assert "hero select" in COMPARE_SUFFIX
 
 
 async def test_unnamed_moments_are_never_a_run():
@@ -739,3 +754,91 @@ async def test_unnamed_moments_are_never_a_run():
     await _announce_all(w, ["other", "other", "other"])
     assert _run_of(w) == [("other", 1), ("other", 1), ("other", 1)]
     assert w.notables_held_same_kind == 0
+
+
+# ------------------------------------------------- runs are per kind now
+#
+# Live 2026-09-06, Overwatch 2: death, lobby, death, highlight, death. With
+# ONE shared run every interleaved kind reset the death count and every
+# death spoke as if it were the first one of the stream.
+
+
+async def test_an_interleaved_kind_does_not_reset_the_run():
+    w = _streak_watcher(streak_threshold=3)
+    await _announce_all(w, ["death", "highlight", "death", "win", "death"])
+    assert _run_of(w) == [("death", 1), ("highlight", 1), ("win", 1)], (
+        "deaths 2 and 3 are held as a run; the other kinds say their own line")
+    assert w.notables_held_same_kind == 2
+
+
+async def test_the_pattern_line_survives_an_interruption():
+    """death, highlight, death, lobby, death, death -> the fourth death is
+    the pattern line, exactly as if the run had been uninterrupted."""
+    w = _streak_watcher(streak_threshold=3)
+    await _announce_all(
+        w, ["death", "highlight", "death", "lobby", "death", "death"])
+    assert _run_of(w) == [("death", 1), ("highlight", 1), ("death", 4)]
+
+
+async def test_each_kind_keeps_its_own_window():
+    w = _streak_watcher(same_kind_window_s=100.0)
+    await _announce_all(w, ["death", "win", "death"], step=60.0)
+    assert _run_of(w) == [("death", 1), ("win", 1), ("death", 1)], (
+        "120s apart is outside the window, so the second death is a new run")
+    assert w._runs["death"].streak == 1
+
+
+async def test_runs_older_than_the_window_are_pruned():
+    """A long stream must not accumulate a run for every kind the model
+    ever invented."""
+    w = _streak_watcher(same_kind_window_s=100.0)
+    await _announce_all(w, ["death", "win", "boss"], step=200.0)
+    assert set(w._runs) == {"boss"}
+
+
+async def test_the_run_clock_is_per_kind():
+    w = _streak_watcher()
+    await w._announce("died", 1000.0, "death")
+    await w._announce("potg", 1100.0, "highlight")
+    assert w._runs["death"].started_at == 1000.0
+    assert w._runs["highlight"].started_at == 1100.0
+
+
+# --------------------------------------------- menus are never moments
+
+
+async def test_a_lobby_is_never_a_moment(caplog):
+    w = _streak_watcher()
+    with caplog.at_level(logging.INFO):
+        await _announce_all(w, ["lobby"])
+    assert w.said == []
+    assert w.notables_held_menu == 1
+    assert w.stats()['notables_held_menu'] == 1
+    assert "Screen moment held, menus are not moments (lobby)" in caplog.text
+
+
+async def test_every_menu_word_is_held():
+    w = _streak_watcher()
+    await _announce_all(w, sorted(NEVER_MOMENTS))
+    assert w.said == []
+    assert w.notables_held_menu == len(NEVER_MOMENTS)
+
+
+async def test_a_menu_spends_no_cooldown_and_starts_no_run():
+    """A hero-select screen must not silence the boss fight that follows
+    it, and two lobbies must not hold each other as if they were a story."""
+    w = _streak_watcher(notable_cooldown_s=300.0)
+    await _announce_all(w, ["lobby", "boss"], step=10.0)
+    assert _run_of(w) == [("boss", 1)]
+    assert w._runs == {} or "lobby" not in w._runs
+    assert w.notables_suppressed == 0
+
+
+async def test_a_menu_still_shows_up_in_the_look_line(caplog):
+    """The audit has to keep seeing the model flag menus, or a prompt that
+    stopped working would look like a quiet stream."""
+    w = _notable_watcher("NOTABLE[lobby]: the hero select screen is up")
+    with caplog.at_level(logging.INFO):
+        await w.look()
+    assert "Screen [NOTABLE lobby]" in caplog.text
+    assert w.said == []

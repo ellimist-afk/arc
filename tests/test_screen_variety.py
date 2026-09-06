@@ -62,12 +62,20 @@ def _bot(reply="cassidy again", passes=False, ledger=(), streak_age=360.0,
     bot.session_summarizer = None
     bot._ambient_audio = deque(maxlen=3)
     bot.ambient_max_age_s = 180.0
-    bot.screen_watcher = SimpleNamespace(
-        streak_started_s_ago=lambda: streak_age,
-        describe_with_duration=lambda: "Overwatch 2, cassidy on the payload")
     bot.appended = []
     bot.sent = []
     bot.seen = {}
+
+    def run_age(kind):
+        # Runs are per kind now, so the bot must say WHICH run it is asking
+        # about; a bot still calling the old no-argument form would silently
+        # lose the duration inside _screen_run_text's except.
+        bot.seen['run_kind'] = kind
+        return streak_age
+
+    bot.screen_watcher = SimpleNamespace(
+        streak_started_s_ago=run_age,
+        describe_with_duration=lambda: "Overwatch 2, cassidy on the payload")
 
     class Buffer:
         @staticmethod
@@ -177,6 +185,12 @@ async def test_a_repeat_run_asks_for_the_pattern():
     assert "4th death in about 6 minutes" in bot.seen['message']
 
 
+async def test_the_run_clock_is_asked_for_this_kinds_run():
+    bot = _bot(streak_age=360.0)
+    await bot._react_to_screen("died", "death", 4)
+    assert bot.seen['run_kind'] == "death"
+
+
 async def test_a_short_run_omits_a_meaningless_duration():
     bot = _bot(streak_age=20.0)
     await bot._react_to_screen("died", "death", 2)
@@ -207,7 +221,7 @@ async def test_the_first_of_a_kind_is_still_offered_the_pass():
 async def test_a_broken_run_clock_does_not_lose_the_line():
     bot = _bot()
 
-    def boom():
+    def boom(kind):
         raise RuntimeError("no watcher")
     bot.screen_watcher = SimpleNamespace(streak_started_s_ago=boom)
     await bot._react_to_screen("died", "death", 3)

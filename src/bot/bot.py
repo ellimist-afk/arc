@@ -2259,7 +2259,7 @@ class TalkBot:
         started = None
         watcher = getattr(self, 'screen_watcher', None)
         try:
-            started = watcher.streak_started_s_ago() if watcher else None
+            started = watcher.streak_started_s_ago(kind) if watcher else None
         except Exception as e:  # noqa: BLE001
             logger.debug(f"Screen run age unavailable: {e}")
         run = f"{self._ordinal(streak)} {kind}"

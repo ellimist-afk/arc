@@ -18,6 +18,7 @@ import io
 import logging
 import re
 import time
+from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -38,10 +39,11 @@ COMPARE_SUFFIX = (
     "If something genuinely happened since then -- a death, a win, a boss "
     "appearing, a run ending, a crash, a dramatic swing -- begin your reply "
     "with NOTABLE[kind]: where kind is ONE word from death, win, loss, "
-    "highlight, boss, crash, lobby, other -- followed by the one sentence. "
+    "highlight, boss, crash, other -- followed by the one sentence. "
     "Routine movement, camera "
     "pans, menus, ordinary play and scrolling are NOT notable; in that case "
-    "reply with the sentence alone and no prefix."
+    "reply with the sentence alone and no prefix. "
+    "Menus, lobbies, hero select, queues and loading screens are never notable."
 )
 NOTABLE_PREFIX = "NOTABLE:"
 # The kind is what makes a rerun visible: five deaths in a row are five
@@ -51,6 +53,24 @@ NOTABLE_PREFIX = "NOTABLE:"
 NOTABLE_RE = re.compile(r"^NOTABLE(?:\[([^\]]{0,24})\])?:\s*", re.I)
 # However slowly we poll, a description older than this is history.
 MAX_DESCRIPTION_AGE_S = 300.0
+# Kinds that are never a moment however confidently the model flags them.
+# Live 2026-09-06 two hero-select screens got co-host lines, because naming
+# "lobby" in the vocabulary invited the model to flag a menu as NOTABLE
+# against the same prompt's "menus are NOT notable". A menu is the absence
+# of something happening; it can never be the thing worth interrupting for.
+NEVER_MOMENTS = frozenset({'lobby', 'menu', 'loading', 'queue', 'hero select'})
+
+
+@dataclass
+class _Run:
+    """One run of same-kind moments. Runs are PER KIND: Overwatch
+    interleaves death, lobby, death, highlight, so a single shared run was
+    reset by every interruption and every death spoke as if it were the
+    first."""
+    streak: int = 0
+    said_at_streak: int = 0
+    last_at: float = 0.0        # monotonic
+    started_at: float = 0.0     # monotonic
 
 
 def _number(value: Any, default: float) -> float:
@@ -136,11 +156,9 @@ class ScreenWatcher:
         self._scene_since: float = 0.0
         self._task = None
         self._last_notable_at: float = 0.0
-        self._last_kind = None
-        self._last_kind_at: float = 0.0
-        self._kind_streak: int = 0
-        self._kind_said_at_streak: int = 0
-        self._streak_started_at: float = 0.0
+        # One run per kind. A death run keeps counting across an interleaved
+        # highlight or menu; only its own window ends it.
+        self._runs: Dict[str, _Run] = {}
         self.looks = 0
         self.failures = 0
         self.unchanged_skips = 0
@@ -148,6 +166,7 @@ class ScreenWatcher:
         self.notables = 0
         self.notables_suppressed = 0
         self.notables_held_same_kind = 0
+        self.notables_held_menu = 0
 
     # ------------------------------------------------------------- config
 
@@ -220,6 +239,7 @@ class ScreenWatcher:
                 'notables': self.notables,
                 'notables_suppressed': self.notables_suppressed,
                 'notables_held_same_kind': self.notables_held_same_kind,
+                'notables_held_menu': self.notables_held_menu,
                 'has_description': bool(self.describe())}
 
     # ------------------------------------------------------------ capture
@@ -345,33 +365,50 @@ class ScreenWatcher:
             await self._announce(text, now, kind)
         return text
 
-    def streak_started_s_ago(self):
-        """How long ago the current run of same-kind moments began.
+    def streak_started_s_ago(self, kind: str):
+        """How long ago this kind's run began.
 
         The bot needs it to say "the fourth death in about six minutes".
-        It is the watcher's clock, so the watcher keeps it.
+        It is the watcher's clock, so the watcher keeps it. Per kind, so an
+        interleaved highlight cannot reset the death run's clock.
         """
-        if not self._streak_started_at:
+        run = self._runs.get(kind)
+        if not run or not run.started_at:
             return None
-        return time.monotonic() - self._streak_started_at
+        return time.monotonic() - run.started_at
 
-    def _note_kind(self, kind: str, now: float) -> None:
-        """Advance the run of same-kind moments. A different kind, or a gap
-        longer than the window, starts a new run.
+    def _prune_runs(self, now: float) -> None:
+        """Drop runs whose window has closed, so a long stream cannot grow a
+        dict of every kind the model ever invented."""
+        for kind, run in list(self._runs.items()):
+            if now - run.last_at > self.same_kind_window_s:
+                del self._runs[kind]
+
+    def _note_kind(self, kind: str, now: float) -> "_Run":
+        """Advance THIS KIND's run and return it. A gap longer than the
+        window starts a new run; another kind arriving in between does not.
+
+        Live 2026-09-06, Overwatch: death, lobby, death, highlight, death.
+        With one shared run every interruption reset the count and every
+        death spoke as if it were the first.
 
         "other" never joins a run: it is not a kind, it is the model
         declining to name one, so two of them are no more related than any
-        two moments. Grouping them would hold real, unrelated moments.
+        two moments. Grouping them would hold real, unrelated moments -- so
+        it gets a throwaway run of 1 that is never stored.
         """
-        if (kind != 'other' and kind == self._last_kind
-                and now - self._last_kind_at <= self.same_kind_window_s):
-            self._kind_streak += 1
+        self._prune_runs(now)
+        if kind == 'other':
+            return _Run(streak=1, said_at_streak=0, last_at=now, started_at=now)
+        run = self._runs.setdefault(kind, _Run())
+        if run.streak > 0 and now - run.last_at <= self.same_kind_window_s:
+            run.streak += 1
         else:
-            self._kind_streak = 1
-            self._kind_said_at_streak = 0
-            self._streak_started_at = now
-        self._last_kind = kind
-        self._last_kind_at = now
+            run.streak = 1
+            run.said_at_streak = 0
+            run.started_at = now
+        run.last_at = now
+        return run
 
     async def _announce(self, what: str, now: float, kind: str = 'other') -> None:
         """Tell the bot something happened, at most once per cooldown and
@@ -386,23 +423,31 @@ class ScreenWatcher:
         """
         if not self.on_notable:
             return
-        self._note_kind(kind, now)
+        # Before the cooldown and before the run: a menu must cost nothing.
+        # Spending the cooldown on a hero-select screen would silence the
+        # boss fight that follows it, and giving it a run would let two
+        # lobbies hold each other as if they were a story.
+        if kind in NEVER_MOMENTS:
+            self.notables_held_menu += 1
+            logger.info(f"Screen moment held, menus are not moments ({kind})")
+            return
+        run = self._note_kind(kind, now)
         if now - self._last_notable_at < self.notable_cooldown_s:
             self.notables_suppressed += 1
             logger.info(f"Screen moment held by cooldown ({what[:60]})")
             return
         # The run keeps counting through a cooldown hold, so a run whose
         # middle the cooldown swallowed still earns its pattern line.
-        if (self._kind_streak > 1
-                and self._kind_streak - self._kind_said_at_streak < self.streak_threshold):
+        if (run.streak > 1
+                and run.streak - run.said_at_streak < self.streak_threshold):
             self.notables_held_same_kind += 1
-            logger.info(f"Screen moment held, same kind ({kind}, {self._kind_streak} in a row)")
+            logger.info(f"Screen moment held, same kind ({kind}, {run.streak} in a row)")
             return
         self._last_notable_at = now
-        self._kind_said_at_streak = self._kind_streak
+        run.said_at_streak = run.streak
         self.notables += 1
         try:
-            await self.on_notable(what, kind, self._kind_streak)
+            await self.on_notable(what, kind, run.streak)
         except Exception as e:  # noqa: BLE001 - a reaction must never break the loop
             logger.warning(f"Screen reaction failed: {e}")
 
