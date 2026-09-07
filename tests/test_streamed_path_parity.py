@@ -68,3 +68,94 @@ def test_gate_signature_defaults_keep_it_safe_to_call_bare():
     sig = SRC.split("def _gate_sentence(")[1].split(")")[0]
     assert "fresh_topic: bool = False" in sig
     assert "topic_exempt" in sig
+
+
+# ------------------------------- the streamer-target check, actually run
+
+# Everything above reads the source. That is enough to catch a check that
+# was never copied to the other path, and nothing else: it cannot tell
+# whether the copy WORKS. The target check is the newest of these rules and
+# the only one with no executing parity test at all, so this drives both
+# paths with the same guard history, the same message and the same drafts,
+# and asserts the same line comes out.
+import asyncio  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+from personality.personality_engine import PersonalityEngine  # noqa: E402
+
+TARGET = "cassova_"
+# Names the streamer, and nothing else the guard objects to.
+NAMES_HIM = (f"gary's credibility fell over and {TARGET} laughed for a full "
+             f"minute. and then it got worse for everyone.")
+CLEAN = "chat is arguing about pineapple pizza again."
+
+
+class _Stream:
+    def __init__(self, text):
+        self.parts = [text[i:i + 4] for i in range(0, len(text), 4)]
+        self.i = 0
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self.i >= len(self.parts):
+            raise StopAsyncIteration
+        part = self.parts[self.i]
+        self.i += 1
+        return SimpleNamespace(choices=[SimpleNamespace(
+            delta=SimpleNamespace(content=part))])
+
+
+class _Client:
+    """One script, served streamed or blocking as asked."""
+
+    def __init__(self, script):
+        self.script = list(script)
+        self.served = []
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
+
+    async def create(self, **kw):
+        text = self.script.pop(0)
+        self.served.append(text)
+        if kw.get("stream"):
+            return _Stream(text)
+        return SimpleNamespace(choices=[SimpleNamespace(
+            message=SimpleNamespace(content=text))])
+
+
+def _engine(*script):
+    e = PersonalityEngine(memory_system=None, openai_api_key="test-key")
+    e.streamer_name = TARGET
+    e.should_respond_override = True
+    e.openai_client = _Client(script)
+    # He was the punchline once already in the recent window; naming him
+    # again is what the guard exists to stop.
+    e.repetition_guard.record(f"{TARGET} just walked into that wall on purpose")
+    for i in range(3):
+        e.repetition_guard.record(f"someone asked about the keyboard again {i}")
+    return e
+
+
+async def test_both_paths_reject_the_same_streamer_punchline():
+    """Same history, same message, same drafts -> the same delivered line.
+    A source assertion cannot tell a working copy from a spelled one."""
+    message = "what even happened there"
+
+    blocking = _engine(NAMES_HIM, CLEAN)
+    got = await blocking.generate_response(message, {}, "viewer", is_mention=True)
+    assert got is not None
+    assert TARGET not in got['text'], "the blocking path delivered the punchline"
+    assert "pineapple" in got['text']
+
+    streamed = _engine(NAMES_HIM, CLEAN)
+    reply = await streamed.generate_response_streamed(
+        message, {}, "viewer", is_mention=True, min_sentence_chars=1)
+    assert reply is not None
+    said = []
+    async for sentence in reply.sentences:
+        said.append(sentence)
+    whole = " ".join(said)
+    assert TARGET not in whole, "the streamed path delivered the punchline"
+    assert "pineapple" in whole
+    assert streamed.openai_client.served == blocking.openai_client.served
