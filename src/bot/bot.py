@@ -140,6 +140,7 @@ def _read_laugh_ledger(settings: Dict[str, Any]):
     return LaughLedger(
         window_s=_number(cfg.get('window_seconds'), 30.0),
         quiet_after=int(_number(cfg.get('quiet_after'), 3.0)),
+        release_s=_number(cfg.get('quiet_release_seconds'), 600.0),
     )
 
 
@@ -933,7 +934,7 @@ class TalkBot:
             # laugh belongs to whatever the co-host said just before it.
             # This does nothing else to the message -- a laugh is still an
             # ordinary chat line, and may still be a room follow-up.
-            self._credit_laugh(message)
+            self._credit_laugh(message, received_at)
             if self.stream_recap:
                 self.stream_recap.record_message(message.get('username', ''))
             if self.chat_velocity:
@@ -2531,9 +2532,17 @@ class TalkBot:
         except Exception as e:  # noqa: BLE001 - measurement is never load-bearing
             logger.debug(f"Could not record our own line for scoring: {e}")
 
-    def _credit_laugh(self, message: Dict[str, Any]) -> None:
+    def _credit_laugh(self, message: Dict[str, Any],
+                      received_at: Optional[datetime] = None) -> None:
         """A viewer said something. If it was a laugh, it belongs to whatever
-        the co-host said just before it."""
+        the co-host said just before it.
+
+        Stamped with `received_at` -- when the message ARRIVED -- not with
+        `datetime.now()` taken here. This runs after a database write and
+        other awaits in `_handle_chat_message`; crediting at "now" would
+        push a laugh that arrived well inside the line's window out past
+        it, and lose the credit to nothing but scheduling.
+        """
         ledger = getattr(self, 'laugh_ledger', None)
         if not ledger:
             return
@@ -2545,10 +2554,11 @@ class TalkBot:
                 (self.config.get('TWITCH_CHANNEL') or '').lower(),
                 'stream_audio',
             }
+            at = (received_at or datetime.now()).timestamp()
             credited = ledger.note_viewer(
                 message.get('username', ''),
                 message.get('text') or message.get('message', ''),
-                datetime.now().timestamp(),
+                at,
                 exclude=exclude)
             if credited is None:
                 return
@@ -2582,6 +2592,10 @@ class TalkBot:
         try:
             now = datetime.now().timestamp()
             if not ledger.should_stay_quiet(now):
+                if ledger.quiet_released_at() == now:
+                    logger.info(
+                        f"Quiet released after {ledger.release_s / 60:.0f} "
+                        f"minutes: one more try")
                 return False
             logger.info(f"Quiet: last {ledger.dry_streak(now)} unprompted "
                         f"lines got nothing")

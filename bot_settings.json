@@ -81,6 +81,7 @@
   "laugh_ledger": {
     "enabled": true,
     "window_seconds": 30,
-    "quiet_after": 3
+    "quiet_after": 3,
+    "quiet_release_seconds": 600
   }
 }

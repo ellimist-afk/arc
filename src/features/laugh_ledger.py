@@ -24,10 +24,12 @@ from typing import Deque, Dict, Iterable, List, Optional, Set
 # "dead" only as a whole word ("deadline" is not a laugh); "W" alone is far
 # too ambiguous to count. The lookarounds keep these out of the middle of
 # ordinary words -- "lollipop" is not a laugh, and that mistake would credit
-# lines that nobody reacted to at all.
+# lines that nobody reacted to at all. `\w` rather than `[a-z]`: a digit or
+# underscore is not a boundary either -- "lol1", "1lol", "lol_bot" and
+# "dead2" are usernames/noise wearing a laugh, not a laugh.
 LAUGH_RE = re.compile(
-    r"(?<![a-z])(lo+l+|lmao+|lmfao+|ha(ha)+|he(he)+|kekw|lul+|omegalul"
-    r"|pepelaugh|icant|dead)(?![a-z])"
+    r"(?<!\w)(lo+l+|lmao+|lmfao+|rofl(mao)?|ha(ha)+|he(he)+|kekw|lul+"
+    r"|omegalul|pepelaugh|icant|dead)(?!\w)"
     r"|[\U0001F602\U0001F923\U0001F480]",
     re.I,
 )
@@ -58,19 +60,29 @@ class LaughLedger:
     `window_s`   how long after a line a laugh still counts as being at it.
     `quiet_after` how many dry unprompted lines in a row buys silence.
     `history`    how many lines to keep (a ring; older ones are forgotten).
+    `release_s`  how long a quiet hold lasts before one more line is let
+                 out anyway, so an empty room does not buy silence for the
+                 rest of the stream. <= 0 means never release.
     """
 
     def __init__(self, window_s: float = 30.0, quiet_after: int = 3,
-                 history: int = 40):
+                 history: int = 40, release_s: float = 600.0):
         self.window_s = float(window_s)
         self.quiet_after = int(quiet_after)
         self.history = int(history)
+        self.release_s = float(release_s)
         self._lines: Deque[BotLine] = deque(maxlen=self.history)
         self._by_seq: Dict[int, BotLine] = {}
         # When somebody last addressed the co-host. A dry streak never
         # reaches back past this: being talked to is the room's attention,
         # which is exactly what the quiet rule is waiting for.
         self._engaged_at: float = 0.0
+        # When a release last let a line through mid-streak, so the next
+        # one does not fire again immediately.
+        self._last_release_at: float = 0.0
+        # The `now` the most recent release fired at, so a caller can tell
+        # "not quiet because it just released" from "not quiet at all".
+        self._last_release_fired_at: Optional[float] = None
 
     # ------------------------------------------------------------ writing
 
@@ -162,11 +174,48 @@ class LaughLedger:
             n += 1
         return n
 
+    def _newest_dry_at(self, now: float) -> float:
+        """The `at` of the newest settled, unengaged, unsolicited, unlaughed
+        line -- where the current dry streak starts counting from. 0.0 if
+        there is no such line."""
+        for line in reversed(self._lines):
+            if not self.settled(line, now):
+                continue
+            if line.at <= self._engaged_at:
+                break
+            if line.laughers:
+                break
+            if not line.unsolicited:
+                continue
+            return line.at
+        return 0.0
+
     def should_stay_quiet(self, now: float) -> bool:
-        """Has the room stopped reacting to the lines nobody asked for?"""
+        """Has the room stopped reacting to the lines nobody asked for?
+
+        Once `release_s` has passed since the streak started (or since the
+        last release), one unprompted line is let out anyway. If it lands
+        nothing it simply joins the streak and quiet resumes; if it gets a
+        laugh the streak breaks as it always does. `release_s <= 0` means
+        never release.
+        """
         if self.quiet_after <= 0:
             return False
-        return self.dry_streak(now) >= self.quiet_after
+        if self.dry_streak(now) < self.quiet_after:
+            return False
+        if self.release_s > 0:
+            since = now - max(self._last_release_at, self._newest_dry_at(now))
+            if since >= self.release_s:
+                self._last_release_at = now
+                self._last_release_fired_at = now
+                return False
+        return True
+
+    def quiet_released_at(self) -> Optional[float]:
+        """The `now` most recently passed to should_stay_quiet() when it
+        let one unprompted line through mid-streak. None if that has never
+        happened."""
+        return self._last_release_fired_at
 
     def best(self, n: int) -> List[BotLine]:
         """The lines that landed hardest, most laughs first, newest first

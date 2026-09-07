@@ -174,6 +174,21 @@ async def test_an_ordinary_message_credits_nothing(caplog):
     assert "Room laughed at" not in caplog.text
 
 
+def test_credit_laugh_stamps_with_arrival_time_not_processing_time():
+    """`received_at` is when the message ARRIVED. If `_credit_laugh` used
+    `datetime.now()` instead (taken after the DB write and other awaits in
+    `_handle_chat_message`), a laugh that arrived well inside the line's
+    window would be stamped outside it and lose the credit to nothing but
+    scheduling delay."""
+    led = LaughLedger()
+    bot = _screen_bot(laughs=led)
+    old = datetime.now().timestamp() - 3600  # real now() is far outside
+    led.note_bot_line(1, "the line", old, unsolicited=True)
+    received_at = datetime.fromtimestamp(old + 5)
+    bot._credit_laugh({'username': 'chatter', 'text': 'lmao'}, received_at)
+    assert led.score(1) == 1
+
+
 async def test_the_reply_itself_is_recorded_and_not_unsolicited(caplog):
     caplog.set_level(logging.INFO)
     led = LaughLedger()
@@ -314,6 +329,26 @@ def test_the_filler_gate_holds_on_the_same_rule(caplog):
     assert "Quiet: last 3 unprompted lines got nothing" in caplog.text
 
 
+def test_quiet_hold_logs_when_a_release_fires(caplog):
+    caplog.set_level(logging.INFO)
+    led = LaughLedger()  # release_s defaults to 600
+    now = datetime.now().timestamp()
+    for i in range(3):
+        led.note_bot_line(i + 1, f"dry line {i}", now - 750 + i, unsolicited=True)
+    bot = _screen_bot(laughs=led)
+    assert bot._quiet_hold() is False, "the release should let this one through"
+    assert "Quiet released after 10 minutes: one more try" in caplog.text
+
+
+def test_quiet_hold_does_not_log_a_release_when_simply_not_quiet(caplog):
+    """Only an actual release logs the release line -- not every time the
+    room is not being held (which is most of the time)."""
+    caplog.set_level(logging.INFO)
+    bot = _screen_bot(laughs=LaughLedger())
+    assert bot._quiet_hold() is False
+    assert "Quiet released after" not in caplog.text
+
+
 def test_the_filler_gate_still_answers_yes_normally():
     bot = _screen_bot(laughs=LaughLedger())
     assert bot._may_fill() is True
@@ -382,6 +417,17 @@ def test_it_can_be_switched_off():
     assert _read_laugh_ledger({'laugh_ledger': {'enabled': False}}) is None
 
 
+def test_the_release_seconds_setting_is_read():
+    led = _read_laugh_ledger({'laugh_ledger': {'quiet_release_seconds': 120}})
+    assert led.release_s == 120.0
+
+
+def test_the_release_seconds_setting_is_parsed_tolerantly():
+    led = _read_laugh_ledger({'laugh_ledger': {'quiet_release_seconds': "abc"}})
+    assert led.release_s == 600.0
+    assert _read_laugh_ledger({}).release_s == 600.0
+
+
 # ----------------------------------------------------------- the prompt
 
 def _engine():
@@ -408,7 +454,8 @@ def test_the_audit_needles_are_what_the_source_logs():
     """test_audit_stream_log.py's own scan does not cover these keys, so the
     pin lives here: a reworded log must break a test, not vanish."""
     for key, needle in (("room_laughed", "Room laughed at"),
-                        ("quiet_dry", "Quiet: last")):
+                        ("quiet_dry", "Quiet: last"),
+                        ("quiet_release", "Quiet released after")):
         assert needle in BOT_SRC, f"{key}: source no longer logs {needle!r}"
         assert any(k == key for k, _, _ in GUARDS), f"{key} is not in GUARDS"
 

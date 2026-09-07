@@ -76,6 +76,8 @@ GUARDS = [
      "Bot lines that got a laugh within the window"),
     ("quiet_dry", "Quiet: last",
      "Unprompted lines held because the last few got nothing"),
+    ("quiet_release", "Quiet released after",
+     "Quiet holds released for one more try"),
     ("screen_pass", "Screen reaction passed",
      "Screen moments the co-host chose to let pass"),
     ("filler_off_screen", "Dead air: steering the filler off the screen",

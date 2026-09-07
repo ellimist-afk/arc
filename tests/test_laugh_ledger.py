@@ -37,8 +37,25 @@ def test_the_common_laughs_count():
 
 def test_a_laugh_inside_a_word_is_not_a_laugh():
     """Crediting "lollipop" would score lines nobody reacted to at all."""
-    for text in ("lollipop", "deadline", "dolores", "hahn", "kekwave"):
+    for text in ("lollipop", "deadline", "dolores", "hahn", "kekwave", "lulled"):
         assert not is_laugh(text), text
+
+
+def test_digits_and_underscores_are_not_word_boundaries():
+    """The lookarounds used to be [a-z]-only, so a laugh word touching a
+    digit or underscore still matched -- these are usernames and chat noise
+    wearing a laugh, not a laugh."""
+    for text in ("lol1", "1lol", "lol_bot", "@lol_gaming", "dead2"):
+        assert not is_laugh(text), text
+
+
+def test_rofl_counts():
+    assert is_laugh("rofl")
+    assert is_laugh("ROFLMAO")
+
+
+def test_roflcopter_is_not_a_laugh():
+    assert not is_laugh("roflcopter")
 
 
 def test_dead_counts_only_as_a_whole_word():
@@ -189,6 +206,43 @@ def test_two_dry_lines_are_not_yet_quiet():
 def test_a_zero_quiet_after_never_holds_anything():
     led = _three_dry(_led(quiet_after=0))
     assert led.should_stay_quiet(T + 200) is False
+
+
+# --------------------------------------------------------- the release
+
+def test_quiet_holds_right_up_to_the_release():
+    led = _three_dry()                    # newest dry line at T + 120
+    assert led.should_stay_quiet(T + 120 + 599) is True
+
+
+def test_release_lets_one_line_through_then_holds_again():
+    led = _three_dry()
+    released_now = T + 120 + 600
+    assert led.should_stay_quiet(released_now) is False
+    assert led.quiet_released_at() == released_now
+    # Immediately after, before any new line goes out, quiet resumes.
+    assert led.should_stay_quiet(released_now) is True
+
+
+def test_a_released_line_that_gets_a_laugh_clears_the_streak():
+    led = _three_dry()
+    released_now = T + 120 + 600
+    assert led.should_stay_quiet(released_now) is False
+    led.note_bot_line(4, "released line", released_now, unsolicited=True)
+    led.note_viewer("chatter", "lmao", released_now + 1)
+    assert led.dry_streak(released_now + 700) == 0
+
+
+def test_release_seconds_zero_never_releases():
+    led = _three_dry(_led(release_s=0))
+    assert led.should_stay_quiet(T + 120 + 10_000) is True
+
+
+def test_quiet_released_at_is_none_until_a_release_fires():
+    led = _three_dry()
+    assert led.quiet_released_at() is None
+    led.should_stay_quiet(T + 120 + 599)   # still holding, no release yet
+    assert led.quiet_released_at() is None
 
 
 # ------------------------------------------------------------ what it says
