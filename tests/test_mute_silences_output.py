@@ -45,7 +45,10 @@ def test_muting_stops_screen_reactions():
 
 
 def test_muting_stops_dead_air_fillers():
-    gate = BOT.split("self.response_coordinator.should_fill = lambda: (")[1].split(")\n")[0]
+    # Was an inline lambda; it became _may_fill when the quiet rule needed
+    # to log WHY it held a filler. The rule itself must survive the move.
+    assert "self.response_coordinator.should_fill = self._may_fill" in BOT
+    gate = BOT.split("def _may_fill")[1].split("\n    def ")[0]
     assert "not self.muted" in gate
     assert "is_live is not False" in gate, "the liveness rule must survive"
 

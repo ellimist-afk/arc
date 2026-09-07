@@ -124,6 +124,25 @@ def _read_screen_people(settings: Dict[str, Any]) -> Tuple[float, float]:
     return (_number(cfg.get('yield_to_chat_seconds'), 45.0),
             _number(cfg.get('room_followup_seconds'), 60.0))
 
+
+def _read_laugh_ledger(settings: Dict[str, Any]):
+    """Build the laugh ledger from bot_settings.json -> laugh_ledger, or
+    None when it is switched off.
+
+    Tolerant like the others: this runs during setup, and a hand-typed
+    "30s" must not take the whole co-host down with it.
+    """
+    from features.laugh_ledger import LaughLedger
+    from features.screen_watcher import _number
+    cfg = (settings or {}).get('laugh_ledger') or {}
+    if cfg.get('enabled') is False:
+        return None
+    return LaughLedger(
+        window_s=_number(cfg.get('window_seconds'), 30.0),
+        quiet_after=int(_number(cfg.get('quiet_after'), 3.0)),
+    )
+
+
 class ShutdownError(RuntimeError):
     """One or more components failed to shut down. Every component still got
     its turn; `failures` lists (step name, exception) in teardown order."""
@@ -180,6 +199,7 @@ class TalkBot:
         self.first_timer = None         # first-time chatter greeting policy (features.first_timer)
         self.chat_velocity = None       # chat pace tracker / pacing multiplier (features.chat_velocity)
         self.auto_clipper = None        # burst -> clip policy (features.auto_clipper)
+        self.laugh_ledger = None        # did the last lines land? (features.laugh_ledger)
         # When the co-host last said anything in chat. Unsolicited replies
         # (dice-roll interjections) hold off for a beat after it, so two
         # independent triggers cannot stack lines back to back. Mentions,
@@ -610,10 +630,9 @@ class TalkBot:
             # And the filler hears itself: an unprompted line that never
             # enters the chat buffer is invisible to the next generation.
             self.response_coordinator.on_filler_sent = self._on_filler_sent
-            # Never fill dead air into an offline stream
-            self.response_coordinator.should_fill = lambda: (
-                not self.muted
-                and (self.stream_info is None or self.stream_info.is_live is not False))
+            # Never fill dead air into an offline stream -- and never keep
+            # filling it when the last few unprompted lines got nothing.
+            self.response_coordinator.should_fill = self._may_fill
             await self.response_coordinator.start_dead_air_prevention()
             self.service_registry.register('ResponseCoordinator', self.response_coordinator)
             
@@ -870,6 +889,8 @@ class TalkBot:
             # co-host's own last line -- treating it as a full mention let it
             # skip the breather below and put two lines back to back.
             explicitly_addressed = is_mention
+            if explicitly_addressed:
+                self._note_engaged()
             # Whether THIS message just spent the room's one claim on an
             # unprompted co-host line -- kept separate from the persisted
             # self._last_line_unsolicited, which is cleared the moment the
@@ -880,6 +901,7 @@ class TalkBot:
                             and self._is_followup(message.get('username', '')))
             if via_followup:
                 is_mention = True
+                self._note_engaged()
                 logger.info(f"Follow-up from {message.get('username')} treated as a mention")
             elif not is_mention and time.monotonic() < self._room_followup_until:
                 # The co-host just said something nobody asked for. Whoever
@@ -893,6 +915,7 @@ class TalkBot:
                 room_answer = True
                 self._room_followup_until = 0.0
                 self._last_line_unsolicited = False
+                self._note_engaged()
                 logger.info(f"Room follow-up from {message.get('username')}: "
                             f"answering the co-host's line")
             priority = 'high' if is_mention else 'normal'
@@ -906,6 +929,11 @@ class TalkBot:
                 username=message.get('username', 'unknown'),
                 message=message.get('text') or message.get('message', '')
             )
+            # Right after the buffer append so the ordering is stable: a
+            # laugh belongs to whatever the co-host said just before it.
+            # This does nothing else to the message -- a laugh is still an
+            # ordinary chat line, and may still be a room follow-up.
+            self._credit_laugh(message)
             if self.stream_recap:
                 self.stream_recap.record_message(message.get('username', ''))
             if self.chat_velocity:
@@ -957,6 +985,11 @@ class TalkBot:
                 is_mention = True
                 priority = 'high'
                 logger.info(f"First-time chatter: {message.get('username')}")
+
+            # What the room made of the co-host's last few lines. Every
+            # generation path gets this; noticing what landed is the only
+            # feedback it has ever had.
+            context = self._with_room_reaction(context)
 
             # "Hey bot, shut up" must actually stop it talking. The flag
             # only gated voice INPUT, so a muted co-host kept replying in
@@ -1067,11 +1100,12 @@ class TalkBot:
                         self.audio_count += 1
 
                 # Add bot's response to chat buffer
-                self.chat_buffer.append_assistant(
+                seq = self.chat_buffer.append_assistant(
                     channel=self.config.get('TWITCH_CHANNEL', ''),
                     username=self.config.get('TWITCH_BOT_USERNAME', 'bot'),
                     message=response['text']
                 )
+                self._note_bot_line(seq, response['text'], unsolicited=False)
                 self.last_bot_message_at = datetime.now()
                 self._note_replied_to(message.get('username', ''))
 
@@ -1322,6 +1356,9 @@ class TalkBot:
             
             # Voice messages are always high priority
             priority = 'high'
+            # Voice reaches here already addressed to the co-host, so this
+            # counts as the room's attention for the quiet rule.
+            self._note_engaged()
 
             # Store in memory system
             await self.memory_system.store_message(message)
@@ -1349,7 +1386,8 @@ class TalkBot:
                     message_text=message.get('text', ''),
                     max_time_ms=80
                 )
-            
+            context = self._with_room_reaction(context)
+
             # Get personality response - force response for voice.
             # Label the speaker so the LLM knows this is the streamer talking,
             # not a viewer (attribution only — storage keeps the plain username)
@@ -1412,11 +1450,12 @@ class TalkBot:
                         logger.info(f"Voice response queued: '{response['text']}'")
 
                 # Add bot's response to chat buffer
-                self.chat_buffer.append_assistant(
+                seq = self.chat_buffer.append_assistant(
                     channel=self.config.get('TWITCH_CHANNEL', ''),
                     username=self.config.get('TWITCH_BOT_USERNAME', 'bot'),
                     message=response['text']
                 )
+                self._note_bot_line(seq, response['text'], unsolicited=False)
             elif voice_streamed:
                 pass  # already delivered by the streamed path
             else:
@@ -1953,11 +1992,12 @@ class TalkBot:
         self.last_bot_message_at = datetime.now()
         self._note_replied_to(user)
         self.audio_count += 1
-        self.chat_buffer.append_assistant(
+        seq = self.chat_buffer.append_assistant(
             channel=self.config.get('TWITCH_CHANNEL', ''),
             username=self.config.get('TWITCH_BOT_USERNAME', 'bot'),
             message=text,
         )
+        self._note_bot_line(seq, text, unsolicited=False)
         if self.stream_recap:
             self.stream_recap.record_response(spoken=True)
         return True, text
@@ -2015,6 +2055,15 @@ class TalkBot:
         except Exception as e:  # noqa: BLE001 - vision is never load-bearing
             logger.warning(f"Screen awareness unavailable: {e}")
             self.screen_watcher = None
+
+        # Whether anything the co-host says actually lands. Chat measures it
+        # for free; without it "be funnier" is the only lever there has ever
+        # been, and it is the one that never worked.
+        try:
+            self.laugh_ledger = _read_laugh_ledger(self._bot_settings)
+        except Exception as e:  # noqa: BLE001 - measurement is never load-bearing
+            logger.warning(f"Laugh ledger unavailable: {e}")
+            self.laugh_ledger = None
 
         # What the mic bus heard from the video/game, for reply context.
         if self.context_builder:
@@ -2198,6 +2247,11 @@ class TalkBot:
         if ago is not None and ago < self.yield_to_chat_s:
             logger.info(f"Screen moment held, chat is talking ({ago:.0f}s ago)")
             return
+        # Nobody has reacted to the last few things it volunteered. Keeping
+        # going is how twenty minutes of unfunny lines happen; the room gets
+        # its quiet back until someone laughs or talks to it.
+        if self._quiet_hold():
+            return
         channel = self.config.get('TWITCH_CHANNEL', '')
         # The vision loop already judged this worth saying; the chattiness
         # dice would discard it. It stays unsolicited for the guards.
@@ -2210,6 +2264,7 @@ class TalkBot:
         ledger = self._render_screen_ledger()
         if ledger:
             context['screen_ledger'] = ledger
+        context = self._with_room_reaction(context)
         run = self._screen_run_text(kind, streak)
         if run:
             context['screen_streak'] = run
@@ -2317,12 +2372,16 @@ class TalkBot:
         if not text or not self.chat_buffer:
             return
         try:
-            self.chat_buffer.append_assistant(
+            seq = self.chat_buffer.append_assistant(
                 channel=self.config.get('TWITCH_CHANNEL', ''),
                 username=self.config.get('TWITCH_BOT_USERNAME', 'bot'),
                 message=text)
         except Exception as e:  # noqa: BLE001 - context is never load-bearing
             logger.debug(f"Could not record our own line: {e}")
+            return
+        # Nobody asked for this one. It is the kind of line the quiet rule
+        # counts: if these stop landing, the co-host stops volunteering.
+        self._note_bot_line(seq, text, unsolicited=True)
 
     def _on_filler_sent(self, text: str) -> None:
         """A dead-air filler just went out. It counts as a screen line when
@@ -2407,6 +2466,9 @@ class TalkBot:
         can only produce "anyone there"."""
         context: Dict[str, Any] = {}
         channel = self.config.get('TWITCH_CHANNEL', '')
+        reaction = self._room_reaction()
+        if reaction:
+            context['room_reaction'] = reaction
         if self.chat_buffer:
             try:
                 context['recent_messages'] = self.chat_buffer.get_recent(channel, limit=10)
@@ -2451,6 +2513,124 @@ class TalkBot:
                 context['session_summary'] = self.session_summarizer.get_summary(channel)
             except Exception as e:  # noqa: BLE001
                 logger.debug(f"Dead-air session summary unavailable: {e}")
+        return context
+
+    # ------------------------------------------------- did the line land?
+    # All of these are getattr-guarded on purpose: the ledger is optional
+    # (settings can switch it off) and it is the newest thing on a very old
+    # bot object, so nothing may assume it exists.
+
+    def _note_bot_line(self, seq, text: str, *, unsolicited: bool) -> None:
+        """Register a line the co-host just said, so laughs can find it."""
+        ledger = getattr(self, 'laugh_ledger', None)
+        if not ledger or not seq or not text:
+            return
+        try:
+            ledger.note_bot_line(int(seq), text, datetime.now().timestamp(),
+                                 unsolicited=unsolicited)
+        except Exception as e:  # noqa: BLE001 - measurement is never load-bearing
+            logger.debug(f"Could not record our own line for scoring: {e}")
+
+    def _credit_laugh(self, message: Dict[str, Any]) -> None:
+        """A viewer said something. If it was a laugh, it belongs to whatever
+        the co-host said just before it."""
+        ledger = getattr(self, 'laugh_ledger', None)
+        if not ledger:
+            return
+        try:
+            # The co-host laughing at itself is not evidence, and neither is
+            # the streamer's own voice transcript arriving as a message.
+            exclude = {
+                (self.config.get('TWITCH_BOT_USERNAME') or '').lower(),
+                (self.config.get('TWITCH_CHANNEL') or '').lower(),
+                'stream_audio',
+            }
+            credited = ledger.note_viewer(
+                message.get('username', ''),
+                message.get('text') or message.get('message', ''),
+                datetime.now().timestamp(),
+                exclude=exclude)
+            if credited is None:
+                return
+            line = ledger.line(credited)
+            if line:
+                logger.info(f"Room laughed at: '{line.text[:60]}' "
+                            f"({line.laughs} so far)")
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Could not credit a laugh: {e}")
+
+    def _note_engaged(self) -> None:
+        """Somebody addressed the co-host. Whatever the room thought of the
+        last few unprompted lines, it is here now."""
+        ledger = getattr(self, 'laugh_ledger', None)
+        if not ledger:
+            return
+        try:
+            ledger.mark_engaged(datetime.now().timestamp())
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Could not mark engagement: {e}")
+
+    def _quiet_hold(self) -> bool:
+        """Has the room stopped reacting to lines nobody asked for?
+
+        A co-host who keeps volunteering into silence is the whole complaint.
+        Replies are never held by this -- somebody asked for those.
+        """
+        ledger = getattr(self, 'laugh_ledger', None)
+        if not ledger:
+            return False
+        try:
+            now = datetime.now().timestamp()
+            if not ledger.should_stay_quiet(now):
+                return False
+            logger.info(f"Quiet: last {ledger.dry_streak(now)} unprompted "
+                        f"lines got nothing")
+            return True
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Quiet check unavailable: {e}")
+            return False
+
+    def _may_fill(self) -> bool:
+        """The dead-air coordinator's gate. Was a lambda; it is a method so
+        the quiet rule can say out loud why it held a filler."""
+        live_and_unmuted = (
+            not self.muted
+            and (self.stream_info is None or self.stream_info.is_live is not False))
+        if not live_and_unmuted:
+            return False
+        if self._quiet_hold():
+            return False
+        return True
+
+    def _room_reaction(self) -> List[str]:
+        """How the room took the co-host's last few settled lines, oldest
+        first, for the prompt."""
+        ledger = getattr(self, 'laugh_ledger', None)
+        if not ledger:
+            return []
+        try:
+            lines = ledger.recent(4, before=datetime.now().timestamp())
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Room reaction unavailable: {e}")
+            return []
+        out = []
+        for line in reversed(lines):  # recent() is newest first
+            took = f"{line.laughs} laughed" if line.laughs else "nothing"
+            out.append(f"'{line.text[:60]}' ({took})")
+        return out
+
+    def _with_room_reaction(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Add the room's reaction to a context dict.
+
+        Returns a COPY when it adds anything: build_context() hands back the
+        same dict it keeps in its caches, and a per-request fact written onto
+        that would still be there on every later cache hit.
+        """
+        reaction = self._room_reaction()
+        if not reaction:
+            return context
+        context = dict(context or {})
+        context['room_reaction'] = reaction
         return context
 
     async def _auto_clip(self, reason: str = "chat hype") -> None:

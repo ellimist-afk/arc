@@ -60,10 +60,15 @@ class ChannelChatBuffer:
         )
         self.buffers[channel].append(turn)
 
-    def append_assistant(self, channel: str, username: str, message: str) -> None:
-        """Add the bot's own response to the buffer."""
+    def append_assistant(self, channel: str, username: str, message: str) -> int:
+        """Add the bot's own response to the buffer.
+
+        Returns the turn's seq (0 when nothing was stored), so a caller can
+        refer to this exact line later -- the laugh ledger scores lines by
+        seq because the ring buffer will eventually drop the turn itself.
+        """
         if not message or not message.strip():
-            return
+            return 0
 
         channel = self._normalize_channel(channel)
         if channel not in self.buffers:
@@ -77,6 +82,7 @@ class ChannelChatBuffer:
             seq=self._next_seq(channel),
         )
         self.buffers[channel].append(turn)
+        return turn.seq
 
     def _next_seq(self, channel: str) -> int:
         self._seq[channel] = self._seq.get(channel, 0) + 1

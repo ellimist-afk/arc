@@ -1337,6 +1337,15 @@ class PersonalityEngine:
                 f"statistic, offer mock sympathy, or predict what happens "
                 f"next.")
 
+        # The only feedback the co-host has ever had. "Be funnier" is a
+        # prompt; this is what the room actually did with the last few lines.
+        reaction = context.get('room_reaction')
+        if reaction:
+            lines.append(
+                "- How the room took your last lines: "
+                + "; ".join(reaction)
+                + ". Notice what landed and what did not.")
+
         streak = context.get('screen_streak')
         if streak:
             lines.append(f"- Pattern: {streak}. Say something about the "

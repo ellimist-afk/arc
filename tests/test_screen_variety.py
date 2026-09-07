@@ -48,9 +48,10 @@ def test_a_zero_gap_is_never_steer_not_a_typo():
 # --------------------------------------------------------------- harness
 
 def _bot(reply="cassidy again", passes=False, ledger=(), streak_age=360.0,
-         buffer=True):
+         buffer=True, laughs=None):
     bot = TalkBot.__new__(TalkBot)
     bot.muted = False
+    bot.laugh_ledger = laughs                     # features.laugh_ledger, or off
     bot.config = {'TWITCH_CHANNEL': 'cassova_', 'TWITCH_BOT_USERNAME': 'elimist_'}
     bot.last_bot_message_at = None
     bot.auto_clipper = None                       # the clip path is not the subject
@@ -86,9 +87,13 @@ def _bot(reply="cassidy again", passes=False, ledger=(), streak_age=360.0,
         def get_recent(channel, limit=6):
             return []            # nobody is talking; the screen may speak
 
+        seq = 0
+
         @staticmethod
         def append_assistant(channel, username, message):
             bot.appended.append((channel, username, message))
+            Buffer.seq += 1
+            return Buffer.seq
 
     bot.chat_buffer = Buffer() if buffer else None
 
