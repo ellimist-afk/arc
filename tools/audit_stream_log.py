@@ -98,6 +98,8 @@ GUARDS = [
      "Ad lines that fell back to the template pool (timeout)"),
     ("ad_failed", "Ad line failed",
      "Ad lines that fell back to the template pool (error)"),
+    ("laugh_probe", "[LAUGH-PROBE] fired",
+     "Laugh probe fired on mic audio"),
 ]
 # Not guards, but context that sizes the session.
 ACTIVITY = [
