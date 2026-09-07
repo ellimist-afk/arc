@@ -79,6 +79,8 @@ class VoiceRecognition:
         
         # Audio processing queue
         self.audio_queue = Queue(maxsize=5)
+        # Instrumentation, attached by the bot when enabled. None = off.
+        self.laugh_probe = None
         
         # Recognition settings for speed
         self.recognizer.energy_threshold = 300  # Lower = more sensitive
@@ -371,8 +373,15 @@ class VoiceRecognition:
         try:
             # Try to recognize the audio (runs on the listener thread,
             # off the event loop -- Whisper inference included)
-            text = self._transcribe(audio)
-            logger.info(f"Background recognition: '{text}'")
+            text = None
+            try:
+                text = self._transcribe(audio)
+                logger.info(f"Background recognition: '{text}'")
+            finally:
+                # Laughter is exactly the piece Whisper's VAD found no words
+                # in -- which is the path that raises -- so the probe has to
+                # see this piece before the exception leaves.
+                self._probe_laughter(audio, text)
             
             # Exactly ONE delivery path per utterance: with a callback
             # registered, also queueing the text hands it to any pull-based
@@ -399,6 +408,25 @@ class VoiceRecognition:
             # listener thread -- log and keep listening
             logger.error(f"ASR error in background: {e}")
             
+    def _probe_laughter(self, audio, text) -> None:
+        """Hand one audio piece to the laugh probe, if one is attached.
+
+        Instrumentation only: the probe logs a score and nothing else. It
+        runs on the listener thread, never the event loop, and it must never
+        be the reason the mic stops working -- hence the blanket except.
+        """
+        probe = getattr(self, 'laugh_probe', None)
+        if probe is None:
+            return
+        try:
+            raw = audio.get_raw_data(convert_rate=16000, convert_width=2)
+            samples = (
+                np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+            )
+            probe.observe(samples, 16000, bool((text or '').strip()))
+        except Exception as e:  # noqa: BLE001 - a probe never breaks the mic
+            logger.debug(f"Laugh probe skipped: {e}")
+
     async def _handle_recognized_text(self, text: str):
         """Handle recognized text asynchronously."""
         if self.on_text_recognized:

@@ -144,6 +144,27 @@ def _read_laugh_ledger(settings: Dict[str, Any]):
     )
 
 
+def _read_laugh_probe(settings: Dict[str, Any]):
+    """Build the laugh probe from bot_settings.json -> laugh_probe, or None
+    when it is switched off.
+
+    Instrumentation, not behaviour: the probe scores mic audio and logs it.
+    Tolerant like the other readers -- a hand-typed "0.6f" must not take the
+    microphone down with it.
+    """
+    from features.laugh_probe import (HeuristicLaughDetector, LaughProbe,
+                                      OnnxLaughDetector)
+    from features.screen_watcher import _number
+    cfg = (settings or {}).get('laugh_probe') or {}
+    if cfg.get('enabled') is False:
+        return None
+    path = cfg.get('onnx_model_path') or ''
+    detectors = [HeuristicLaughDetector(),
+                 OnnxLaughDetector(str(path))]
+    return LaughProbe(floor=_number(cfg.get('floor'), 0.6),
+                      detectors=detectors)
+
+
 class ShutdownError(RuntimeError):
     """One or more components failed to shut down. Every component still got
     its turn; `failures` lists (step name, exception) in teardown order."""
@@ -759,6 +780,16 @@ class TalkBot:
                 
                 # Set up voice callback to handle recognized text
                 self.voice_recognition.on_text_recognized = self._handle_voice_input
+
+                # Instrumentation: does a laugh detector fire on his real
+                # laughs, and on the game audio sharing the mic bus? The
+                # probe only logs -- nothing downstream reads it yet.
+                try:
+                    self.voice_recognition.laugh_probe = _read_laugh_probe(
+                        self._bot_settings)
+                except Exception as e:  # noqa: BLE001 - a probe is never load-bearing
+                    logger.warning(f"Laugh probe unavailable: {e}")
+                    self.voice_recognition.laugh_probe = None
                 
                 # Start listening with <3s startup target
                 success = await self.voice_recognition.start_listening()

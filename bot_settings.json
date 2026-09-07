@@ -83,5 +83,11 @@
     "window_seconds": 30,
     "quiet_after": 3,
     "quiet_release_seconds": 600
+  },
+  "laugh_probe": {
+    "_comment": "Instrumentation only: scores mic audio Whisper found no words in and logs '[LAUGH-PROBE] fired' so the post-stream audit can say whether a laugh detector would work here. Nothing reads the score yet. onnx_model_path is empty until a model file is placed by hand; nothing downloads.",
+    "enabled": true,
+    "floor": 0.6,
+    "onnx_model_path": ""
   }
 }
