@@ -61,7 +61,11 @@ def load_configuration():
         
         # OpenAI
         'OPENAI_API_KEY': os.getenv('OPENAI_API_KEY'),
-        
+        # Optional separate chat endpoint (e.g. OpenRouter). When LLM_API_KEY
+        # is set, chat lines go there; TTS and vision stay on OpenAI.
+        'LLM_API_KEY': os.getenv('LLM_API_KEY'),
+        'LLM_BASE_URL': os.getenv('LLM_BASE_URL'),
+
         # Twitch
         'TWITCH_ACCESS_TOKEN': os.getenv('TWITCH_ACCESS_TOKEN'),
         'TWITCH_CLIENT_ID': os.getenv('TWITCH_CLIENT_ID'),

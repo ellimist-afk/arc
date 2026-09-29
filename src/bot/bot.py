@@ -532,7 +532,9 @@ class TalkBot:
             logger.info("Initializing PersonalityEngine...")
             self.personality_engine = PersonalityEngine(
                 memory_system=self.memory_system,
-                openai_api_key=self.config.get('OPENAI_API_KEY')
+                openai_api_key=self.config.get('OPENAI_API_KEY'),
+                llm_api_key=self.config.get('LLM_API_KEY'),
+                llm_base_url=self.config.get('LLM_BASE_URL'),
             )
             await self.personality_engine.initialize()
             
@@ -3173,6 +3175,9 @@ async def main():
         'DATABASE_URL': os.getenv('DATABASE_URL', 'postgresql+asyncpg://postgres:postgres@localhost:5433/streambot'),
         'REDIS_URL': os.getenv('REDIS_URL', 'redis://localhost:6379'),
         'OPENAI_API_KEY': os.getenv('OPENAI_API_KEY'),
+        # Optional separate chat endpoint (e.g. OpenRouter); TTS and vision stay on OpenAI
+        'LLM_API_KEY': os.getenv('LLM_API_KEY'),
+        'LLM_BASE_URL': os.getenv('LLM_BASE_URL'),
         'TWITCH_ACCESS_TOKEN': os.getenv('TWITCH_ACCESS_TOKEN'),
         'TWITCH_CLIENT_ID': os.getenv('TWITCH_CLIENT_ID'),
         'TWITCH_CHANNEL': os.getenv('TWITCH_CHANNEL', 'confusedamish'),

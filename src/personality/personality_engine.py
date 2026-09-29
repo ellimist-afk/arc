@@ -171,6 +171,8 @@ class PersonalityEngine:
         openai_api_key: Optional[str] = None,
         config_path: str = "personality_settings",
         openai_base_url: Optional[str] = None,
+        llm_api_key: Optional[str] = None,
+        llm_base_url: Optional[str] = None,
     ):
         """
         Initialize the personality engine
@@ -183,16 +185,21 @@ class PersonalityEngine:
                 LM Studio, vLLM, OpenRouter...). Falls back to the
                 OPENAI_BASE_URL env var. Only affects chat completions —
                 TTS keeps its own client on the real OpenAI API.
+            llm_api_key / llm_base_url: a separate chat endpoint (LLM_API_KEY /
+                LLM_BASE_URL). When the key is set, chat uses this pair and
+                the OpenAI key and base URL are ignored for chat, so chat can
+                move to another provider while TTS and vision stay on OpenAI.
         """
         self.memory_system = memory_system
         self.config_path = config_path
-        self.openai_base_url = openai_base_url or os.getenv('OPENAI_BASE_URL') or None
-        if openai_api_key:
-            self.openai_client = AsyncOpenAI(api_key=openai_api_key, base_url=self.openai_base_url)
-            if self.openai_base_url:
-                logger.info(f"LLM endpoint: {self.openai_base_url}")
+        if llm_api_key:
+            chat_key = llm_api_key
+            self.openai_base_url = llm_base_url or None
         else:
-            self.openai_client = None
+            chat_key = openai_api_key
+            self.openai_base_url = openai_base_url or os.getenv('OPENAI_BASE_URL') or None
+        self.openai_client = (AsyncOpenAI(api_key=chat_key, base_url=self.openai_base_url)
+                              if chat_key else None)
         self.resilience = get_resilience()
 
         # Anti-loop guard over the bot's own recent outputs. Thresholds are
@@ -212,6 +219,8 @@ class PersonalityEngine:
         # bot: scales the unprompted-reply roll by how busy chat is
         self.pacing_multiplier: Optional[Callable[[], float]] = None
         self.reload_llm_settings()
+        if self.openai_client is not None:
+            logger.info(f"LLM endpoint: {self.llm_endpoint_host()} model={self.llm_model}")
         
         # Initialize circuit breaker for OpenAI API
         self.circuit_breaker = CircuitBreaker(
@@ -1035,6 +1044,15 @@ class PersonalityEngine:
                     # Someone in chat said this
                     messages.insert(1, {"role": "user", "content": f"{username}: {text}"})
         return messages
+
+    def llm_endpoint_host(self) -> Optional[str]:
+        """Host the chat client actually talks to (read back from the SDK,
+        which also honours the OPENAI_BASE_URL env var). Never the key."""
+        client = getattr(self, 'openai_client', None)
+        if client is None:
+            return None
+        from urllib.parse import urlparse
+        return urlparse(str(getattr(client, 'base_url', ''))).hostname
 
     def _llm_params(self) -> Dict[str, Any]:
         """response_modifiers filtered to what the chat completions API accepts,

@@ -83,7 +83,7 @@ class OptimizedAudioQueue:
             cache_size_mb: Maximum cache size in MB
             enable_pre_buffering: Whether to pre-buffer common responses
         """
-        self.openai_client = AsyncOpenAI(api_key=openai_api_key)
+        self.openai_client = AsyncOpenAI(api_key=openai_api_key, base_url="https://api.openai.com/v1")
         
         # Load voice settings early for cache consistency
         self.voice = "nova"  # default
