@@ -2642,6 +2642,11 @@ class TalkBot:
 
         A co-host who keeps volunteering into silence is the whole complaint.
         Replies are never held by this -- somebody asked for those.
+
+        The hold is logged once per quiet episode, when it begins: this runs
+        on every dead-air poll and logged 1131 identical lines in three
+        weeks. Any check that finds the room not quiet (a release, an
+        engagement, a laugh) ends the episode, so the next hold logs again.
         """
         ledger = getattr(self, 'laugh_ledger', None)
         if not ledger:
@@ -2649,13 +2654,16 @@ class TalkBot:
         try:
             now = datetime.now().timestamp()
             if not ledger.should_stay_quiet(now):
+                self._quiet_episode_logged = False
                 if ledger.quiet_released_at() == now:
                     logger.info(
                         f"Quiet released after {ledger.release_s / 60:.0f} "
                         f"minutes: one more try")
                 return False
-            logger.info(f"Quiet: last {ledger.dry_streak(now)} unprompted "
-                        f"lines got nothing")
+            if not getattr(self, '_quiet_episode_logged', False):
+                logger.info(f"Quiet: last {ledger.dry_streak(now)} unprompted "
+                            f"lines got nothing")
+                self._quiet_episode_logged = True
             return True
         except Exception as e:  # noqa: BLE001
             logger.debug(f"Quiet check unavailable: {e}")

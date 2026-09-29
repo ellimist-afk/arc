@@ -340,6 +340,55 @@ def test_quiet_hold_logs_when_a_release_fires(caplog):
     assert "Quiet released after 10 minutes: one more try" in caplog.text
 
 
+def _dry_ledger(now, lines=3):
+    led = LaughLedger()
+    for i in range(lines):
+        led.note_bot_line(i + 1, f"dry line {i}", now - 300 + i, unsolicited=True)
+    return led
+
+
+def _quiet_lines(caplog):
+    return [r for r in caplog.records
+            if "Quiet: last 3 unprompted lines got nothing" in r.getMessage()]
+
+
+def test_quiet_hold_logs_once_per_episode_not_every_poll(caplog):
+    """Every dead-air poll asks; live it logged 1131 identical lines."""
+    caplog.set_level(logging.INFO)
+    bot = _screen_bot(laughs=_dry_ledger(datetime.now().timestamp()))
+    for _ in range(5):
+        assert bot._quiet_hold() is True
+        assert bot._may_fill() is False
+    assert len(_quiet_lines(caplog)) == 1
+
+
+def test_an_engagement_ends_the_episode_so_the_next_hold_logs(caplog):
+    caplog.set_level(logging.INFO)
+    now = datetime.now().timestamp()
+    led = _dry_ledger(now)
+    bot = _screen_bot(laughs=led)
+    assert bot._quiet_hold() is True
+    led.mark_engaged(now - 200)                 # someone talked to it
+    assert bot._quiet_hold() is False
+    for i in range(3):                          # and then three more dry lines
+        led.note_bot_line(10 + i, f"dry again {i}", now - 150 + i, unsolicited=True)
+    assert bot._quiet_hold() is True
+    assert bot._quiet_hold() is True
+    assert len(_quiet_lines(caplog)) == 2
+
+
+def test_a_release_ends_the_episode_so_the_next_hold_logs(caplog):
+    caplog.set_level(logging.INFO)
+    now = datetime.now().timestamp()
+    bot = _screen_bot(laughs=_dry_ledger(now))
+    assert bot._quiet_hold() is True
+    bot.laugh_ledger = LaughLedger()            # the room is back
+    assert bot._quiet_hold() is False
+    bot.laugh_ledger = _dry_ledger(now)
+    assert bot._quiet_hold() is True
+    assert len(_quiet_lines(caplog)) == 2
+
+
 def test_quiet_hold_does_not_log_a_release_when_simply_not_quiet(caplog):
     """Only an actual release logs the release line -- not every time the
     room is not being held (which is most of the time)."""
