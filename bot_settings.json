@@ -88,6 +88,14 @@
     "quiet_after": 3,
     "quiet_release_seconds": 600
   },
+  "topic_wells": {
+    "_comment": "Code picks what a dead-air filler is about before the model writes: the game, what the streamer just said, earlier tonight, a question for chat, a viewer callback, or one off_topic entry. game_share_max over the last window lines caps the game (0.34 of 6 = at most 2, never twice running). When only one well has material it fires regardless of history, but not faster than solo_min_gap_seconds apart. off_topic is a plain list you can edit. enabled false = the old game-only filler exactly.",
+    "enabled": true,
+    "game_share_max": 0.34,
+    "window": 6,
+    "solo_min_gap_seconds": 600,
+    "off_topic": ["ai tools", "homelab and pc hardware", "food", "sleep schedule", "shows and movies", "stream setup"]
+  },
   "laugh_probe": {
     "_comment": "Instrumentation only: scores mic audio Whisper found no words in and logs '[LAUGH-PROBE] fired' so the post-stream audit can say whether a laugh detector would work here. Nothing reads the score yet. onnx_model_path is empty until a model file is placed by hand; nothing downloads.",
     "enabled": true,

@@ -237,3 +237,30 @@ def test_a_room_follow_up_is_told_apart_from_a_viewer_follow_up():
     s = parse_sessions(text)[0]
     assert s.counts["room_followup"] == 1
     assert s.counts["followup_upgrade"] == 1, "the room follow-up must not also count as a followup_upgrade"
+
+
+# ------------------------------------------------------------ topic wells
+
+def test_the_topic_well_signatures_are_what_the_source_logs():
+    src = Path("src/bot/bot.py").read_text(encoding="utf-8")
+    assert 'logger.info(f"Filler well: {choice.well} ({reason})")' in src
+    assert 'logger.info("Filler well: none, staying quiet")' in src
+    from features.topic_wells import WELLS
+    keys = {k for k, _, _ in GUARDS}
+    for well in WELLS:
+        assert f"filler_well_{well}" in keys, well
+
+
+def test_the_topic_wells_are_counted_per_well():
+    s = parse_sessions(_log(
+        START,
+        line(1, "Filler well: game (5 eligible, last none, game 0/6)"),
+        line(2, "Filler well: off_topic (4 eligible, last game, game 1/6)"),
+        line(3, "Filler well: streamer_said (3 eligible, last off_topic, "
+                "game 1/6, mixed mic bus: may be game audio)"),
+        line(4, "Filler well: none, staying quiet")))[0]
+    assert s.counts["filler_well_game"] == 1
+    assert s.counts["filler_well_off_topic"] == 1
+    assert s.counts["filler_well_streamer_said"] == 1
+    assert s.counts["filler_well_none"] == 1
+    assert not s.counts.get("filler_well_ask_chat")

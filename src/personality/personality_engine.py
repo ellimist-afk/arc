@@ -486,7 +486,8 @@ class PersonalityEngine:
             if message == "[DEAD_AIR_FILLER]":
                 prompt = self._build_dead_air_prompt(
                     context.get('time_since_activity', 0.0),
-                    avoid_screen=bool(context.get('just_said_about_screen')))
+                    avoid_screen=bool(context.get('just_said_about_screen')),
+                    well=context.get('well'))
             else:
                 prompt = self._build_personality_prompt()
 
@@ -837,7 +838,8 @@ class PersonalityEngine:
         return "\n".join(prompt_parts)
         
     def _build_dead_air_prompt(self, silence_s: float = 0.0,
-                                avoid_screen: bool = False) -> str:
+                                avoid_screen: bool = False,
+                                well: Optional[str] = None) -> str:
         """Prompt for filling a lull.
 
         The old filler prompt threw the personality away and asked for
@@ -852,21 +854,34 @@ class PersonalityEngine:
         just_said_about_screen line telling the model not to narrate the
         screen again -- offering "react to what is happening in the game"
         here in the same prompt would contradict that.
+
+        well: the topic well code picked (features.topic_wells). None or
+        'game' is the prompt as it always was. Any other well replaces the
+        menu of options with one instruction pointing at that well's
+        directive in the knowledge block, and the game is not offered.
         """
         if silence_s >= 60:
             how_long = f"about {round(silence_s / 60)} minute(s)"
         else:
             how_long = f"{int(silence_s)} seconds" if silence_s else "a while"
         game_option = "" if avoid_screen else "react to what is happening in the game, "
+        if well and well != 'game':
+            options = ("Break the silence with the one thing under \"This "
+                       "line's topic\" in your notes, and nothing about the "
+                       "game on screen. ")
+        else:
+            options = (
+                f"Break the silence with something "
+                f"specific: {game_option}call back to a joke "
+                "or moment from earlier this stream, ask chat a real question worth "
+                "answering, or give an opinion someone would argue with. ")
         return self._build_personality_prompt() + (
             f"\n\nChat has been quiet for {how_long}. Any chat lines you can see "
             f"are from BEFORE that silence, so they are stale: do NOT reply to them, "
             f"do NOT continue that thread, and do NOT retell a joke or topic you have "
             f"already used tonight. Open something NEW.\n"
-            f"Break the silence with something "
-            f"specific: {game_option}call back to a joke "
-            "or moment from earlier this stream, ask chat a real question worth "
-            "answering, or give an opinion someone would argue with. NEVER remark on "
+            + options +
+            "NEVER remark on "
             "the silence itself, never ask if anyone is there, and never announce that "
             "you are filling dead air -- a co-host just talks. One or two sentences."
         )
@@ -1205,7 +1220,8 @@ class PersonalityEngine:
         if message == "[DEAD_AIR_FILLER]":
             prompt = self._build_dead_air_prompt(
                 context.get('time_since_activity', 0.0),
-                avoid_screen=bool(context.get('just_said_about_screen')))
+                avoid_screen=bool(context.get('just_said_about_screen')),
+                well=context.get('well'))
         else:
             prompt = self._build_personality_prompt()
         # Same bypass as the blocking path: a line the bot already decided is
@@ -1335,6 +1351,14 @@ class PersonalityEngine:
         Only includes what's actually present — returns "" for empty context.
         """
         lines = []
+
+        # A filler whose topic well code already picked (features.topic_wells):
+        # the well's material under one heading, first, and for a non-game
+        # well it is the only topic material the bot handed over.
+        well = context.get('well')
+        well_directive = context.get('well_directive')
+        if well and well != 'game' and well_directive:
+            lines.append(f"- This line's topic ({well}): {well_directive}")
 
         # Widest frame first: what the stream is, then what's happened on it
         stream_now = context.get('stream_now')

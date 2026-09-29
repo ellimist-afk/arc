@@ -100,6 +100,22 @@ GUARDS = [
      "Ad lines that fell back to the template pool (error)"),
     ("laugh_probe", "[LAUGH-PROBE] fired",
      "Laugh probe fired on mic audio"),
+    # Topic wells: which well each dead-air filler was handed (one row per
+    # well; the bot logs "Filler well: <well> (<reason>)").
+    ("filler_well_game", "Filler well: game (",
+     "Fillers handed the game"),
+    ("filler_well_streamer_said", "Filler well: streamer_said (",
+     "Fillers handed what the streamer just said"),
+    ("filler_well_earlier_tonight", "Filler well: earlier_tonight (",
+     "Fillers handed a callback to earlier tonight"),
+    ("filler_well_ask_chat", "Filler well: ask_chat (",
+     "Fillers handed a question for chat"),
+    ("filler_well_viewer_callback", "Filler well: viewer_callback (",
+     "Fillers handed a fact about a viewer"),
+    ("filler_well_off_topic", "Filler well: off_topic (",
+     "Fillers handed an off-topic subject"),
+    ("filler_well_none", "Filler well: none, staying quiet",
+     "Fillers not generated: no topic well was eligible"),
 ]
 # Not guards, but context that sizes the session.
 ACTIVITY = [

@@ -167,6 +167,27 @@ def _read_laugh_ledger(settings: Dict[str, Any]):
     )
 
 
+def _read_topic_wells(settings: Dict[str, Any]):
+    """Build the topic-wells picker from bot_settings.json -> topic_wells,
+    as (TopicWells, off_topic list), or (None, []) when it is switched off.
+
+    Tolerant like the others: a hand-typed "0.3x" or an off_topic list typed
+    as one string must not take the fillers down. Off means today's filler,
+    exactly.
+    """
+    from features.screen_watcher import _number
+    from features.topic_wells import TopicWells, off_topic_list
+    cfg = (settings or {}).get('topic_wells') or {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    if cfg.get('enabled') is False:
+        return None, []
+    wells = TopicWells(game_share_max=_number(cfg.get('game_share_max'), 0.34),
+                       window=int(_number(cfg.get('window'), 6.0)),
+                       solo_min_gap_s=_number(cfg.get('solo_min_gap_seconds'), 600.0))
+    return wells, off_topic_list(cfg.get('off_topic'))
+
+
 def _read_laugh_probe(settings: Dict[str, Any]):
     """Build the laugh probe from bot_settings.json -> laugh_probe, or None
     when it is switched off.
@@ -279,6 +300,17 @@ class TalkBot:
         # is enough to riff on; older than a few minutes is a moment gone.
         self._ambient_audio = deque(maxlen=3)
         self.ambient_max_age_s = 180.0
+        # Topic wells (features.topic_wells): code picks what a filler is
+        # about. None = off = today's filler. _streamer_said holds the last
+        # untriggered transcripts long enough to be the streamer talking
+        # (mixed bus: may be game audio too; the log line says so).
+        self.topic_wells = None
+        self.off_topic: List[str] = []
+        self._streamer_said = deque(maxlen=6)
+        self._pending_well: Optional[str] = None
+        self._wells_quiet_logged = False
+        import random as _random
+        self._wells_rng = _random.Random()
         # What the co-host has already said about the screen this stream:
         # (monotonic, kind, what happened, the line). It never saw its own
         # unsolicited lines before this -- append_assistant is called only on
@@ -1836,7 +1868,16 @@ class TalkBot:
             
             # MORE RESTRICTIVE: Only respond to direct questions or bot mentions
             needs_response = False
-            
+            # Used both to gate the trigger below (short utterances only) and,
+            # regardless of word count, to keep an addressed utterance out of
+            # _streamer_said: a long one that names the bot skips the trigger
+            # here but was still said TO the bot, not overheard.
+            addressed = is_spoken_bot_addressed(
+                text_lower,
+                self.config.get('TWITCH_BOT_USERNAME', ''),
+                (getattr(self, '_bot_settings', None) or {}).get('bot_name', ''),
+            )
+
             # 1. Respond to various "hey" greetings directed at the bot.
             # The trigger list and the normalization for recognizer misfires
             # ("hey b..." heard as "play ...") live in trigger_match.py.
@@ -1850,11 +1891,7 @@ class TalkBot:
                                 f"(recognizer misfire tolerated): '{text}'")
                 logger.info(f"Voice: Bot triggered - '{text}'")
             # Also respond if bot name is mentioned
-            elif is_spoken_bot_addressed(
-                text_lower,
-                self.config.get('TWITCH_BOT_USERNAME', ''),
-                self._bot_settings.get('bot_name', ''),
-            ) and len(text_lower.split()) <= 10:
+            elif addressed and len(text_lower.split()) <= 10:
                 needs_response = True
                 logger.info(f"Voice: Bot name mentioned - '{text}'")
             
@@ -1883,6 +1920,9 @@ class TalkBot:
                     logger.debug(f"Ambient audio discarded as noise: '{text[:40]}'")
                     return
                 self._ambient_audio.append((datetime.now(), text))
+                said = getattr(self, '_streamer_said', None)
+                if said is not None and len(text.split()) >= 6 and not addressed:
+                    said.append((datetime.now(), text))
                 voice_message = {
                     'username': 'stream_audio',
                     'user_id': 'stream_audio',
@@ -2162,6 +2202,13 @@ class TalkBot:
             logger.warning(f"Laugh ledger unavailable: {e}")
             self.laugh_ledger = None
 
+        # Which topic a filler draws from. Off (or broken) is today's filler.
+        try:
+            self.topic_wells, self.off_topic = _read_topic_wells(self._bot_settings)
+        except Exception as e:  # noqa: BLE001 - variety is never load-bearing
+            logger.warning(f"Topic wells unavailable: {e}")
+            self.topic_wells, self.off_topic = None, []
+
         # What the mic bus heard from the video/game, for reply context.
         if self.context_builder:
             self.context_builder.ambient_provider = self._ambient_context
@@ -2423,6 +2470,7 @@ class TalkBot:
         self._remember_own_line(text)
         self._open_room_followup()
         self._screen_ledger.append((time.monotonic(), kind, what_happened, text))
+        self._note_well('game')
 
     def _seconds_since_viewer_spoke(self) -> Optional[float]:
         """How long since a PERSON last said something here, or None when
@@ -2498,6 +2546,21 @@ class TalkBot:
         if at is not None and time.monotonic() - at <= 60.0:
             self._screen_ledger.append(
                 (time.monotonic(), 'filler', topic_text or '', text))
+        # Consumed once, like the screen claim above.
+        well = getattr(self, '_pending_well', None)
+        self._pending_well = None
+        if well:
+            self._note_well(well)
+
+    def _note_well(self, well: str) -> None:
+        """A line from this well went out; the picker's ledger counts it."""
+        wells = getattr(self, 'topic_wells', None)
+        if not wells:
+            return
+        try:
+            wells.note(well, at=time.monotonic())
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Could not note the well: {e}")
 
     def _render_screen_ledger(self) -> List[str]:
         """The screen lines already said, oldest first, for the prompt."""
@@ -2559,10 +2622,171 @@ class TalkBot:
                 if (now - ts).total_seconds() <= getattr(self, 'ambient_max_age_s', 180.0)]
 
     def _dead_air_context(self) -> Dict[str, Any]:
+        """What a filler is handed. With topic wells on, code picks the well
+        first and a non-game well gets ONLY its own material: every input
+        the old filler got was the game, and every line was about it
+        (live 09-25..09-28, 14 of 14). No eligible well -> {'stay_quiet':
+        True}, which the coordinator honours before generating anything.
+        Wells off (or broken) is today's context, exactly."""
+        wells = getattr(self, 'topic_wells', None)
+        if wells is None:
+            return self._game_context()
+        try:
+            from features.topic_wells import directive
+            available = self._available_wells()
+            rng = getattr(self, '_wells_rng', None)
+            if rng is None:
+                import random as _random
+                rng = self._wells_rng = _random.Random()
+            choice = wells.pick(available, rng, now=time.monotonic())
+            if choice is not None and choice.well == 'off_topic':
+                choice.material = {'topic': wells.pick_off_topic(
+                    choice.material.get('entries') or [], rng)}
+        except Exception as e:  # noqa: BLE001 - fail open to today's filler
+            logger.debug(f"Topic wells unavailable: {e}")
+            return self._game_context()
+        if choice is None:
+            self._pending_well = None
+            if not getattr(self, '_wells_quiet_logged', False):
+                logger.info("Filler well: none, staying quiet")
+                self._wells_quiet_logged = True
+            return {'stay_quiet': True}
+        self._wells_quiet_logged = False
+        reason = choice.reason
+        if choice.well == 'streamer_said':
+            reason += ", mixed mic bus: may be game audio"
+        logger.info(f"Filler well: {choice.well} ({reason})")
+        self._pending_well = choice.well
+        if choice.well == 'game':
+            context = self._game_context()
+            context['well'] = 'game'
+            return context
+        # No screen claim for a line that was not handed the screen.
+        self._filler_screen_topic_at = None
+        self._filler_screen_topic_text = None
+        context = {'well': choice.well, 'well_material': choice.material,
+                   'well_directive': directive(choice.well, choice.material)}
+        reaction = self._room_reaction()
+        if reaction:
+            context['room_reaction'] = reaction
+        return context
+
+    def _available_wells(self) -> Dict[str, Dict[str, Any]]:
+        """Material per well (design s4); a well with none is absent."""
+        out: Dict[str, Dict[str, Any]] = {}
+        channel = self.config.get('TWITCH_CHANNEL', '')
+        now = datetime.now()
+        game: Dict[str, Any] = {}
+        if self.stream_info:
+            try:
+                game['stream_now'] = self.stream_info.describe()
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"Well: stream info unavailable: {e}")
+        watcher = getattr(self, 'screen_watcher', None)
+        if watcher:
+            try:
+                game['on_screen'] = watcher.describe_with_duration()
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"Well: screen view unavailable: {e}")
+        game['ambient_audio'] = self._ambient_context()
+        game = {k: v for k, v in game.items() if v}
+        if game:
+            out['game'] = game
+        quotes = [text for ts, text in getattr(self, '_streamer_said', [])
+                  if (now - ts).total_seconds() <= 180.0]
+        if quotes:
+            out['streamer_said'] = {'quotes': quotes}
+        if self.session_summarizer:
+            try:
+                summary = self.session_summarizer.get_summary(channel)
+            except Exception as e:  # noqa: BLE001
+                logger.debug(f"Well: session summary unavailable: {e}")
+                summary = None
+            started = getattr(getattr(self, 'response_coordinator', None),
+                              'startup_time', None)
+            old_enough = (not isinstance(started, datetime)
+                          or (now - started).total_seconds() >= 900)
+            if summary and old_enough:
+                out['earlier_tonight'] = {'summary': summary}
+        names = self._recent_viewer_names(1800.0)
+        if names:
+            out['ask_chat'] = {'names': names}
+            fact = self._viewer_fact(names)
+            if fact:
+                out['viewer_callback'] = fact
+        entries = list(getattr(self, 'off_topic', []) or [])
+        if entries:
+            out['off_topic'] = {'entries': entries}
+        return out
+
+    def _recent_viewer_names(self, within_s: float) -> List[str]:
+        """People (not the bot, the streamer or stream audio) who spoke in
+        chat within `within_s`, newest first."""
+        buffer = getattr(self, 'chat_buffer', None)
+        if not buffer:
+            return []
+        skip = {(self.config.get('TWITCH_BOT_USERNAME') or '').lower(),
+                (self.config.get('TWITCH_CHANNEL') or '').lower(), 'stream_audio'}
+        try:
+            turns = buffer.get_recent(self.config.get('TWITCH_CHANNEL', ''),
+                                      limit=100) or []
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Well: chat buffer unavailable: {e}")
+            return []
+        cutoff = datetime.now().timestamp() - within_s
+        names: List[str] = []
+        for turn in reversed(list(turns)):
+            turn = turn or {}
+            name = (turn.get('username') or '').strip()
+            try:
+                ts = float(turn.get('timestamp') or 0)
+            except (TypeError, ValueError):
+                continue
+            if (turn.get('role') != 'viewer' or not name or ts < cutoff
+                    or name.lower() in skip or name in names):
+                continue
+            names.append(name)
+        return names[:5]
+
+    def _viewer_fact(self, names: List[str]) -> Optional[Dict[str, str]]:
+        """One remembered fact about a recent viewer, read from contexts the
+        context builder already cached for their replies (sync; the memory
+        system itself is async and this runs inside a sync provider)."""
+        builder = getattr(self, 'context_builder', None)
+        if not builder:
+            return None
+        cached = []
+        for _key, entry in list((getattr(builder, 'l1_cache', None) or {}).items()):
+            cached.append((_key, entry[0] if isinstance(entry, tuple) else entry))
+        l2 = getattr(getattr(builder, 'l2_cache', None), 'cache', None) or {}
+        for _key, entry in list(l2.items()):
+            cached.append((_key, entry[0] if isinstance(entry, tuple) else entry))
+        for name in names:
+            for key, ctx in cached:
+                parts = str(key).split(':')
+                if len(parts) < 2 or parts[1].lower() != name.lower():
+                    continue
+                if not isinstance(ctx, dict):
+                    continue
+                history = ctx.get('history_summary')
+                if isinstance(history, str) and history.strip():
+                    return {'viewer': name, 'fact': history.strip()}
+                data = ctx.get('viewer_data') or {}
+                if isinstance(data, dict):
+                    for k, v in data.items():
+                        if k in ('from_memory', 'channel') or v in (None, '', 0):
+                            continue
+                        if isinstance(v, (str, int, float)):
+                            return {'viewer': name,
+                                    'fact': f"{k.replace('_', ' ')}: {v}"}
+        return None
+
+    def _game_context(self) -> Dict[str, Any]:
         """What the co-host knows when chat goes quiet: what is being
         played, what has happened this stream, and the last things said
         before the lull. Without this the filler is generated blind and
-        can only produce "anyone there"."""
+        can only produce "anyone there". This is the whole filler context
+        with topic wells off, and the `game` well's context with them on."""
         context: Dict[str, Any] = {}
         channel = self.config.get('TWITCH_CHANNEL', '')
         reaction = self._room_reaction()
