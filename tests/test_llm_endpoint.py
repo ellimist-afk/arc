@@ -64,3 +64,34 @@ def test_tts_clients_are_pinned_to_openai(monkeypatch):
     assert str(AsyncOpenAI(base_url="https://api.openai.com/v1").base_url).startswith(
         "https://api.openai.com/v1")
     assert "openrouter" in str(AsyncOpenAI().base_url), "env var is honoured when unpinned"
+
+
+# --------------------------------------------------------------- vision
+
+def test_vision_gets_its_own_openai_client(monkeypatch):
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
+    from bot.bot import _vision_client_and_model
+    chat = object()
+    client, model = _vision_client_and_model("sk-openai", chat, "x-ai/grok-4.7")
+    assert client is not chat
+    assert client.api_key == "sk-openai"
+    assert str(client.base_url).startswith("https://api.openai.com/v1")
+    assert model == "gpt-5.5", "vision must not inherit the chat model"
+
+
+def test_vision_falls_back_to_chat_client_without_openai_key():
+    from bot.bot import _vision_client_and_model
+    chat = object()
+    assert _vision_client_and_model(None, chat, "gpt-4o") == (chat, "gpt-4o")
+
+
+def test_screen_awareness_model_setting_wins():
+    import json
+    from pathlib import Path
+    from features.screen_watcher import ScreenWatcher
+    settings = json.loads((Path(__file__).resolve().parent.parent
+                           / "bot_settings.json").read_text(encoding="utf-8"))
+    assert settings["screen_awareness"]["model"] == "gpt-5.5"
+    w = ScreenWatcher.from_settings({"screen_awareness": {"model": "gpt-5-mini"}},
+                                    openai_client=object(), model="gpt-5.5")
+    assert w.model == "gpt-5-mini"

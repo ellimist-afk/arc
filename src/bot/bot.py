@@ -96,6 +96,28 @@ def is_spoken_bot_addressed(
     )
 
 
+OPENAI_API_BASE = "https://api.openai.com/v1"
+VISION_DEFAULT_MODEL = "gpt-5.5"
+
+
+def _vision_client_and_model(openai_api_key: Optional[str], chat_client: Any,
+                             chat_model: Optional[str]) -> Tuple[Any, str]:
+    """The screen watcher's own client and default model.
+
+    Vision used to borrow the chat client and llm_model, so moving chat to
+    another endpoint (Grok on OpenRouter) would have sent screenshots there
+    too, under a model id that may not see images. It gets a client pinned to
+    the OpenAI API and screen_awareness.model instead (this default when the
+    setting is absent). With no OpenAI key it falls back to the chat client
+    and chat model, as before.
+    """
+    if openai_api_key:
+        from openai import AsyncOpenAI
+        return (AsyncOpenAI(api_key=openai_api_key, base_url=OPENAI_API_BASE),
+                VISION_DEFAULT_MODEL)
+    return chat_client, (chat_model or VISION_DEFAULT_MODEL)
+
+
 def _read_filler_screen_gap(settings: Dict[str, Any]) -> float:
     """Tolerant parse of screen_awareness.filler_screen_gap_seconds.
 
@@ -2070,11 +2092,13 @@ class TalkBot:
         # settings -- it ships screenshots to the OpenAI API.
         try:
             from features.screen_watcher import ScreenWatcher
-            self.screen_watcher = ScreenWatcher.from_settings(
-                self._bot_settings,
+            vision_client, vision_model = _vision_client_and_model(
+                self.config.get('OPENAI_API_KEY'),
                 getattr(self.personality_engine, 'openai_client', None),
-                getattr(self.personality_engine, 'llm_model', 'gpt-5.5'),
+                getattr(self.personality_engine, 'llm_model', None),
             )
+            self.screen_watcher = ScreenWatcher.from_settings(
+                self._bot_settings, vision_client, vision_model)
             self.screen_watcher.on_notable = self._react_to_screen
             self.filler_screen_gap_s = _read_filler_screen_gap(self._bot_settings)
             (self.yield_to_chat_s,
