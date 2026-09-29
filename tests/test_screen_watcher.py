@@ -110,6 +110,17 @@ async def test_the_model_gets_an_effort_it_accepts():
     assert w2.seen['reasoning_effort'] == 'minimal'
 
 
+async def test_a_non_gpt5_model_gets_max_tokens():
+    """max_completion_tokens used to be hardcoded for every model."""
+    w = _watcher(model='google/gemini-3-flash')
+    await w.look()
+    assert w.seen['max_tokens'] == 80
+    assert 'max_completion_tokens' not in w.seen and 'reasoning_effort' not in w.seen
+    w2 = _watcher(model='openai/gpt-5.5')
+    await w2.look()
+    assert w2.seen['max_completion_tokens'] == 80 and w2.seen['reasoning_effort'] == 'none'
+
+
 async def test_a_failed_look_keeps_the_previous_description():
     w = _watcher()
     await w.look()

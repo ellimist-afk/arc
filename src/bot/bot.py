@@ -97,6 +97,28 @@ def is_spoken_bot_addressed(
     )
 
 
+OPENAI_API_BASE = "https://api.openai.com/v1"
+VISION_DEFAULT_MODEL = "gpt-5.5"
+
+
+def _vision_client_and_model(openai_api_key: Optional[str], chat_client: Any,
+                             chat_model: Optional[str]) -> Tuple[Any, str]:
+    """The screen watcher's own client and default model.
+
+    Vision used to borrow the chat client and llm_model, so moving chat to
+    another endpoint (Grok on OpenRouter) would have sent screenshots there
+    too, under a model id that may not see images. It gets a client pinned to
+    the OpenAI API and screen_awareness.model instead (this default when the
+    setting is absent). With no OpenAI key it falls back to the chat client
+    and chat model, as before.
+    """
+    if openai_api_key:
+        from openai import AsyncOpenAI
+        return (AsyncOpenAI(api_key=openai_api_key, base_url=OPENAI_API_BASE),
+                VISION_DEFAULT_MODEL)
+    return chat_client, (chat_model or VISION_DEFAULT_MODEL)
+
+
 def _read_filler_screen_gap(settings: Dict[str, Any]) -> float:
     """Tolerant parse of screen_awareness.filler_screen_gap_seconds.
 
@@ -553,7 +575,9 @@ class TalkBot:
             logger.info("Initializing PersonalityEngine...")
             self.personality_engine = PersonalityEngine(
                 memory_system=self.memory_system,
-                openai_api_key=self.config.get('OPENAI_API_KEY')
+                openai_api_key=self.config.get('OPENAI_API_KEY'),
+                llm_api_key=self.config.get('LLM_API_KEY'),
+                llm_base_url=self.config.get('LLM_BASE_URL'),
             )
             await self.personality_engine.initialize()
             
@@ -2107,11 +2131,13 @@ class TalkBot:
         # settings -- it ships screenshots to the OpenAI API.
         try:
             from features.screen_watcher import ScreenWatcher
-            self.screen_watcher = ScreenWatcher.from_settings(
-                self._bot_settings,
+            vision_client, vision_model = _vision_client_and_model(
+                self.config.get('OPENAI_API_KEY'),
                 getattr(self.personality_engine, 'openai_client', None),
-                getattr(self.personality_engine, 'llm_model', 'gpt-5.5'),
+                getattr(self.personality_engine, 'llm_model', None),
             )
+            self.screen_watcher = ScreenWatcher.from_settings(
+                self._bot_settings, vision_client, vision_model)
             self.screen_watcher.on_notable = self._react_to_screen
             self.filler_screen_gap_s = _read_filler_screen_gap(self._bot_settings)
             (self.yield_to_chat_s,
@@ -2657,6 +2683,11 @@ class TalkBot:
 
         A co-host who keeps volunteering into silence is the whole complaint.
         Replies are never held by this -- somebody asked for those.
+
+        The hold is logged once per quiet episode, when it begins: this runs
+        on every dead-air poll and logged 1131 identical lines in three
+        weeks. Any check that finds the room not quiet (a release, an
+        engagement, a laugh) ends the episode, so the next hold logs again.
         """
         ledger = getattr(self, 'laugh_ledger', None)
         if not ledger:
@@ -2664,13 +2695,16 @@ class TalkBot:
         try:
             now = datetime.now().timestamp()
             if not ledger.should_stay_quiet(now):
+                self._quiet_episode_logged = False
                 if ledger.quiet_released_at() == now:
                     logger.info(
                         f"Quiet released after {ledger.release_s / 60:.0f} "
                         f"minutes: one more try")
                 return False
-            logger.info(f"Quiet: last {ledger.dry_streak(now)} unprompted "
-                        f"lines got nothing")
+            if not getattr(self, '_quiet_episode_logged', False):
+                logger.info(f"Quiet: last {ledger.dry_streak(now)} unprompted "
+                            f"lines got nothing")
+                self._quiet_episode_logged = True
             return True
         except Exception as e:  # noqa: BLE001
             logger.debug(f"Quiet check unavailable: {e}")
@@ -3214,6 +3248,9 @@ async def main():
         'DATABASE_URL': os.getenv('DATABASE_URL', 'postgresql+asyncpg://postgres:postgres@localhost:5433/streambot'),
         'REDIS_URL': os.getenv('REDIS_URL', 'redis://localhost:6379'),
         'OPENAI_API_KEY': os.getenv('OPENAI_API_KEY'),
+        # Optional separate chat endpoint (e.g. OpenRouter); TTS and vision stay on OpenAI
+        'LLM_API_KEY': os.getenv('LLM_API_KEY'),
+        'LLM_BASE_URL': os.getenv('LLM_BASE_URL'),
         'TWITCH_ACCESS_TOKEN': os.getenv('TWITCH_ACCESS_TOKEN'),
         'TWITCH_CLIENT_ID': os.getenv('TWITCH_CLIENT_ID'),
         'TWITCH_CHANNEL': os.getenv('TWITCH_CHANNEL', 'confusedamish'),

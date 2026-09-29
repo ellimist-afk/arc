@@ -166,25 +166,6 @@ class AdAnnouncer:
             return text[:last_space] + "..."
         return text[:trim_point] + "..."
 
-    async def _call_llm(self, prompt: str, max_tokens: int = 80) -> Optional[str]:
-        """Make LLM call with timeout and error handling"""
-        try:
-            response = await asyncio.wait_for(
-                self.openai_client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[{"role": "system", "content": prompt}],
-                    max_tokens=max_tokens,
-                    temperature=0.9
-                ),
-                timeout=4.0
-            )
-            return response.choices[0].message.content.strip().replace('"', '').replace("'", '')
-        except asyncio.TimeoutError:
-            logger.debug("LLM call timed out")
-        except Exception as e:
-            logger.debug(f"LLM call failed: {e}")
-        return None
-
     async def _say_in_character(self, scenario: str) -> Optional[str]:
         """One line about `scenario`, in the co-host's actual voice.
 

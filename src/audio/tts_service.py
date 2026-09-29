@@ -32,7 +32,7 @@ class TTSService:
         self._lock = asyncio.Lock()
         
         # OpenAI client for TTS
-        self.openai_client = AsyncOpenAI()
+        self.openai_client = AsyncOpenAI(base_url="https://api.openai.com/v1")
         
         logger.info("TTSService initialized with SINGLE PyAudio instance")
         

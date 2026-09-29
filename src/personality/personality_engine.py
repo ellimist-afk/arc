@@ -24,6 +24,7 @@ from core.network_resilience import get_resilience
 from core.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
 from personality.repetition_guard import RepetitionGuard, names_target
 from personality.streamed_reply import StreamedReply, SentenceStream
+from personality.model_params import adapt_params, lowest_reasoning_effort
 from audio.sentence_splitter import SentenceSplitter, split_text
 
 logger = logging.getLogger(__name__)
@@ -171,6 +172,8 @@ class PersonalityEngine:
         openai_api_key: Optional[str] = None,
         config_path: str = "personality_settings",
         openai_base_url: Optional[str] = None,
+        llm_api_key: Optional[str] = None,
+        llm_base_url: Optional[str] = None,
     ):
         """
         Initialize the personality engine
@@ -183,16 +186,32 @@ class PersonalityEngine:
                 LM Studio, vLLM, OpenRouter...). Falls back to the
                 OPENAI_BASE_URL env var. Only affects chat completions —
                 TTS keeps its own client on the real OpenAI API.
+            llm_api_key / llm_base_url: a separate chat endpoint (LLM_API_KEY /
+                LLM_BASE_URL). When the key is set AND the base URL is non-blank,
+                chat uses this pair and the OpenAI key and base URL (including
+                the OPENAI_BASE_URL env var) are ignored for chat, so chat can
+                move to another provider while TTS and vision stay on OpenAI.
+                A key with no base URL is never sent to the OpenAI API as if it
+                were an OpenAI key: it is dropped and chat falls back to the
+                OpenAI key/base-url behaviour, with one logged error.
         """
         self.memory_system = memory_system
         self.config_path = config_path
-        self.openai_base_url = openai_base_url or os.getenv('OPENAI_BASE_URL') or None
-        if openai_api_key:
-            self.openai_client = AsyncOpenAI(api_key=openai_api_key, base_url=self.openai_base_url)
-            if self.openai_base_url:
-                logger.info(f"LLM endpoint: {self.openai_base_url}")
+        llm_base_url_clean = (llm_base_url or '').strip()
+        if llm_api_key and not llm_base_url_clean:
+            logger.error(
+                "LLM_API_KEY is set without LLM_BASE_URL; ignoring it and using "
+                "the OpenAI key"
+            )
+            llm_api_key = None
+        if llm_api_key:
+            chat_key = llm_api_key
+            self.openai_base_url = llm_base_url_clean
         else:
-            self.openai_client = None
+            chat_key = openai_api_key
+            self.openai_base_url = openai_base_url or os.getenv('OPENAI_BASE_URL') or None
+        self.openai_client = (AsyncOpenAI(api_key=chat_key, base_url=self.openai_base_url)
+                              if chat_key else None)
         self.resilience = get_resilience()
 
         # Anti-loop guard over the bot's own recent outputs. Thresholds are
@@ -212,6 +231,8 @@ class PersonalityEngine:
         # bot: scales the unprompted-reply roll by how busy chat is
         self.pacing_multiplier: Optional[Callable[[], float]] = None
         self.reload_llm_settings()
+        if self.openai_client is not None:
+            logger.info(f"LLM endpoint: {self.llm_endpoint_host()} model={self.llm_model}")
         
         # Initialize circuit breaker for OpenAI API
         self.circuit_breaker = CircuitBreaker(
@@ -1060,6 +1081,15 @@ class PersonalityEngine:
             }, messages[-1]]
         return messages
 
+    def llm_endpoint_host(self) -> Optional[str]:
+        """Host the chat client actually talks to (read back from the SDK,
+        which also honours the OPENAI_BASE_URL env var). Never the key."""
+        client = getattr(self, 'openai_client', None)
+        if client is None:
+            return None
+        from urllib.parse import urlparse
+        return urlparse(str(getattr(client, 'base_url', ''))).hostname
+
     def _llm_params(self) -> Dict[str, Any]:
         """response_modifiers filtered to what the chat completions API accepts,
         then adapted to the configured model's requirements."""
@@ -1070,28 +1100,16 @@ class PersonalityEngine:
     def _adapt_openai_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Map generic sampling params onto model-specific API requirements.
-
-        GPT-5 family: 'max_tokens' is renamed to 'max_completion_tokens', and
-        temperature/penalties are only accepted with the lowest reasoning
-        effort — also the fastest setting (no reasoning tokens before banter).
-
-        The accepted values are model-specific and do NOT overlap: gpt-5.5
-        takes 'none' and rejects 'minimal', while gpt-5-mini takes 'minimal'
-        and rejects 'none'. Sending the wrong one is a hard 400, so every
-        reply would fail the moment llm_model changed.
+        See personality/model_params.py: GPT-5 family (bare or `openai/`
+        prefixed) gets 'max_completion_tokens' and its lowest reasoning
+        effort; any other model gets 'max_tokens' and no reasoning_effort.
         """
-        adapted = dict(params)
-        model = (self.llm_model or '')
-        if model.startswith('gpt-5'):
-            if 'max_tokens' in adapted:
-                adapted['max_completion_tokens'] = adapted.pop('max_tokens')
-            adapted.setdefault('reasoning_effort', self._lowest_reasoning_effort(model))
-        return adapted
+        return adapt_params(self.llm_model, params)
 
     @staticmethod
     def _lowest_reasoning_effort(model: str) -> str:
         """The cheapest reasoning setting this model actually accepts."""
-        return 'none' if model.startswith('gpt-5.5') else 'minimal'
+        return lowest_reasoning_effort(model)
 
     def would_speak(self, message: str, is_mention: bool) -> bool:
         """Public view of the TTS decision, so callers can pick the streamed
