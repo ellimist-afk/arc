@@ -379,7 +379,11 @@ class ResponseCoordinator:
                                     context.update(self.context_provider() or {})
                                 except Exception as e:  # noqa: BLE001
                                     logger.debug(f"Dead-air context unavailable: {e}")
-                            
+                            # Topic wells found nothing eligible: no line is
+                            # generated at all (the bot logged why).
+                            if context.get('stay_quiet'):
+                                continue
+
                             response = await asyncio.wait_for(
                                 self.personality_engine.generate_response(
                                     message="[DEAD_AIR_FILLER]",
