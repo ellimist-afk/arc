@@ -7,6 +7,7 @@ import logging
 import random
 from collections import deque
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 from bot.bot import TalkBot, _read_topic_wells
@@ -129,10 +130,13 @@ def test_game_well_is_todays_context_plus_the_name():
 
 
 def test_nothing_eligible_stays_quiet_and_logs_once(caplog):
+    # Two wells available (game, off_topic) so the F1 solo carve-out does not
+    # apply: game sits in the last 2 (blocked) and off_topic was last used
+    # (blocked), so nothing is eligible.
     bot = _bot()
-    bot.topic_wells.note('game')
-    bot.off_topic = []
     bot.session_summarizer = None
+    bot.topic_wells.note('game')
+    bot.topic_wells.note('off_topic')
     with caplog.at_level(logging.INFO):
         assert bot._dead_air_context() == {'stay_quiet': True}
         assert bot._dead_air_context() == {'stay_quiet': True}
@@ -149,7 +153,10 @@ def test_wells_off_is_todays_context_exactly():
 
 
 def test_off_topic_picks_differ_over_time():
-    bot = _bot()
+    # Two wells available (off_topic, ask_chat via a real recent viewer) so
+    # the F1 solo carve-out does not apply and off_topic keeps alternating
+    # with something else, as before.
+    bot = _bot(turns=[_viewer('ann')])
     bot.session_summarizer = None
     bot.screen_watcher = None
     bot.stream_info = None
@@ -160,7 +167,6 @@ def test_off_topic_picks_differ_over_time():
         if ctx.get('well') == 'off_topic':
             topics.append(ctx['well_material']['topic'])
         bot._on_filler_sent("a line")
-        bot.topic_wells.note('ask_chat')   # something else in between
     assert len(topics) >= 2
     assert all(a != b for a, b in zip(topics, topics[1:]))
 
@@ -214,3 +220,55 @@ def test_coordinator_generates_nothing_when_told_to_stay_quiet():
     assert src.index("self.context_provider()") < quiet < src.index(
         'message="[DEAD_AIR_FILLER]"')
     assert rc is not None
+
+
+# ------------------------------------------------- F2: addressed vs overheard
+
+def _voice_bot():
+    """A bot with only what _handle_voice_input touches."""
+    bot = TalkBot.__new__(TalkBot)
+    bot.config = {'TWITCH_CHANNEL': 'cassova_', 'TWITCH_BOT_USERNAME': 'elimist_'}
+    bot._bot_settings = {}
+    bot.realtime_backend = None
+    bot.voice_commands = None
+    bot.last_voice_response = None
+    bot.recent_voice_texts = []
+    bot.muted = False
+    bot.last_voice_reply_at = None
+    bot.voice_retrigger_gap_s = 12.0
+    bot._ambient_audio = deque(maxlen=3)
+    bot._streamer_said = deque(maxlen=6)
+
+    async def store_message(message):
+        return None
+    bot.memory_system = SimpleNamespace(store_message=store_message)
+    return bot
+
+
+async def test_addressed_long_utterance_is_not_stored_as_overheard(caplog):
+    """A 14-word utterance naming the bot is too long for the <=10-word
+    address trigger, so it falls into the NO TRIGGER branch -- but it was
+    still said TO the bot, not overheard, so it must not join
+    _streamer_said (F2)."""
+    bot = _voice_bot()
+    text = ("elimist i think that fight was rough and we should probably "
+            "think about rotating")
+    assert len(text.split()) == 14
+    with caplog.at_level(logging.INFO):
+        await bot._handle_voice_input(text)
+    assert "Error handling voice input" not in caplog.text
+    assert list(bot._streamer_said) == []
+
+
+async def test_unaddressed_long_utterance_is_stored_as_overheard(caplog):
+    """Same shape, no bot name: an ordinary overheard line still gets
+    captured (unchanged behaviour)."""
+    bot = _voice_bot()
+    text = ("man i think that fight was rough and we should probably "
+            "think about rotating")
+    assert len(text.split()) == 14
+    with caplog.at_level(logging.INFO):
+        await bot._handle_voice_input(text)
+    assert "Error handling voice input" not in caplog.text
+    assert len(bot._streamer_said) == 1
+    assert bot._streamer_said[0][1] == text

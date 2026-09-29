@@ -183,7 +183,8 @@ def _read_topic_wells(settings: Dict[str, Any]):
     if cfg.get('enabled') is False:
         return None, []
     wells = TopicWells(game_share_max=_number(cfg.get('game_share_max'), 0.34),
-                       window=int(_number(cfg.get('window'), 6.0)))
+                       window=int(_number(cfg.get('window'), 6.0)),
+                       solo_min_gap_s=_number(cfg.get('solo_min_gap_seconds'), 600.0))
     return wells, off_topic_list(cfg.get('off_topic'))
 
 
@@ -1867,7 +1868,16 @@ class TalkBot:
             
             # MORE RESTRICTIVE: Only respond to direct questions or bot mentions
             needs_response = False
-            
+            # Used both to gate the trigger below (short utterances only) and,
+            # regardless of word count, to keep an addressed utterance out of
+            # _streamer_said: a long one that names the bot skips the trigger
+            # here but was still said TO the bot, not overheard.
+            addressed = is_spoken_bot_addressed(
+                text_lower,
+                self.config.get('TWITCH_BOT_USERNAME', ''),
+                (getattr(self, '_bot_settings', None) or {}).get('bot_name', ''),
+            )
+
             # 1. Respond to various "hey" greetings directed at the bot.
             # The trigger list and the normalization for recognizer misfires
             # ("hey b..." heard as "play ...") live in trigger_match.py.
@@ -1881,11 +1891,7 @@ class TalkBot:
                                 f"(recognizer misfire tolerated): '{text}'")
                 logger.info(f"Voice: Bot triggered - '{text}'")
             # Also respond if bot name is mentioned
-            elif is_spoken_bot_addressed(
-                text_lower,
-                self.config.get('TWITCH_BOT_USERNAME', ''),
-                self._bot_settings.get('bot_name', ''),
-            ) and len(text_lower.split()) <= 10:
+            elif addressed and len(text_lower.split()) <= 10:
                 needs_response = True
                 logger.info(f"Voice: Bot name mentioned - '{text}'")
             
@@ -1915,7 +1921,7 @@ class TalkBot:
                     return
                 self._ambient_audio.append((datetime.now(), text))
                 said = getattr(self, '_streamer_said', None)
-                if said is not None and len(text.split()) >= 6:
+                if said is not None and len(text.split()) >= 6 and not addressed:
                     said.append((datetime.now(), text))
                 voice_message = {
                     'username': 'stream_audio',
@@ -2552,7 +2558,7 @@ class TalkBot:
         if not wells:
             return
         try:
-            wells.note(well)
+            wells.note(well, at=time.monotonic())
         except Exception as e:  # noqa: BLE001
             logger.debug(f"Could not note the well: {e}")
 
@@ -2632,7 +2638,7 @@ class TalkBot:
             if rng is None:
                 import random as _random
                 rng = self._wells_rng = _random.Random()
-            choice = wells.pick(available, rng)
+            choice = wells.pick(available, rng, now=time.monotonic())
             if choice is not None and choice.well == 'off_topic':
                 choice.material = {'topic': wells.pick_off_topic(
                     choice.material.get('entries') or [], rng)}

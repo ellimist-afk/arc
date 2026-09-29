@@ -40,7 +40,11 @@ def test_share_boundary_two_games_in_six_blocks_game():
     tw = _wells('game', 'ask_chat', 'game', 'streamer_said', 'earlier_tonight',
                 'viewer_callback')
     assert not tw.game_allowed()
-    assert tw.pick({'game': {}}, random.Random(0)) is None
+    # The share cap binds only when there is an alternative well (F1); with
+    # nothing else available and no gap given, game still fires.
+    assert tw.pick({'game': {}}, random.Random(0)).well == 'game'
+    # With an alternative present, the cap still blocks game.
+    assert tw.pick({'game': {}, 'ask_chat': {}}, random.Random(0)).well == 'ask_chat'
 
 
 def test_share_boundary_is_the_same_for_one_third_and_034():
@@ -48,12 +52,53 @@ def test_share_boundary_is_the_same_for_one_third_and_034():
     assert TopicWells(0.5, 6).game_cap() == 3
 
 
-def test_only_game_and_last_was_game_stays_quiet():
-    assert _wells('off_topic', 'game').pick({'game': {}}, random.Random(0)) is None
+def test_only_game_available_fires_even_though_it_was_last():
+    # F1: with game the only well with material, the never-twice-in-a-row
+    # rule does not apply -- otherwise the bot goes permanently silent once
+    # game is the sole well and was the last one noted.
+    choice = _wells('off_topic', 'game').pick({'game': {}}, random.Random(0))
+    assert choice.well == 'game'
+    assert choice.reason == 'only well with material'
 
 
-def test_only_game_and_game_used_two_lines_ago_stays_quiet():
-    assert _wells('game', 'off_topic').pick({'game': {}}, random.Random(0)) is None
+def test_only_game_available_fires_regardless_of_recent_history():
+    choice = _wells('game', 'off_topic').pick({'game': {}}, random.Random(0))
+    assert choice.well == 'game'
+
+
+def test_solo_well_respects_the_min_gap():
+    tw = TopicWells()
+    tw.note('game', at=1000.0)
+    # Too soon: default gap is 600s.
+    assert tw.pick({'game': {}}, random.Random(0), now=1000.0 + 599) is None
+    # At/after the gap: fires again.
+    choice = tw.pick({'game': {}}, random.Random(0), now=1000.0 + 600)
+    assert choice.well == 'game'
+
+
+def test_solo_well_gap_check_needs_now_to_block():
+    # Without `now` the module has nothing to compare against, so it stays
+    # clock-free rather than guessing -- it does not block.
+    tw = TopicWells()
+    tw.note('game', at=1000.0)
+    assert tw.pick({'game': {}}, random.Random(0)).well == 'game'
+
+
+def test_solo_min_gap_applies_to_a_non_game_well_too():
+    tw = TopicWells(solo_min_gap_s=300.0)
+    tw.note('ask_chat', at=0.0)
+    assert tw.pick({'ask_chat': {}}, random.Random(0), now=100.0) is None
+    choice = tw.pick({'ask_chat': {}}, random.Random(0), now=300.0)
+    assert choice.well == 'ask_chat'
+
+
+def test_two_wells_available_old_rules_unchanged():
+    # With an alternative present, the sole-well carve-out does not apply:
+    # never-twice-in-a-row still holds.
+    tw = _wells('ask_chat')
+    choice = tw.pick({'ask_chat': {}, 'off_topic': {}}, random.Random(0),
+                     now=0.0)
+    assert choice.well == 'off_topic'
 
 
 def test_only_game_last_was_off_topic_two_lines_ago_picks_game():
@@ -61,7 +106,9 @@ def test_only_game_last_was_off_topic_two_lines_ago_picks_game():
     choice = tw.pick({'game': {'on_screen': 'x'}}, random.Random(0))
     assert choice.well == 'game'
     assert choice.material == {'on_screen': 'x'}
-    assert 'eligible' in choice.reason
+    # game is the only well with material here, so the solo carve-out (F1)
+    # picks it, not the multi-well "eligible" path.
+    assert choice.reason == 'only well with material'
 
 
 def test_nothing_available_is_none():
@@ -119,8 +166,19 @@ def test_off_topic_list_is_tolerant():
 
 
 def test_bad_numbers_do_not_raise():
-    tw = TopicWells(game_share_max="lots", window="six")
-    assert tw.window == 6 and tw.game_cap() == 2
+    tw = TopicWells(game_share_max="lots", window="six", solo_min_gap_s="soon")
+    assert tw.window == 6 and tw.game_cap() == 2 and tw.solo_min_gap_s == 600.0
+
+
+def test_game_cap_floors_at_one_when_share_positive():
+    # F3: window 1/2/3 with the shipped 0.34 rounds to 0, which disabled
+    # game forever with no sign. A positive share must never floor to 0.
+    for window in (1, 2, 3):
+        assert TopicWells(0.34, window).game_cap() == 1
+    # A share of exactly 0 still means "never game".
+    assert TopicWells(0.0, 2).game_cap() == 0
+    # Unchanged: window 6 share 0.34 still gives 2.
+    assert TopicWells(0.34, 6).game_cap() == 2
 
 
 def test_directives_carry_material_and_steer_off_the_game():

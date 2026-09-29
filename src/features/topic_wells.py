@@ -38,7 +38,8 @@ class TopicWells:
     """Ledger of the wells the last unprompted lines drew from, and the
     picker that reads it."""
 
-    def __init__(self, game_share_max: float = 1 / 3, window: int = 6):
+    def __init__(self, game_share_max: float = 1 / 3, window: int = 6,
+                 solo_min_gap_s: float = 600.0):
         try:
             share = float(game_share_max)
         except (TypeError, ValueError):
@@ -47,23 +48,35 @@ class TopicWells:
             size = int(window)
         except (TypeError, ValueError):
             size = 6
+        try:
+            gap = float(solo_min_gap_s)
+        except (TypeError, ValueError):
+            gap = 600.0
         self.game_share_max = min(1.0, max(0.0, share))
         self.window = max(2, size)
+        self.solo_min_gap_s = max(0.0, gap)
         self._history: Deque[str] = deque(maxlen=self.window)
         self._seq = 0
         self._last_used: Dict[str, int] = {}
         self._counts: Dict[str, int] = {}
+        self._noted_at: Dict[str, float] = {}
         self.last_off_topic: Optional[str] = None
 
     # ------------------------------------------------------------ ledger
-    def note(self, well: str) -> None:
-        """A line drawn from this well went out."""
+    def note(self, well: str, at: Optional[float] = None) -> None:
+        """A line drawn from this well went out.
+
+        `at`, when given by the caller, is recorded as the time this well
+        last fired -- the only clock reference this module keeps, and only
+        because the caller handed it one."""
         if well not in WELLS:
             return
         self._seq += 1
         self._history.append(well)
         self._last_used[well] = self._seq
         self._counts[well] = self._counts.get(well, 0) + 1
+        if at is not None:
+            self._noted_at[well] = at
 
     def history(self) -> List[str]:
         """The last `window` wells, oldest first."""
@@ -74,8 +87,15 @@ class TopicWells:
         return {w: self._counts.get(w, 0) for w in WELLS}
 
     def game_cap(self) -> int:
-        """Most game lines allowed in any `window` lines."""
-        return int(self.game_share_max * self.window + 1e-9)
+        """Most game lines allowed in any `window` lines.
+
+        Floored at 1 whenever `game_share_max` is above 0: a share that
+        rounds down to 0 (e.g. 0.34 of a window of 1 or 2) must not disable
+        game silently. A share of exactly 0 still means "never game"."""
+        cap = int(self.game_share_max * self.window + 1e-9)
+        if cap < 1 and self.game_share_max > 0:
+            return 1
+        return cap
 
     def game_allowed(self) -> bool:
         """Game rules: not used in the last 2, and one more would stay at or
@@ -101,13 +121,29 @@ class TopicWells:
         return out
 
     def pick(self, available: Dict[str, Dict[str, Any]],
-             rng) -> Optional[WellChoice]:
+             rng, now: Optional[float] = None) -> Optional[WellChoice]:
         """Choose the well for the next filler, or None to stay quiet.
 
         Rules in order: never the well used last; game only under the share
         cap and not in the last 2; among the rest the least recently used
         (never used counts as oldest); ties broken by rng.
+
+        Both rules above (never-twice-in-a-row, and the game share cap) bind
+        only when there is an alternative well with material. If `available`
+        holds exactly one well, that well is eligible regardless of history
+        -- except it must not fire back to back faster than
+        `solo_min_gap_s`: with `now` given and that well noted less than
+        `solo_min_gap_s` ago, this stays quiet instead.
         """
+        available = available or {}
+        if len(available) == 1:
+            (well,) = available.keys()
+            last_at = self._noted_at.get(well)
+            if now is not None and last_at is not None and \
+                    (now - last_at) < self.solo_min_gap_s:
+                return None
+            return WellChoice(well=well, material=dict(available[well] or {}),
+                              reason='only well with material')
         pool = self.eligible(available)
         if not pool:
             return None
