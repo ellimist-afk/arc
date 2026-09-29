@@ -187,15 +187,26 @@ class PersonalityEngine:
                 OPENAI_BASE_URL env var. Only affects chat completions —
                 TTS keeps its own client on the real OpenAI API.
             llm_api_key / llm_base_url: a separate chat endpoint (LLM_API_KEY /
-                LLM_BASE_URL). When the key is set, chat uses this pair and
-                the OpenAI key and base URL are ignored for chat, so chat can
+                LLM_BASE_URL). When the key is set AND the base URL is non-blank,
+                chat uses this pair and the OpenAI key and base URL (including
+                the OPENAI_BASE_URL env var) are ignored for chat, so chat can
                 move to another provider while TTS and vision stay on OpenAI.
+                A key with no base URL is never sent to the OpenAI API as if it
+                were an OpenAI key: it is dropped and chat falls back to the
+                OpenAI key/base-url behaviour, with one logged error.
         """
         self.memory_system = memory_system
         self.config_path = config_path
+        llm_base_url_clean = (llm_base_url or '').strip()
+        if llm_api_key and not llm_base_url_clean:
+            logger.error(
+                "LLM_API_KEY is set without LLM_BASE_URL; ignoring it and using "
+                "the OpenAI key"
+            )
+            llm_api_key = None
         if llm_api_key:
             chat_key = llm_api_key
-            self.openai_base_url = llm_base_url or None
+            self.openai_base_url = llm_base_url_clean
         else:
             chat_key = openai_api_key
             self.openai_base_url = openai_base_url or os.getenv('OPENAI_BASE_URL') or None

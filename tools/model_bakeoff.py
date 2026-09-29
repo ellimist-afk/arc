@@ -358,12 +358,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         except ImportError:
             pass
         api_key = os.getenv("LLM_API_KEY")
-        base_url = base_url or os.getenv("LLM_BASE_URL")
+        base_url = (base_url or os.getenv("LLM_BASE_URL") or "").strip() or None
         if not api_key:
             print("LLM_API_KEY is not set (env or .env)", file=sys.stderr)
             return 2
+        if not base_url:
+            print("no base URL: pass --base-url or set LLM_BASE_URL", file=sys.stderr)
+            return 2
         from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=api_key, base_url=base_url or None)
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
     engine = build_engine(args.preset)
     payload = asyncio.run(run(moments, models, engine, client, seed=args.seed))

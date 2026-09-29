@@ -29,6 +29,46 @@ def test_llm_key_ignores_openai_base_url(monkeypatch):
     assert e.openai_base_url == "https://openrouter.ai/api/v1"
 
 
+def test_llm_key_alone_falls_back_to_openai_never_sends_it_to_openai(monkeypatch, caplog):
+    """LLM_API_KEY with no LLM_BASE_URL used to fall through to the OpenAI SDK
+    default (api.openai.com) with the third-party key as the Bearer token."""
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    with caplog.at_level(logging.ERROR, logger="personality.personality_engine"):
+        e = PersonalityEngine(memory_system=None, openai_api_key="sk-openai",
+                              llm_api_key="sk-or-test")
+    assert e.openai_client.api_key == "sk-openai"
+    assert e.llm_endpoint_host() == "api.openai.com"
+    errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(errors) == 1
+    assert errors[0] == ("LLM_API_KEY is set without LLM_BASE_URL; ignoring it and "
+                         "using the OpenAI key")
+    assert "sk-or-test" not in caplog.text
+
+
+def test_llm_key_with_whitespace_only_base_url_counts_as_empty(monkeypatch, caplog):
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    with caplog.at_level(logging.ERROR, logger="personality.personality_engine"):
+        e = PersonalityEngine(memory_system=None, openai_api_key="sk-openai",
+                              llm_api_key="sk-or-test", llm_base_url="   ")
+    assert e.openai_client.api_key == "sk-openai"
+    assert e.llm_endpoint_host() == "api.openai.com"
+    errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(errors) == 1
+    assert "sk-or-test" not in caplog.text
+
+
+def test_llm_key_with_base_url_never_reads_openai_base_url_env(monkeypatch):
+    """When both LLM_API_KEY and LLM_BASE_URL are set, the client gets exactly
+    LLM_BASE_URL -- never a fall-through to the OPENAI_BASE_URL env var."""
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
+    e = PersonalityEngine(memory_system=None, openai_api_key="sk-openai",
+                          llm_api_key="sk-or-test",
+                          llm_base_url="https://openrouter.ai/api/v1")
+    assert e.openai_base_url == "https://openrouter.ai/api/v1"
+    assert e.openai_client.api_key == "sk-or-test"
+    assert e.llm_endpoint_host() == "openrouter.ai"
+
+
 def test_without_llm_key_behaviour_is_unchanged(monkeypatch):
     monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
     e = PersonalityEngine(memory_system=None, openai_api_key="sk-openai",

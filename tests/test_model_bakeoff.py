@@ -159,6 +159,27 @@ def test_dry_run_writes_both_files_and_never_the_key(tmp_path, monkeypatch):
         "the page loads nothing from the network"
 
 
+def test_exits_nonzero_without_a_base_url(tmp_path, monkeypatch):
+    """No --base-url and no LLM_BASE_URL must fail before any client is built,
+    never falling through to the OpenAI SDK's default endpoint."""
+    monkeypatch.setenv('LLM_API_KEY', 'sk-or-v1-SECRET-bakeoff-key')
+    monkeypatch.delenv('LLM_BASE_URL', raising=False)
+    out = tmp_path / "out"
+    rc = bakeoff.main(['--log', str(_log(tmp_path)), '--models', 'x-ai/grok-4.7',
+                       '--out', str(out)])
+    assert rc != 0
+    assert not list(out.glob("bakeoff-*"))
+
+
+def test_whitespace_only_llm_base_url_env_counts_as_empty(tmp_path, monkeypatch):
+    monkeypatch.setenv('LLM_API_KEY', 'sk-or-v1-SECRET-bakeoff-key')
+    monkeypatch.setenv('LLM_BASE_URL', '   ')
+    out = tmp_path / "out"
+    rc = bakeoff.main(['--log', str(_log(tmp_path)), '--models', 'x-ai/grok-4.7',
+                       '--out', str(out)])
+    assert rc != 0
+
+
 def test_the_key_never_comes_from_argv():
     import argparse
     src = (ROOT / "tools" / "model_bakeoff.py").read_text(encoding="utf-8")
