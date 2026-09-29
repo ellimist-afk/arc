@@ -307,11 +307,8 @@ class ScreenWatcher:
         if self._description:
             look_prompt += COMPARE_SUFFIX.format(previous=self._description)
 
-        params: Dict[str, Any] = {"max_completion_tokens": 80}
-        model = self.model or ''
-        if model.startswith('gpt-5'):
-            params["reasoning_effort"] = (
-                'none' if model.startswith('gpt-5.5') else 'minimal')
+        from personality.model_params import adapt_params
+        params: Dict[str, Any] = adapt_params(self.model, {"max_tokens": 80})
         try:
             response = await asyncio.wait_for(
                 self.openai_client.chat.completions.create(

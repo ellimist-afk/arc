@@ -24,6 +24,7 @@ from core.network_resilience import get_resilience
 from core.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
 from personality.repetition_guard import RepetitionGuard, names_target
 from personality.streamed_reply import StreamedReply, SentenceStream
+from personality.model_params import adapt_params, lowest_reasoning_effort
 from audio.sentence_splitter import SentenceSplitter, split_text
 
 logger = logging.getLogger(__name__)
@@ -1064,28 +1065,16 @@ class PersonalityEngine:
     def _adapt_openai_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Map generic sampling params onto model-specific API requirements.
-
-        GPT-5 family: 'max_tokens' is renamed to 'max_completion_tokens', and
-        temperature/penalties are only accepted with the lowest reasoning
-        effort — also the fastest setting (no reasoning tokens before banter).
-
-        The accepted values are model-specific and do NOT overlap: gpt-5.5
-        takes 'none' and rejects 'minimal', while gpt-5-mini takes 'minimal'
-        and rejects 'none'. Sending the wrong one is a hard 400, so every
-        reply would fail the moment llm_model changed.
+        See personality/model_params.py: GPT-5 family (bare or `openai/`
+        prefixed) gets 'max_completion_tokens' and its lowest reasoning
+        effort; any other model gets 'max_tokens' and no reasoning_effort.
         """
-        adapted = dict(params)
-        model = (self.llm_model or '')
-        if model.startswith('gpt-5'):
-            if 'max_tokens' in adapted:
-                adapted['max_completion_tokens'] = adapted.pop('max_tokens')
-            adapted.setdefault('reasoning_effort', self._lowest_reasoning_effort(model))
-        return adapted
+        return adapt_params(self.llm_model, params)
 
     @staticmethod
     def _lowest_reasoning_effort(model: str) -> str:
         """The cheapest reasoning setting this model actually accepts."""
-        return 'none' if model.startswith('gpt-5.5') else 'minimal'
+        return lowest_reasoning_effort(model)
 
     def would_speak(self, message: str, is_mention: bool) -> bool:
         """Public view of the TTS decision, so callers can pick the streamed
