@@ -252,9 +252,10 @@ class OptimizedAudioQueue:
         text: str,
         priority: str = "normal",
         user: Optional[str] = None
-    ) -> None:
+    ) -> bool:
         """
-        Queue audio for playback with intelligent prioritization
+        Queue audio for playback with intelligent prioritization.
+        Return whether the clip was accepted (not whether playback finished).
         
         Args:
             text: Text to convert to speech
@@ -268,7 +269,7 @@ class OptimizedAudioQueue:
                 enabled = True
             if not enabled:
                 logger.debug(f"TTS disabled; dropping audio: '{text[:40]}...'")
-                return
+                return False
 
         # Detect @mention and boost priority
         is_mention = "@" in text and any(
@@ -306,6 +307,7 @@ class OptimizedAudioQueue:
             self.queue.sort()  # Sort by priority
             
         logger.info(f"Audio queued: text='{text[:50]}...', priority={priority_enum.name}, mention={is_mention}, user={user}, queue_size={len(self.queue)}")
+        return True
 
     async def queue_utterance(
         self,

@@ -6,13 +6,14 @@ trigger check never fires. This layer normalizes the transcript at the
 trigger check only -- no recognizer or model changes.
 
 Matching runs in three passes, cheapest first:
-  1. exact      -- substring check against HEY_TRIGGERS (original behavior)
+  1. exact      -- whole-phrase check against HEY_TRIGGERS
   2. normalized -- same check after replacing a misheard leading word
-                   ('play'/'hay'/'they'/'a'/'okay') with 'hey'
+                   ('play'/'hay'/'okay') with 'hey'
   3. fuzzy      -- gated on the first token normalizing to 'hey': accept a
                    second token within edit distance 1 of a trigger word
                    ('not' -> 'bot')
 """
+import re
 from typing import Sequence, Tuple
 
 # Trigger phrases for "the streamer is addressing the bot". Single source of
@@ -27,7 +28,9 @@ HEY_TRIGGERS = [
 ]
 
 # Leading words the recognizer produces in place of "hey"
-_HEY_MISHEARD_FIRST = {'play', 'hay', 'they', 'a', 'okay'}
+# "a" and "they" are ordinary sentence openings: normalizing them plus
+# fuzzy matching made "a lot of protein" sound like "hey bot".
+_HEY_MISHEARD_FIRST = {'play', 'hay', 'okay'}
 
 # Canonical second tokens of the "hey <x>" triggers, for the fuzzy pass
 _TRIGGER_SECOND_TOKENS = ('bud', 'buddy', 'boss', 'bot')
@@ -78,11 +81,16 @@ def match_hey_trigger(
     'none'}. Callers should log non-exact matches at INFO so false positives
     are diagnosable from the stream log.
     """
-    if any(t in text_lower for t in triggers):
+    # Bound both ends: "they both" contains "hey bot", but is no address.
+    def has_trigger(text: str) -> bool:
+        return any(re.search(r'(?<!\w)' + re.escape(t) + r'(?!\w)', text)
+                   for t in triggers if t)
+
+    if has_trigger(text_lower):
         return True, 'exact'
 
     normalized = normalize_leading_hey(text_lower)
-    if normalized and any(t in normalized for t in triggers):
+    if normalized and has_trigger(normalized):
         return True, 'normalized'
 
     # Fuzzy pass, gated on the first token being (or normalizing to) 'hey'

@@ -121,11 +121,11 @@ def test_settings_accept_120_and_clamp_absurd_values(tmp_path):
     assert rc2.dead_air_threshold == 300, "PRD clamps the threshold to 300s"
 
 
-def test_live_settings_file_enables_dead_air_at_120():
+def test_live_settings_file_waits_five_minutes_before_filling_dead_air():
     rc = ResponseCoordinator(twitch_client=None, audio_queue=None,
                              settings_path="bot_settings.json")
     assert rc.dead_air_enabled is True
-    assert rc.dead_air_threshold == 120
+    assert rc.dead_air_threshold == 300
 
 
 def test_counters_start_clean():

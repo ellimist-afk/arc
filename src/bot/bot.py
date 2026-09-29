@@ -10,6 +10,7 @@ import time
 import json
 import re
 import inspect
+import math
 from collections import deque
 import itertools
 from typing import Optional, Dict, Any, List, Tuple
@@ -122,7 +123,7 @@ def _read_screen_people(settings: Dict[str, Any]) -> Tuple[float, float]:
     from features.screen_watcher import _number
     cfg = (settings or {}).get('screen_awareness') or {}
     return (_number(cfg.get('yield_to_chat_seconds'), 45.0),
-            _number(cfg.get('room_followup_seconds'), 60.0))
+            _number(cfg.get('room_followup_seconds'), 0.0))
 
 
 def _read_laugh_ledger(settings: Dict[str, Any]):
@@ -227,13 +228,13 @@ class TalkBot:
         # independent triggers cannot stack lines back to back. Mentions,
         # greetings and events are exempt.
         self.last_bot_message_at = None
-        self.unsolicited_gap_s = 30.0
-        # Viewers the co-host has just answered -> (when, how many in a row).
-        # Their next message counts as talking to it even without its name,
-        # which is how "how did you parallel park your setup" gets an answer.
+        self.unsolicited_gap_s = 90.0
+        # Only a direct address opens a short conversation. An unsolicited
+        # interjection must not recruit that viewer into mandatory replies.
+        # Values are (when, number of name-free follow-ups already answered).
         self._replied_to: Dict[str, Tuple[float, int]] = {}
-        self.followup_window_s = 90.0
-        self.max_followups = 3
+        self.followup_window_s = 30.0
+        self.max_followups = 1
         # How old a message may be by the time its reply is READY. Generation
         # normally takes 1-3s, but the resilience layer's retry backoff can
         # stretch a call to minutes -- and a line answering a five-minute-old
@@ -264,14 +265,10 @@ class TalkBot:
         self._filler_screen_topic_at = None
         self._filler_screen_topic_text = None
         self.filler_screen_gap_s = 600.0
-        # People over the screen. A moment that lands while the room is
-        # talking is dropped: a co-host does not interrupt a conversation to
-        # narrate a death. And for a beat after an UNPROMPTED line (a screen
-        # reaction, a dead-air filler) the first viewer message is taken as
-        # an answer to it -- live 2026-09-06 five viewers in 35 minutes were
-        # held by the breather because the bot had just talked to itself.
+        # People over the screen. Automatic room follow-ups are opt-in:
+        # whoever speaks after a filler may be talking to someone else.
         self.yield_to_chat_s = 45.0
-        self.room_followup_window_s = 60.0
+        self.room_followup_window_s = 0.0
         self._room_followup_until: float = 0.0     # monotonic
         self._last_line_unsolicited: bool = False
         # Raids arrive over IRC and EventSub both; keyed by (raider, viewers)
@@ -364,6 +361,28 @@ class TalkBot:
         
     _TTS_STREAMING_DEFAULTS = {'enabled': False, 'min_sentence_chars': 12, 'prefetch_depth': 2}
 
+    def _apply_chat_pacing_settings(self, bot_settings: Dict[str, Any]) -> None:
+        """Apply quieter chat limits at startup and on settings reload."""
+        from features.screen_watcher import _number
+        cfg = bot_settings.get('conversation') or {}
+        self.unsolicited_gap_s = _number(cfg.get('unsolicited_gap_seconds'), 90.0)
+        self.followup_window_s = _number(cfg.get('followup_window_seconds'), 30.0)
+        if not math.isfinite(self.unsolicited_gap_s) or self.unsolicited_gap_s < 0:
+            self.unsolicited_gap_s = 90.0
+        if not math.isfinite(self.followup_window_s) or self.followup_window_s < 0:
+            self.followup_window_s = 30.0
+        try:
+            self.max_followups = max(0, int(cfg.get('max_followups', 1)))
+        except (TypeError, ValueError, OverflowError):
+            self.max_followups = 1
+        self.yield_to_chat_s, self.room_followup_window_s = _read_screen_people(bot_settings)
+        if not self.room_followup_window_s:
+            self._room_followup_until = 0.0
+        velocity = getattr(self, 'chat_velocity', None)
+        if velocity is not None:
+            boost = _number((bot_settings.get('chat_velocity') or {}).get('quiet_boost'), 1.0)
+            velocity.quiet_boost = boost if math.isfinite(boost) and boost > 0 else 1.0
+
     def _apply_tts_streaming_settings(self, bot_settings: Dict[str, Any]) -> None:
         cfg = dict(self._TTS_STREAMING_DEFAULTS)
         cfg.update(bot_settings.get('tts_streaming') or {})
@@ -400,6 +419,7 @@ class TalkBot:
                     self.voice_cooldown_seconds = bot_settings['conversation'].get('cooldown_seconds', 5)
                     self.conversation_timeout = bot_settings['conversation'].get('conversation_timeout', 30)
 
+                self._apply_chat_pacing_settings(bot_settings)
                 self._apply_tts_streaming_settings(bot_settings)
 
                 logger.info(f"Loaded bot settings from {settings_file}")
@@ -469,6 +489,7 @@ class TalkBot:
                 if self.personality_engine:
                     self.personality_engine.reload_llm_settings()
 
+                self._apply_chat_pacing_settings(bot_settings)
                 self._apply_tts_streaming_settings(bot_settings)
 
                 logger.info("Reloaded bot settings")
@@ -916,10 +937,15 @@ class TalkBot:
                     'bot_name', self.config['TWITCH_BOT_USERNAME']
                 ),
             )
-            # An explicit @mention always jumps the queue. An INFERRED
-            # follow-up earns a reply too, but not the right to talk over the
-            # co-host's own last line -- treating it as a full mention let it
-            # skip the breather below and put two lines back to back.
+            # Twitch's Reply button is also a direct address. A reply to a
+            # different viewer must never inherit a name-free bot window.
+            reply_parent = ((message.get('tags') or {}).get(
+                'reply-parent-user-login', '') or '').lower()
+            if reply_parent:
+                is_mention = is_mention or reply_parent == self.config['TWITCH_BOT_USERNAME'].lower()
+            # Keep direct addresses distinct for freshness limits. Recognized
+            # follow-ups are solicited too and must not be dropped by the
+            # unsolicited-line breather.
             explicitly_addressed = is_mention
             if explicitly_addressed:
                 self._note_engaged()
@@ -929,13 +955,14 @@ class TalkBot:
             # window is consumed so a later, unrelated follow-up can't also
             # ride it if this message never produces a reply.
             room_answer = False
-            via_followup = (not is_mention
-                            and self._is_followup(message.get('username', '')))
+            via_followup = (not is_mention and not reply_parent
+                            and self._is_followup(message.get('username', ''), consume=True))
             if via_followup:
                 is_mention = True
                 self._note_engaged()
                 logger.info(f"Follow-up from {message.get('username')} treated as a mention")
-            elif not is_mention and time.monotonic() < self._room_followup_until:
+            elif (not is_mention and not reply_parent and self.room_followup_window_s > 0
+                  and time.monotonic() < self._room_followup_until):
                 # The co-host just said something nobody asked for. Whoever
                 # speaks next is almost always answering IT -- but nobody is
                 # a per-viewer follow-up after an unprompted line, because
@@ -1032,13 +1059,10 @@ class TalkBot:
                 self._schedule_summary()
                 return
 
-            # An unsolicited line right after our own last line reads as the
-            # bot talking to itself; let the room breathe. Mentions and
-            # first-timer greetings always go through.
-            # A person answering the co-host's own unprompted line is not the
-            # bot talking to itself; the breather must not hold them. A
-            # follow-up to a REPLY keeps today's hold.
-            answering_us = room_answer or (via_followup and self._last_line_unsolicited)
+            # Leave space between unsolicited interjections. A recognized
+            # follow-up is a person answering us, even inside that gap.
+            # The per-viewer window and streak cap still bound the exchange.
+            answering_us = room_answer or via_followup
             if not explicitly_addressed and not greet and not answering_us and self.last_bot_message_at is not None:
                 gap = (datetime.now() - self.last_bot_message_at).total_seconds()
                 if gap < self.unsolicited_gap_s:
@@ -1059,6 +1083,9 @@ class TalkBot:
                 is_voice=False,
             )
             if handled:
+                if streamed_text:
+                    self._note_replied_to(message.get('username', ''),
+                                          explicitly_addressed=explicitly_addressed)
                 if streamed_text and greet:
                     self.first_timer.mark_greeted()
                 response = None
@@ -1139,7 +1166,8 @@ class TalkBot:
                 )
                 self._note_bot_line(seq, response['text'], unsolicited=False)
                 self.last_bot_message_at = datetime.now()
-                self._note_replied_to(message.get('username', ''))
+                self._note_replied_to(message.get('username', ''),
+                                      explicitly_addressed=explicitly_addressed)
 
             # Fold older chat into the session summary if a batch is due
             self._schedule_summary()
@@ -1418,6 +1446,9 @@ class TalkBot:
                     message_text=message.get('text', ''),
                     max_time_ms=80
                 )
+            # Copy cached context before marking this request's input source.
+            context = dict(context)
+            context['input_source'] = 'voice'
             context = self._with_room_reaction(context)
 
             # Get personality response - force response for voice.
@@ -1448,23 +1479,32 @@ class TalkBot:
             if response:
                 # Track last response for repeat command
                 self.last_response = response['text']
-                
-                # Use ResponseCoordinator for synchronized delivery
-                if self.response_coordinator:
-                    # Create audio task for TTS (always enabled for voice)
-                    async def queue_tts():
-                        if self.audio_queue:
-                            await self.audio_queue.queue_audio(
-                                text=strip_mentions_for_tts(response.get('speech_text') or response['text']),
-                                priority='high'  # Voice responses are high priority
-                            )
+
+                # Only report audio that the queue actually accepts. Its live
+                # gate may change after this response starts being delivered.
+                async def queue_tts():
+                    if self.audio_queue:
+                        accepted = await self.audio_queue.queue_audio(
+                            text=strip_mentions_for_tts(response.get('speech_text') or response['text']),
+                            priority='high'
+                        )
+                        if accepted:
                             self.audio_count += 1
                             logger.info(f"Voice response queued: '{response['text']}'")
-                    
+                        else:
+                            logger.info("Voice response audio not queued: TTS gate declined it")
+
+                audio_task = (queue_tts if self.audio_queue and
+                              self.config.get('TTS_ENABLED', True) else None)
+                if audio_task is None:
+                    logger.info("Voice response is chat-only: TTS disabled or audio queue unavailable")
+
+                # Use ResponseCoordinator for synchronized delivery
+                if self.response_coordinator:
                     # Coordinate response with proper timing
                     await self.response_coordinator.coordinate_response(
                         chat_msg=response['text'],
-                        audio_task=queue_tts,
+                        audio_task=audio_task,
                         priority='high',
                         is_mention=True,  # Treat voice as mention
                         is_voice=True
@@ -1473,13 +1513,8 @@ class TalkBot:
                     # Fallback to direct sending if coordinator not available
                     if self.twitch_client and self.twitch_client.is_connected():
                         await self.twitch_client.send_message(response['text'])
-                    if self.audio_queue:
-                        await self.audio_queue.queue_audio(
-                            text=strip_mentions_for_tts(response.get('speech_text') or response['text']),
-                            priority='high'
-                        )
-                        self.audio_count += 1
-                        logger.info(f"Voice response queued: '{response['text']}'")
+                    if audio_task:
+                        await audio_task()
 
                 # Add bot's response to chat buffer
                 seq = self.chat_buffer.append_assistant(
@@ -1930,25 +1965,28 @@ class TalkBot:
         except Exception as e:
             logger.debug(f"Could not schedule session summary: {e}")
 
-    def _note_replied_to(self, username: str) -> None:
-        """Remember that the co-host just answered this viewer."""
+    def _note_replied_to(self, username: str, *, explicitly_addressed: bool = False) -> None:
+        """Only direct addresses open or reset the name-free reply allowance."""
         name = (username or "").lower().lstrip('@')
         if not name:
             return
-        _, streak = self._replied_to.get(name, (0.0, 0))
-        self._replied_to[name] = (time.monotonic(), streak + 1)
+        now = time.monotonic()
+        if explicitly_addressed:
+            self._replied_to[name] = (now, 0)
         # The last thing the co-host said was an answer, not an unprompted
         # line, so there is nothing for the room to be answering.
         self._last_line_unsolicited = False
 
-    def _is_followup(self, username: str) -> bool:
+    def _is_followup(self, username: str, *, consume: bool = False) -> bool:
         """Is this viewer continuing a conversation the co-host is already in?
 
         Chat rarely re-types the bot's name for a follow-up, so requiring the
         name meant the second half of every exchange fell back to the 3%
         interjection roll and usually went unanswered. The streak cap stops a
         genuine back-and-forth turning into an unbreakable ping-pong: after
-        `max_followups` the viewer has to address it by name again.
+        `max_followups` the viewer has to address it by name again. The handler
+        consumes a slot before its first await, so two messages arriving while
+        generation is pending cannot both claim the last slot.
         """
         name = (username or "").lower().lstrip('@')
         entry = self._replied_to.get(name)
@@ -1965,6 +2003,8 @@ class TalkBot:
         if streak >= self.max_followups:
             logger.info(f"Follow-up streak spent for {name}; needs the name again")
             return False
+        if consume:
+            self._replied_to[name] = (when, streak + 1)
         return True
 
     async def _try_streamed_reply(
@@ -2022,7 +2062,6 @@ class TalkBot:
 
         self.last_response = text
         self.last_bot_message_at = datetime.now()
-        self._note_replied_to(user)
         self.audio_count += 1
         seq = self.chat_buffer.append_assistant(
             channel=self.config.get('TWITCH_CHANNEL', ''),
@@ -2389,9 +2428,9 @@ class TalkBot:
         return None
 
     def _open_room_followup(self) -> None:
-        """The co-host just said something nobody asked for. For the next
-        beat, whoever speaks is answering it."""
-        self._room_followup_until = time.monotonic() + self.room_followup_window_s
+        """Open the legacy room-wide window only when explicitly enabled."""
+        self._room_followup_until = (time.monotonic() + self.room_followup_window_s
+                                     if self.room_followup_window_s > 0 else 0.0)
         self._last_line_unsolicited = True
 
     def _remember_own_line(self, text: str) -> None:
@@ -2422,6 +2461,8 @@ class TalkBot:
         Consumed once: a stamp claimed by this filler must not also be
         claimed by the next one, whether or not this filler used it.
         """
+        # Fillers also count toward the gap before any optional chat reply.
+        self.last_bot_message_at = datetime.now()
         self._remember_own_line(text)
         self._open_room_followup()
         at = self._filler_screen_topic_at

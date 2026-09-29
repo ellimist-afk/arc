@@ -18,15 +18,15 @@ def make_queue():
 async def test_gate_off_drops_every_clip():
     q = make_queue()
     q.tts_gate = lambda: False
-    await q.queue_audio("dead air filler line", priority="low")
-    await q.queue_audio("thanks for the follow", priority="high")
+    assert await q.queue_audio("dead air filler line", priority="low") is False
+    assert await q.queue_audio("thanks for the follow", priority="high") is False
     assert q.queue == []
 
 
 async def test_gate_on_enqueues():
     q = make_queue()
     q.tts_gate = lambda: True
-    await q.queue_audio("hello there", priority="normal")
+    assert await q.queue_audio("hello there", priority="normal") is True
     assert len(q.queue) == 1
 
 
@@ -34,9 +34,9 @@ async def test_gate_flips_live_like_a_settings_reload():
     q = make_queue()
     config = {"TTS_ENABLED": False}
     q.tts_gate = lambda: bool(config.get("TTS_ENABLED", True))
-    await q.queue_audio("muted era", priority="normal")
+    assert await q.queue_audio("muted era", priority="normal") is False
     config["TTS_ENABLED"] = True                    # hot-reload flips the flag
-    await q.queue_audio("audible era", priority="normal")
+    assert await q.queue_audio("audible era", priority="normal") is True
     assert [i.text for i in q.queue] == ["audible era"]
 
 

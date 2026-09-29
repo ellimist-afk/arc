@@ -55,7 +55,7 @@ async def test_our_own_reply_in_flight_also_moves_the_marker():
 # ---------------------------------------------- unsolicited-reply breather
 
 def test_bot_declares_the_gap():
-    assert "self.unsolicited_gap_s = 30.0" in HANDLER
+    assert "self.unsolicited_gap_s = 90.0" in HANDLER
     assert "self.last_bot_message_at = None" in HANDLER
 
 
@@ -72,7 +72,7 @@ def test_every_send_path_stamps_the_timestamp():
     in chat, so all three must feed the breather. A path that forgets lets
     the next line stack on top of it."""
     stamps = HANDLER.count("self.last_bot_message_at = datetime.now()")
-    assert stamps == 3, f"expected blocking + streamed + screen reaction ({stamps})"
+    assert stamps == 4, f"expected blocking + streamed + screen reaction + filler ({stamps})"
     reaction = HANDLER.split("async def _react_to_screen")[1].split("def _dead_air_context")[0]
     assert "self.last_bot_message_at = datetime.now()" in reaction
 
@@ -87,15 +87,12 @@ def test_gate_math():
 
 # ------------------------------- the two fixes must not cancel each other
 
-def test_only_an_explicit_mention_bypasses_the_breather():
-    """The follow-up window sets is_mention=True so the reply happens. If the
-    breather also keyed off is_mention, every inferred follow-up would skip
-    it -- which is how two lines landed back to back at 02:39."""
+def test_recognized_followups_bypass_the_unsolicited_breather():
     gate = HANDLER.index("Holding")
     block = HANDLER.rindex("if not explicitly_addressed", 0, gate)
     guard = HANDLER[block:gate]
-    assert "explicitly_addressed" in guard
-    assert "not is_mention and not greet" not in guard,         "keying the breather off is_mention lets follow-ups skip it"
+    assert "not answering_us" in guard
+    assert "answering_us = room_answer or via_followup" in HANDLER[:block]
 
 
 def test_explicitly_addressed_is_captured_before_the_followup_upgrade():

@@ -15,7 +15,7 @@ right after the co-host's unprompted line is almost always answering it.
 """
 import logging
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -330,18 +330,17 @@ async def test_a_mention_is_left_alone(caplog):
     assert bot._room_followup_until != 0.0, "a mention does not spend the window"
 
 
-async def test_a_follow_up_to_a_reply_still_waits_its_turn(caplog):
-    """The breather bypass is only for someone answering an UNPROMPTED line.
-    After a normal reply, a follow-up inside 30s is still the bot talking
-    over itself."""
+async def test_a_follow_up_to_a_reply_is_answered_inside_the_gap(caplog):
+    """Live: Limonene's answer 14s after our reply was silently dropped."""
     import time as _time
     bot = _chat_bot(unsolicited_ago_s=None)
+    bot.last_bot_message_at = datetime.now() - timedelta(seconds=14)
     bot._replied_to = {'motherchandelure': (_time.monotonic(), 1)}
     with caplog.at_level(logging.INFO):
-        await bot._handle_chat_message(_msg("and another thing"))
+        await bot._handle_chat_message(_msg("ong you just afraid of a real one"))
     _clean(caplog)
-    assert bot.sent == []
-    assert "Holding follow-up reply" in caplog.text
+    assert bot.sent == ["that was the plan"]
+    assert "Holding follow-up reply" not in caplog.text
 
 
 async def test_a_dropped_room_followup_does_not_leak_the_bypass(caplog):
@@ -361,15 +360,14 @@ async def test_a_dropped_room_followup_does_not_leak_the_bypass(caplog):
     assert bot._last_line_unsolicited is False, "the room window was consumed"
     assert bot._room_followup_until == 0.0
 
-    # A viewer with their own, unrelated follow-up slot must still be held
-    # by the breather -- the cleared flag above is not a bypass for them.
+    # A different viewer without a follow-up slot cannot claim it again.
     bot.muted = False
-    bot._replied_to = {'someone_else': (_time.monotonic(), 1)}
+    bot._replied_to = {}
     with caplog.at_level(logging.INFO):
         await bot._handle_chat_message(_msg("what happened", username="someone_else"))
     _clean(caplog)
-    assert bot.sent == [], "the unrelated per-viewer follow-up must still be held"
-    assert "Holding follow-up reply" in caplog.text
+    assert bot.sent == [], "an unrelated viewer must still be held"
+    assert "Holding unsolicited reply" in caplog.text
 
 
 async def test_the_upgraded_message_itself_is_never_held(caplog):
@@ -384,21 +382,20 @@ async def test_the_upgraded_message_itself_is_never_held(caplog):
     assert "Holding" not in caplog.text
 
 
-async def test_the_reply_reopens_the_viewers_own_follow_up_streak(caplog):
-    """After the room follow-up is answered, _note_replied_to has run, so
-    the conversation continues by the ordinary name-free rules."""
+async def test_opted_in_room_reply_does_not_start_a_follow_up_streak(caplog):
+    """An optional room reply must not recruit a viewer into more replies."""
     bot = _chat_bot(unsolicited_ago_s=20)
     with caplog.at_level(logging.INFO):
         await bot._handle_chat_message(_msg("lol"))
     _clean(caplog)
-    assert bot._is_followup("motherchandelure") is True
+    assert bot._is_followup("motherchandelure") is False
     assert bot._last_line_unsolicited is False, "the last line was an answer"
 
 
 def test_the_breather_bypass_is_narrow():
     handler = BOT_SRC.split("async def _handle_chat_message")[1].split(
         "\n    async def ")[0]
-    assert ("answering_us = room_answer or (via_followup and self._last_line_unsolicited)"
+    assert ("answering_us = room_answer or via_followup"
             in handler)
     assert "not answering_us" in handler
 
@@ -409,12 +406,12 @@ def test_the_breather_bypass_is_narrow():
 def test_the_new_settings_survive_a_hand_edit():
     """Read inside the try block that builds ScreenWatcher: raising here
     would disable vision for one bad character."""
-    assert _read_screen_people({}) == (45.0, 60.0)
-    assert _read_screen_people({'screen_awareness': {}}) == (45.0, 60.0)
+    assert _read_screen_people({}) == (45.0, 0.0)
+    assert _read_screen_people({'screen_awareness': {}}) == (45.0, 0.0)
     assert _read_screen_people({'screen_awareness': {
         'yield_to_chat_seconds': "30", 'room_followup_seconds': 90}}) == (30.0, 90.0)
     assert _read_screen_people({'screen_awareness': {
-        'yield_to_chat_seconds': "abc", 'room_followup_seconds': None}}) == (45.0, 60.0)
+        'yield_to_chat_seconds': "abc", 'room_followup_seconds': None}}) == (45.0, 0.0)
 
 
 def test_zero_is_off_not_a_typo():
@@ -431,6 +428,6 @@ def test_the_settings_are_in_the_shipped_file():
     cfg = json.loads(Path("bot_settings.json").read_text(
         encoding="utf-8"))['screen_awareness']
     assert cfg['yield_to_chat_seconds'] == 45
-    assert cfg['room_followup_seconds'] == 60
+    assert cfg['room_followup_seconds'] == 0
     for key in ('yield_to_chat_seconds', 'room_followup_seconds'):
         assert key in cfg['_comment'], "a setting nobody documents is a dead one"

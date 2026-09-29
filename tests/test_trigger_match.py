@@ -20,6 +20,7 @@ from components.voice.trigger_match import (
     ('hay bot hello', 'exact'),
     ('hey bott', 'exact'),
     ('hey elimist roast the streamer', 'exact'),
+    ('so, hey bot, what do you think?', 'exact'),
     # Normalized: misheard leading word, clean second token
     ('play bot are you there', 'normalized'),
     ('okay boss what next', 'normalized'),
@@ -42,6 +43,11 @@ def test_trigger_fires(text, expected_how):
     # First token qualifies but nothing downstream resembles a trigger
     ('play despacito'),
     ('a complete sentence here'),
+    ('a lot of protein though yeah i also eat a lot of mostly just protein'),
+    ('a lot of people'),
+    ('they both played well'),
+    ('a buddy told me'),
+    ('hey bottles are over there'),
     ('they said the stream looks great'),
     # Known miss, documented: the trigger word itself was dropped by the
     # recognizer ('hey bud turn back on' -> 'play turn back on...'), so

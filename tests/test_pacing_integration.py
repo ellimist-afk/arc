@@ -59,3 +59,28 @@ def test_boosted_probability_is_still_capped(engine, monkeypatch):
     assert engine._should_respond("hello? big question", is_mention=False) is True
     set_die(monkeypatch, 0.151)               # past the 15% cap
     assert engine._should_respond("hello? big question", is_mention=False) is False
+
+
+@pytest.mark.parametrize("message", [
+    "goodluck Amish lol",
+    "this rework looks rough",
+    "support feels rough",
+    "your aim is fine",
+    "they changed sombra",
+])
+def test_greeting_fragments_in_ordinary_words_do_not_boost_replies(
+        engine, monkeypatch, message):
+    set_die(monkeypatch, 0.04)  # Above the 3% base, below the greeting boost.
+    assert engine._should_respond(message, is_mention=False) is False
+
+
+@pytest.mark.parametrize("message", [
+    "hi",
+    "HELLO everyone",
+    "hey, chat",
+    "sup!",
+    "(yo)",
+])
+def test_standalone_greetings_still_boost_replies(engine, monkeypatch, message):
+    set_die(monkeypatch, 0.04)
+    assert engine._should_respond(message, is_mention=False) is True

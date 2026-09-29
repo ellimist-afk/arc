@@ -4,7 +4,7 @@
   "bot_name": "elimist_",
   "streamer_name": "cassova_",
   "personality": {
-    "preset": "roast"
+    "preset": "uwu"
   },
   "voice": {
     "model": "shimmer",
@@ -12,12 +12,15 @@
   },
   "conversation": {
     "cooldown_seconds": 5,
-    "conversation_timeout": 30
+    "conversation_timeout": 30,
+    "unsolicited_gap_seconds": 90,
+    "followup_window_seconds": 30,
+    "max_followups": 1
   },
   "response_coordination": {
     "timing_mode": "chat_first",
     "dead_air_enabled": true,
-    "dead_air_threshold": 120
+    "dead_air_threshold": 300
   },
   "ad_announcer": {
     "announce_at_end": false
@@ -41,7 +44,7 @@
     "persist_dir": "session_state"
   },
   "first_timer_greeting": {
-    "enabled": false,
+    "enabled": true,
     "min_interval_s": 45,
     "suppress_after_raid_s": 120
   },
@@ -54,7 +57,7 @@
     "enabled": true,
     "quiet_per_min": 2,
     "busy_per_min": 12,
-    "quiet_boost": 2.5,
+    "quiet_boost": 1.0,
     "busy_damp": 0.35
   },
   "auto_clip": {
@@ -70,13 +73,13 @@
     "enabled": true,
     "interval_seconds": 30,
     "max_edge": 768,
-    "_comment": "Sends periodic screenshots of the display to the OpenAI API. Set bbox [x1,y1,x2,y2] to watch only the game region. A run of same-kind moments (death, win, boss) inside same_kind_window_seconds is held until streak_threshold unsaid repeats have gone by, and a dead-air filler within filler_screen_gap_seconds of a screen line is steered off the screen. Runs are counted per kind and menus are never moments; a moment is dropped when a viewer has spoken in the last yield_to_chat_seconds, and for room_followup_seconds after an unprompted line the first viewer message is answered as if it named the co-host.",
+    "_comment": "Sends periodic screenshots of the display to the OpenAI API. Set bbox [x1,y1,x2,y2] to watch only the game region. A run of same-kind moments (death, win, boss) inside same_kind_window_seconds is held until streak_threshold unsaid repeats have gone by, and a dead-air filler within filler_screen_gap_seconds of a screen line is steered off the screen. Runs are counted per kind and menus are never moments; a moment is dropped when a viewer has spoken in the last yield_to_chat_seconds, room_followup_seconds is 0 by default so ordinary chat after a filler is not treated as an address; a positive value opts into the legacy room-wide follow-up window.",
     "notable_cooldown_seconds": 120,
     "same_kind_window_seconds": 600,
     "streak_threshold": 3,
     "filler_screen_gap_seconds": 600,
     "yield_to_chat_seconds": 45,
-    "room_followup_seconds": 60
+    "room_followup_seconds": 0
   },
   "laugh_ledger": {
     "enabled": true,
