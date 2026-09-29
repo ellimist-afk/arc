@@ -1,6 +1,6 @@
 {
   "TTS_ENABLED": false,
-  "llm_model": "gpt-5.5",
+  "llm_model": "x-ai/grok-4.20",
   "bot_name": "elimist_",
   "streamer_name": "cassova_",
   "personality": {
