@@ -1060,9 +1060,8 @@ class TalkBot:
                         and self.auto_clipper.should_clip(self.chat_velocity.is_burst())):
                     self.auto_clipper.mark_triggered()
                     self.task_registry.create_task(
-                        self._auto_clip(),
+                        asyncio.wait_for(self._auto_clip(), 15.0),
                         name=f"auto_clip_{self.auto_clipper.clips_triggered}",
-                        timeout=15.0,
                     )
 
             # Log if this is a mention
