@@ -5,6 +5,8 @@ Bypasses complex lifecycle management.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.api.v2 import v2_router
+from src.api.middleware.auth import AuthenticationMiddleware
+from src.core.config_unified import get_settings
 
 app = FastAPI(
     title="TalkBot API",
@@ -12,9 +14,10 @@ app = FastAPI(
     description="TalkBot V2 API - Minimal Server"
 )
 
+app.add_middleware(AuthenticationMiddleware, allowed_origins=get_settings().CORS_ORIGINS)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=get_settings().CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

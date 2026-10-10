@@ -26,7 +26,7 @@ from memory.single_memory_system import SingleMemorySystem
 from memory.resilient_memory_system import ResilientMemorySystem
 from twitch.twitch_client import TwitchClient
 from audio.optimized_queue import OptimizedAudioQueue
-from personality.personality_engine import PersonalityEngine
+from personality.personality_engine import PersonalityEngine, LLM_REQUEST_TIMEOUT
 from api.websocket_manager import WebSocketManager
 from components.voice.recognition import VoiceRecognition
 from components.voice.trigger_match import match_hey_trigger
@@ -114,7 +114,8 @@ def _vision_client_and_model(openai_api_key: Optional[str], chat_client: Any,
     """
     if openai_api_key:
         from openai import AsyncOpenAI
-        return (AsyncOpenAI(api_key=openai_api_key, base_url=OPENAI_API_BASE),
+        return (AsyncOpenAI(api_key=openai_api_key, base_url=OPENAI_API_BASE,
+                            timeout=LLM_REQUEST_TIMEOUT, max_retries=0),
                 VISION_DEFAULT_MODEL)
     return chat_client, (chat_model or VISION_DEFAULT_MODEL)
 

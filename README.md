@@ -38,12 +38,13 @@ Arc turns solo streams into duo streams — it greets new followers, celebrates 
    pip install -r requirements.txt
    ```
 
-2. Copy `.env.example` to `.env` and fill in your credentials:
+2. Copy `.env.example` to `.env` and fill in the required section:
    - `OPENAI_API_KEY`
-   - `TWITCH_ACCESS_TOKEN`
-   - `TWITCH_CLIENT_ID`
-   - `TWITCH_CHANNEL`
+   - `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`, `TWITCH_ACCESS_TOKEN`, `TWITCH_BOT_USERNAME`
+   - `TWITCH_CHANNEL`, `AUTO_START_CHANNEL`
    - `DATABASE_URL`
+
+   The rest of the file lists the optional settings with their defaults.
 
 3. Set up the database:
    ```
@@ -55,7 +56,8 @@ Arc turns solo streams into duo streams — it greets new followers, celebrates 
    python main.py
    ```
 
-5. Open the dashboard at `http://localhost:8000`
+5. Open the dashboard at `http://localhost:8000` (needs `API_ENABLED=true`, which `.env.example` sets).
+   The dashboard has no login, so it listens on `127.0.0.1` only and refuses requests from other sites' pages.
 
 ## Project Structure
 

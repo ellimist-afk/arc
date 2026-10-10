@@ -224,7 +224,7 @@ class TTSCacheSQLite:
         text: str, 
         voice: str = "alloy", 
         speed: float = 1.0,
-        fuzzy_match: bool = True
+        fuzzy_match: bool = False
     ) -> Optional[bytes]:
         """
         Retrieve cached audio
@@ -233,7 +233,10 @@ class TTSCacheSQLite:
             text: Text to look up
             voice: Voice model
             speed: Playback speed
-            fuzzy_match: Enable fuzzy text matching
+            fuzzy_match: Also accept a cached entry whose words mostly overlap.
+                Off by default: one changed word ("not") keeps the overlap
+                above the threshold, so a fuzzy hit speaks a different
+                sentence than the one asked for.
             
         Returns:
             Cached audio bytes or None

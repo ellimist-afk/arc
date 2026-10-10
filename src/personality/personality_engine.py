@@ -29,6 +29,14 @@ from audio.sentence_splitter import SentenceSplitter, split_text
 
 logger = logging.getLogger(__name__)
 
+# The SDK default is a 600s timeout with 2 hidden retries, under our own
+# retry + fallback + breaker, so one stalled endpoint could hold a reply for
+# minutes. Each request gets a short timeout with no SDK retries (for a stream
+# it bounds the wait for each chunk), and a blocking reply gets one overall
+# deadline before it drops to the template fallback.
+LLM_REQUEST_TIMEOUT = 20.0
+LLM_REPLY_DEADLINE = 30.0
+
 class PersonalityPreset(Enum):
     """Personality preset types"""
     FRIENDLY = "friendly"
@@ -210,7 +218,8 @@ class PersonalityEngine:
         else:
             chat_key = openai_api_key
             self.openai_base_url = openai_base_url or os.getenv('OPENAI_BASE_URL') or None
-        self.openai_client = (AsyncOpenAI(api_key=chat_key, base_url=self.openai_base_url)
+        self.openai_client = (AsyncOpenAI(api_key=chat_key, base_url=self.openai_base_url,
+                                          timeout=LLM_REQUEST_TIMEOUT, max_retries=0)
                               if chat_key else None)
         self.resilience = get_resilience()
 
@@ -1008,7 +1017,10 @@ class PersonalityEngine:
                 
                 # Use circuit breaker for the entire resilient call
                 try:
-                    result = await self.circuit_breaker.call(wrapped_openai_call)
+                    result = await asyncio.wait_for(
+                        self.circuit_breaker.call(wrapped_openai_call),
+                        timeout=LLM_REPLY_DEADLINE,
+                    )
                 except CircuitBreakerOpenError as e:
                     logger.warning(f"Circuit breaker open for OpenAI: {e}")
                     # Generate a simple fallback response

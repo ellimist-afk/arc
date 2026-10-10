@@ -111,6 +111,11 @@ class LoggingConfig:
     structured: bool = False
 
 
+def local_origins(port: int) -> list:
+    """The dashboard's own origins, the only ones allowed to call the API."""
+    return [f"http://localhost:{port}", f"http://127.0.0.1:{port}"]
+
+
 @dataclass
 class Settings:
     """
@@ -129,10 +134,11 @@ class Settings:
     features: FeatureFlags = field(default_factory=FeatureFlags)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     
-    # API settings
-    api_host: str = "0.0.0.0"
+    # API settings. The dashboard has no login, so it listens on loopback
+    # and only accepts browser requests from its own origin.
+    api_host: str = "127.0.0.1"
     api_port: int = 8000
-    cors_origins: list = field(default_factory=lambda: ["*"])
+    cors_origins: list = field(default_factory=lambda: local_origins(8000))
 
     # Compatibility properties (uppercase)
     @property
@@ -231,8 +237,13 @@ class Settings:
         settings.logging.structured = os.getenv('STRUCTURED_LOGGING', 'false').lower() == 'true'
         
         # API
-        settings.api_host = os.getenv('API_HOST', '0.0.0.0')
+        settings.api_host = os.getenv('API_HOST', '127.0.0.1')
         settings.api_port = int(os.getenv('API_PORT', '8000'))
+        cors_env = os.getenv('CORS_ORIGINS', '')
+        settings.cors_origins = (
+            [o.strip() for o in cors_env.split(',') if o.strip()]
+            or local_origins(settings.api_port)
+        )
         
         # Performance
         settings.max_workers = int(os.getenv('MAX_WORKERS', '10'))

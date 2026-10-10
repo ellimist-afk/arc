@@ -872,7 +872,7 @@ def create_app() -> FastAPI:
     # Add authentication middleware to protect sensitive endpoints
     # Enable authentication middleware for security
     from src.api.middleware.auth import AuthenticationMiddleware
-    app.add_middleware(AuthenticationMiddleware)
+    app.add_middleware(AuthenticationMiddleware, allowed_origins=settings.CORS_ORIGINS)
 
     # Add rate limiting middleware and store reference for monitoring
     rate_limiter = EnhancedRateLimitMiddleware(app, config=rate_limit_config)
@@ -1334,124 +1334,75 @@ def create_app() -> FastAPI:
                 "realtime_enabled": False,
             }
 
-    @app.post("/api/mute")
-    async def emergency_mute(
-        current_user: TokenData = Depends(get_current_user)
-    ):
-        """Emergency mute endpoint - requires authentication.
-        
-        Required permission: bot:manage or admin
-        """
-        # Permission check: require bot:manage or admin
+    def _require_manage(current_user: TokenData) -> None:
         if "admin" not in current_user.roles and "bot:manage" not in current_user.permissions:
             raise HTTPException(
                 status_code=403,
                 detail="Access denied: Requires bot:manage permission"
             )
-        
-        try:
-            from src.bot import get_registry
 
-            registry = get_registry()
-            # Get the bot for the user's streamer ID
-            streamer_id = current_user.twitch_id or current_user.username
-            bot = await registry.get(streamer_id)
+    # One process runs one bot. These used to look it up in the task registry,
+    # which holds tasks, not bots, so they always answered "Bot not found".
+    # bot.muted is the flag every output path checks.
 
-            if not bot:
-                return {"status": "error", "message": "Bot not found"}
+    @app.post("/api/mute")
+    async def emergency_mute(
+        request: Request,
+        current_user: TokenData = Depends(get_current_user)
+    ):
+        """Emergency mute endpoint. Required permission: bot:manage or admin"""
+        _require_manage(current_user)
+        from src.api.dependencies import get_bot_safe
 
-            success = await bot.mute(emergency=True)
-
-            print(
-                f"[MUTE] Emergency mute result: {success}, Bot state: {bot.state.is_muted}"
-            )
-
-            return {
-                "status": "success" if success else "failed",
-                "action": "mute",
-                "muted": bot.state.is_muted,
-                "timestamp": time.time(),
-            }
-        except Exception as e:
-            print(f"[MUTE ERROR] {e}")
-            import traceback
-
-            traceback.print_exc()
-            return {"status": "error", "message": str(e)}
+        bot = get_bot_safe(request)
+        if not bot:
+            raise HTTPException(status_code=503, detail="Bot not running")
+        bot.muted = True
+        log.warning("[MUTE] Emergency mute from the dashboard")
+        return {
+            "status": "success",
+            "action": "mute",
+            "muted": True,
+            "timestamp": time.time(),
+        }
 
     @app.post("/api/unmute")
     async def emergency_unmute(
+        request: Request,
         current_user: TokenData = Depends(get_current_user)
     ):
-        """Emergency unmute endpoint - requires authentication.
-        
-        Required permission: bot:manage or admin
-        """
-        # Permission check: require bot:manage or admin
-        if "admin" not in current_user.roles and "bot:manage" not in current_user.permissions:
-            raise HTTPException(
-                status_code=403,
-                detail="Access denied: Requires bot:manage permission"
-            )
-        
-        try:
-            from src.bot import get_registry
+        """Emergency unmute endpoint. Required permission: bot:manage or admin"""
+        _require_manage(current_user)
+        from src.api.dependencies import get_bot_safe
 
-            registry = get_registry()
-            all_bots = registry.get_all()
-            bot = None
-
-            # Find the bot for the authenticated user
-            streamer_id = current_user.twitch_id or current_user.username
-            for bot_id, bot_instance in all_bots.items():
-                if bot_instance.channel == streamer_id or streamer_id in bot_id:
-                    bot = bot_instance
-                    break
-
-            if bot:
-                await bot.unmute()
-                print(f"[UNMUTE] Bot unmuted successfully. State: {bot.state.is_muted}")
-                return {
-                    "status": "success",
-                    "message": "Bot has been UNMUTED",
-                    "muted": False,
-                    "timestamp": time.time(),
-                }
-            else:
-                return {"status": "error", "message": "Bot not found"}
-        except Exception as e:
-            print(f"[UNMUTE ERROR] {e}")
-            return {"status": "error", "message": str(e)}
+        bot = get_bot_safe(request)
+        if not bot:
+            raise HTTPException(status_code=503, detail="Bot not running")
+        bot.muted = False
+        log.info("[UNMUTE] Unmuted from the dashboard")
+        return {
+            "status": "success",
+            "message": "Bot has been UNMUTED",
+            "muted": False,
+            "timestamp": time.time(),
+        }
 
     @app.get("/api/mute/status")
     async def emergency_mute_status(
+        request: Request,
         current_user: TokenData = Depends(get_current_user)
     ):
-        """Check current mute status - requires authentication."""
-        try:
-            from src.bot import get_registry
+        """Check current mute status."""
+        from src.api.dependencies import get_bot_safe
 
-            registry = get_registry()
-            all_bots = registry.get_all()
-            bot = None
-
-            # Find the bot for the authenticated user
-            streamer_id = current_user.twitch_id or current_user.username
-            for bot_id, bot_instance in all_bots.items():
-                if bot_instance.channel == streamer_id or streamer_id in bot_id:
-                    bot = bot_instance
-                    break
-
-            if bot:
-                return {
-                    "status": "success",
-                    "muted": bot.state.is_muted,
-                    "timestamp": time.time(),
-                }
-            else:
-                return {"status": "error", "message": "Bot not found"}
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
+        bot = get_bot_safe(request)
+        if not bot:
+            raise HTTPException(status_code=503, detail="Bot not running")
+        return {
+            "status": "success",
+            "muted": bool(getattr(bot, "muted", False)),
+            "timestamp": time.time(),
+        }
 
     @app.post("/api/v2/settings/realtime/{streamer_id}")
     async def update_realtime_mode(
