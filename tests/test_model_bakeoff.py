@@ -164,6 +164,8 @@ def test_exits_nonzero_without_a_base_url(tmp_path, monkeypatch):
     never falling through to the OpenAI SDK's default endpoint."""
     monkeypatch.setenv('LLM_API_KEY', 'sk-or-v1-SECRET-bakeoff-key')
     monkeypatch.delenv('LLM_BASE_URL', raising=False)
+    # The real .env sets LLM_BASE_URL since chat moved to OpenRouter; keep it out.
+    monkeypatch.setattr('dotenv.load_dotenv', lambda *a, **k: False)
     out = tmp_path / "out"
     rc = bakeoff.main(['--log', str(_log(tmp_path)), '--models', 'x-ai/grok-4.7',
                        '--out', str(out)])
